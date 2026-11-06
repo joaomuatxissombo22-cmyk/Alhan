@@ -8,9 +8,18 @@ import {
   Building2,
   Search,
   ExternalLink,
+  CreditCard,
+  Copy,
+  Check,
+  MessageCircle,
+  Mail,
+  Clock,
+  AlertCircle,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Hero } from '../components/Hero';
+import { Testimonials } from '../components/Testimonials';
+import { FaqSection } from '../components/FaqSection';
 import {
   COMPANY_INFO,
   INSTAGRAM_FEED_POSTS,
@@ -513,7 +522,10 @@ export const HomePage: React.FC = () => {
         <IsoRecommendationQuiz />
       </section>
 
-      {/* 7. FEED DO INSTAGRAM (@alhan.sgi) & PÁGINA OFICIAL DO FACEBOOK */}
+      {/* 7. DEPOIMENTOS E TESTEMUNHOS DE CONFIANÇA (Carousel de Clientes e Logos) */}
+      <Testimonials />
+
+      {/* 8. FEED DO INSTAGRAM (@alhan.sgi) & PÁGINA OFICIAL DO FACEBOOK */}
       <section className="py-16 bg-white border-t border-slate-200">
         <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -924,6 +936,9 @@ export const HowItWorksPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Accordion FAQ Section */}
+      <FaqSection className="pt-8 border-t border-slate-200" />
     </div>
   );
 };
@@ -1021,6 +1036,14 @@ export const PartnersPage: React.FC = () => {
 export const LegalPage: React.FC<{ section: 'termos' | 'privacidade' | 'pagamentos' | 'formacao' | 'certificacao' }> = ({
   section,
 }) => {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const handleCopy = (value: string, key: string) => {
+    navigator.clipboard.writeText(value);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
   const titles = {
     termos: 'Termos e Condições de Utilização',
     privacidade: 'Política de Privacidade e Protecção de Dados',
@@ -1082,14 +1105,194 @@ export const LegalPage: React.FC<{ section: 'termos' | 'privacidade' | 'pagament
           )}
 
           {section === 'pagamentos' && (
-            <>
-              <p>
-                <strong>1. Meios de Pagamento em Angola:</strong> As inscrições nas formações da ALHAN podem ser liquidadas em Kwanzas (Kz) através de Express Angola, Unitel Money, Africell Money, KWiK ou transferência bancária com submissão de comprovativo na plataforma.
-              </p>
-              <p>
-                <strong>2. Libertação de Acesso:</strong> Após validação do comprovativo pela Administração da ALHAN, o estado da inscrição passa de «Pendente» para «Pago» e o acesso às aulas e materiais é libertado imediatamente.
-              </p>
-            </>
+            <div className="space-y-6">
+              {/* Regra Obrigatória: Inscrição Prévia */}
+              <div className="p-5 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3.5">
+                <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-xs font-extrabold text-amber-950">
+                    Regra Obrigatória no Acto de Pagamento: Primeiro Inscrever-se na Plataforma
+                  </p>
+                  <p className="text-xs text-amber-900 leading-relaxed">
+                    Antes de efectuar qualquer transferência ou pagamento, <strong>o aluno deve primeiro realizar a sua inscrição na formação pretendida</strong> no catálogo da plataforma (<Link to="/formacoes" className="underline font-bold text-[#0077C8]">/formacoes</Link>), preenchendo o seu nome completo, número de WhatsApp e e-mail para que o pagamento fique devidamente vinculado ao seu registo.
+                  </p>
+                </div>
+              </div>
+
+              {/* Destaque dos Canais Oficiais de Pagamento */}
+              <div className="p-6 rounded-2xl bg-[#061A2D] text-white space-y-5 border border-[#0077C8]/40">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
+                  <div className="flex items-center gap-2.5">
+                    <CreditCard className="w-5 h-5 text-[#19B5FE]" />
+                    <h2 className="text-base sm:text-lg font-extrabold text-white">
+                      Canais Oficiais de Pagamento das Formações ALHAN
+                    </h2>
+                  </div>
+                  <span className="text-xs font-mono-tabular text-emerald-400">
+                    Pagamentos em Kwanzas (AOA / Kz)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Canal 1: Multicaixa Express */}
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
+                    <div>
+                      <p className="text-xs font-semibold text-[#19B5FE]">Canal 1 · Pagamento Instantâneo Móvel</p>
+                      <h3 className="text-sm font-bold text-white mt-0.5">Multicaixa Express</h3>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-black/30 border border-white/10">
+                        <div>
+                          <p className="text-[11px] text-slate-400">Terminal Express 1</p>
+                          <p className="font-mono-tabular text-sm font-extrabold text-white">927 496 287</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy('927496287', 'exp1')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+                        >
+                          {copiedKey === 'exp1' ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedKey === 'exp1' ? 'Copiado' : 'Copiar'}</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-black/30 border border-white/10">
+                        <div>
+                          <p className="text-[11px] text-slate-400">Terminal Express 2</p>
+                          <p className="font-mono-tabular text-sm font-extrabold text-white">927 099 484</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy('927099484', 'exp2')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+                        >
+                          {copiedKey === 'exp2' ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedKey === 'exp2' ? 'Copiado' : 'Copiar'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Canal 2: BANCO SOL IBAN */}
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3 flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div>
+                        <p className="text-xs font-semibold text-[#19B5FE]">Canal 2 · Coordenadas Bancárias Oficiais</p>
+                        <h3 className="text-sm font-bold text-white mt-0.5">BANCO SOL — Transferência / Depósito</h3>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-black/30 border border-white/10 space-y-1.5">
+                        <p className="text-[11px] text-slate-400">IBAN (BANCO SOL):</p>
+                        <p className="font-mono-tabular text-sm font-extrabold text-[#19B5FE] tracking-wide break-all">
+                          0044 0000 56903729141 08
+                        </p>
+                        <div className="pt-1.5 border-t border-white/10 text-xs text-slate-200">
+                          <p>
+                            <span className="text-slate-400">Banco:</span> <strong>BANCO SOL</strong>
+                          </p>
+                          <p>
+                            <span className="text-slate-400">Titular da Conta:</span> <strong>Graciete Garcia</strong>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopy('004400005690372914108', 'iban')}
+                      className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+                    >
+                      {copiedKey === 'iban' ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedKey === 'iban' ? 'IBAN Copiado com Sucesso!' : 'Copiar IBAN BANCO SOL'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Prazos de Validação Bancária (Mesmo Dia vs 24h) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-5 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-2">
+                  <div className="flex items-center gap-2 text-emerald-700 font-bold text-xs">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>Validação no Mesmo Dia (Mesmo Banco / Express)</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    O pagamento é <strong>validado no mesmo dia</strong> sempre que a operação for realizada através do <strong>mesmo banco (BANCO SOL)</strong> ou directamente via <strong>Multicaixa Express (927496287 / 927099484)</strong>, libertando o acesso imediato do aluno.
+                  </p>
+                </div>
+
+                <div className="p-5 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-2">
+                  <div className="flex items-center gap-2 text-[#0077C8] font-bold text-xs">
+                    <Clock className="w-4 h-4 shrink-0" />
+                    <span>Validação em 24 Horas (Bancos Diferentes)</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Caso a transferência seja ordenada a partir de um <strong>banco diferente (transferência interbancária)</strong>, o pagamento leva <strong>24 horas (24h) para ser validado</strong> após confirmação de compensação bancária pela Administração.
+                  </p>
+                </div>
+              </div>
+
+              {/* Orientações Claras para Envio do Comprovativo */}
+              <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 space-y-4">
+                <div>
+                  <h3 className="text-base font-bold text-[#061A2D]">
+                    Orientações para Envio do Comprovativo e Confirmação Administrativa
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Siga os 4 passos abaixo para garantir a validação célere da sua inscrição:
+                  </p>
+                </div>
+
+                <ol className="list-decimal list-inside space-y-2 text-xs text-slate-700 leading-relaxed">
+                  <li>
+                    <strong>1.º Passo (Inscrição Prévia):</strong> Aceda à página de <Link to="/formacoes" className="text-[#0077C8] font-bold underline">Formações</Link>, escolha o curso pretendido e preencha o formulário de inscrição com o seu Nome Completo, Telefone/WhatsApp e E-mail.
+                  </li>
+                  <li>
+                    <strong>2.º Passo (Pagamento):</strong> Realize o pagamento do valor do curso através do <strong>Multicaixa Express (927496287 / 927099484)</strong> ou transferência para o <strong>BANCO SOL (IBAN 0044 0000 56903729141 08 — em nome de Graciete Garcia)</strong>.
+                  </li>
+                  <li>
+                    <strong>3.º Passo (Envio do Comprovativo):</strong> Envie o comprovativo oficial em PDF ou fotografia legível para o nosso <strong>WhatsApp (+244 922 021 211)</strong> ou <strong>E-mail (geral@alhan.pro)</strong>, indicando o seu nome e a formação em que se inscreveu.
+                  </li>
+                  <li>
+                    <strong>4.º Passo (Validação e Retorno ao Aluno):</strong> Assim que o comprovativo é validado no Painel Administrativo (no mesmo dia para Banco Sol/Express ou em 24h para outros bancos), <strong>a Administração notifica o formando de volta pelo número de WhatsApp ou E-mail</strong> informado na inscrição.
+                  </li>
+                </ol>
+
+                <div className="pt-2 flex flex-wrap items-center gap-3">
+                  <a
+                    href={`https://wa.me/${COMPANY_INFO.whatsappNumber}?text=${encodeURIComponent(
+                      'Olá ALHAN, já realizei a minha inscrição na plataforma e envio em anexo o comprovativo de pagamento da formação para validação.'
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Enviar Comprovativo por WhatsApp (+244 922 021 211)</span>
+                  </a>
+
+                  <a
+                    href={`mailto:${COMPANY_INFO.email}?subject=${encodeURIComponent(
+                      'Envio de Comprovativo de Inscrição - Formação ALHAN'
+                    )}&body=${encodeURIComponent(
+                      'Olá Equipa ALHAN,\n\nSegue em anexo o comprovativo de pagamento referente à minha inscrição.\n\nNome Completo:\nFormação Inscrita:\nTelefone / WhatsApp:\nBanco Utilizado:'
+                    )}`}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+                  >
+                    <Mail className="w-4 h-4" />
+                    <span>Enviar Comprovativo por E-mail (geral@alhan.pro)</span>
+                  </a>
+
+                  <Link
+                    to="/formacoes"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-[#061A2D] text-xs font-bold transition-colors"
+                  >
+                    <span>Inscrever-me numa Formação Agora</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              </div>
+            </div>
           )}
 
           {section === 'formacao' && (

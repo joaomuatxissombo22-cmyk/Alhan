@@ -18,6 +18,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { COMPANY_INFO, UserRole } from '../data/initialData';
 import { PWAInstallButton, OfflineIndicator } from './PWAInstallBanner';
+import { SgiAnnouncementModal } from './SgiAnnouncementModal';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -164,6 +165,10 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <span aria-hidden="true" className="text-white/25">·</span>
             <Link to="/contactos" className="hover:text-[#19B5FE] transition-colors whitespace-nowrap">
               Contactos
+            </Link>
+            <span aria-hidden="true" className="text-white/25">·</span>
+            <Link to="/politica-pagamentos" className="hover:text-[#19B5FE] font-semibold text-[#19B5FE] transition-colors whitespace-nowrap">
+              Política de Pagamentos
             </Link>
             <span aria-hidden="true" className="text-white/25">·</span>
             <a
@@ -536,6 +541,9 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           <span className="hidden sm:inline">WhatsApp Alhan</span>
         </a>
       )}
+
+      {/* Announcement Notification for SGI Training */}
+      <SgiAnnouncementModal />
 
       <OfflineIndicator />
     </div>

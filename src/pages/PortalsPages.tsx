@@ -28,16 +28,208 @@ import {
   Settings,
   Activity,
   ExternalLink,
+  Upload,
+  Download,
+  Phone,
+  Mail,
+  Send,
+  X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
   COMPANY_INFO,
   CourseItem,
+  CertificateItem,
   EnrollmentItem,
   IsoDocumentItem,
   IsoAuditItem,
   NonConformityItem,
+  UserRole,
 } from '../data/initialData';
+
+// ==========================================
+// COMPONENTE DE CONTROLO DE ACESSO POR PAINEL (USER & SENHA)
+// ==========================================
+const PanelAccessGate: React.FC<{
+  allowedRoles: UserRole[];
+  defaultRole: UserRole;
+  panelTitle: string;
+  panelSubtitle: string;
+  children: (onLockPanel: () => void) => React.ReactNode;
+}> = ({ allowedRoles, defaultRole, panelTitle, panelSubtitle, children }) => {
+  const { user, panelCredentials, loginWithCredentials, logout } = useApp();
+  const navigate = useNavigate();
+
+  const defaultCred = panelCredentials.find((c) => c.role === defaultRole) || panelCredentials[0];
+  const [selectedRole, setSelectedRole] = useState<UserRole>(defaultRole);
+  const [usernameInput, setUsernameInput] = useState(defaultCred?.username || 'user');
+  const [passwordInput, setPasswordInput] = useState(defaultCred?.password || 'user');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [forceLocked, setForceLocked] = useState(false);
+
+  const isAuthorized = !forceLocked && user && allowedRoles.includes(user.role);
+
+  if (isAuthorized) {
+    return <>{children(() => setForceLocked(true))}</>;
+  }
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    try {
+      const resolved = await loginWithCredentials(usernameInput, passwordInput, selectedRole);
+      setForceLocked(false);
+      if (!allowedRoles.includes(resolved)) {
+        if (resolved === 'SUPER_ADMIN' || resolved === 'ADMIN') navigate('/admin');
+        else if (resolved === 'PROFESSOR') navigate('/professor');
+        else if (resolved === 'CLIENTE_EMPRESARIAL') navigate('/empresa');
+        else navigate('/aluno');
+      }
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Credenciais inválidas.');
+    }
+  };
+
+  return (
+    <div className="py-12 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-5">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-[#061A2D] text-[#19B5FE] flex items-center justify-center shrink-0">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-[#0077C8]">{panelSubtitle}</p>
+              <h1 className="text-lg sm:text-xl font-extrabold text-[#061A2D]">{panelTitle}</h1>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Introduza o <strong>Utilizador (User)</strong> e a <strong>Senha</strong> de acesso para entrar neste painel.
+          </p>
+
+          {errorMsg && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+              {errorMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleAuth} className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-bold text-[#061A2D] mb-1">Painel de Destino</label>
+              <select
+                value={selectedRole}
+                onChange={(e) => {
+                  const r = e.target.value as UserRole;
+                  setSelectedRole(r);
+                  const cred = panelCredentials.find((c) => c.role === r);
+                  if (cred) {
+                    setUsernameInput(cred.username);
+                    setPasswordInput(cred.password);
+                  }
+                }}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#061A2D] bg-white"
+              >
+                {panelCredentials.map((c) => (
+                  <option key={c.role} value={c.role}>
+                    {c.panelName} (User: {c.username})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#061A2D] mb-1">Utilizador (User) *</label>
+              <input
+                type="text"
+                required
+                value={usernameInput}
+                onChange={(e) => setUsernameInput(e.target.value)}
+                placeholder="Ex: admin, superadmin, professor, empresa, aluno"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#061A2D] mb-1">Senha (Palavra-passe) *</label>
+              <input
+                type="password"
+                required
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="Senha: user"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+            >
+              Autenticar e Entrar no Painel
+            </button>
+          </form>
+
+          {user && (
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+              <span>Sessão actual: <strong>{user.role}</strong></span>
+              <button
+                type="button"
+                onClick={() => logout()}
+                className="text-red-600 font-semibold hover:underline"
+              >
+                Terminar Sessão
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="lg:col-span-6 bg-[#061A2D] text-white rounded-2xl border border-[#0077C8]/40 p-6 sm:p-8 space-y-4">
+          <div>
+            <p className="text-xs font-semibold text-[#19B5FE]">Credenciais Oficiais RBAC</p>
+            <h2 className="text-base sm:text-lg font-extrabold text-white mt-0.5">
+              Acesso a Cada Painel Administrativo (User & Senha)
+            </h2>
+            <p className="text-xs text-slate-300 mt-1">
+              Seleccione qualquer painel abaixo para preencher automaticamente o <strong>User</strong> e a <strong>Senha (`user`)</strong>:
+            </p>
+          </div>
+
+          <div className="space-y-2.5">
+            {panelCredentials.map((cred) => (
+              <div
+                key={cred.role}
+                className="p-3.5 rounded-xl bg-white/5 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+              >
+                <div>
+                  <p className="text-xs font-bold text-white">{cred.panelName}</p>
+                  <p className="text-[11px] font-mono-tabular text-slate-300 mt-0.5">
+                    User: <strong className="text-[#19B5FE]">{cred.username}</strong> · Senha:{' '}
+                    <strong className="text-emerald-400">{cred.password}</strong>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const r = await loginWithCredentials(cred.username, cred.password, cred.role);
+                    setForceLocked(false);
+                    if (r === 'SUPER_ADMIN' || r === 'ADMIN') navigate('/admin');
+                    else if (r === 'PROFESSOR') navigate('/professor');
+                    else if (r === 'CLIENTE_EMPRESARIAL') navigate('/empresa');
+                    else navigate('/aluno');
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold whitespace-nowrap shrink-0"
+                >
+                  Entrar ({cred.username})
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ==========================================
 // 1. ÁREA DO ALUNO (LMS & DASHBOARD - SECÇÕES 7, 8, 10)
@@ -120,15 +312,32 @@ export const StudentPortal: React.FC = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] flex flex-col lg:flex-row bg-[#F5F9FC]">
-      {/* Sidebar */}
-      <aside className="w-full lg:w-64 bg-[#061A2D] text-[#F5F9FC] border-r border-white/10 p-4 flex flex-col justify-between shrink-0">
-        <div>
-          <div className="px-3 py-3 border-b border-white/10">
-            <p className="text-[11px] font-semibold text-[#19B5FE]">Área Reservada do Aluno · LMS</p>
-            <p className="text-sm font-bold text-white truncate mt-0.5">{currentStudentName}</p>
-            <p className="text-[11px] font-mono-tabular text-[#9AA6AE]">ID: {currentStudentId}</p>
-          </div>
+    <PanelAccessGate
+      allowedRoles={['ALUNO', 'ADMIN', 'SUPER_ADMIN']}
+      defaultRole="ALUNO"
+      panelTitle="Painel do Aluno (Academia LMS)"
+      panelSubtitle="Acesso Reservado ao Formando · User: aluno | Senha: user"
+    >
+      {(onLockPanel) => (
+        <div className="min-h-[calc(100vh-8rem)] flex flex-col lg:flex-row bg-[#F5F9FC]">
+          {/* Sidebar */}
+          <aside className="w-full lg:w-64 bg-[#061A2D] text-[#F5F9FC] border-r border-white/10 p-4 flex flex-col justify-between shrink-0">
+            <div>
+              <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold text-[#19B5FE]">Área Reservada do Aluno · LMS</p>
+                  <p className="text-sm font-bold text-white truncate mt-0.5">{currentStudentName}</p>
+                  <p className="text-[11px] font-mono-tabular text-[#9AA6AE]">User: aluno · Senha: user</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onLockPanel}
+                  title="Bloquear Painel / Mudar Utilizador"
+                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[#19B5FE] shrink-0"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                </button>
+              </div>
 
           <nav className="mt-4 space-y-1">
             {menuItems.map((item) => {
@@ -575,6 +784,8 @@ export const StudentPortal: React.FC = () => {
         )}
       </div>
     </div>
+      )}
+    </PanelAccessGate>
   );
 };
 
@@ -680,12 +891,30 @@ export const ProfessorPortal: React.FC = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] flex flex-col lg:flex-row bg-[#F5F9FC]">
-      <aside className="w-full lg:w-64 bg-[#061A2D] text-[#F5F9FC] p-4 shrink-0">
-        <div className="px-3 py-3 border-b border-white/10">
-          <p className="text-[11px] font-semibold text-[#19B5FE]">Painel do Professor / Formador</p>
-          <p className="text-sm font-bold text-white mt-0.5">Equipa Pedagógica ALHAN</p>
-        </div>
+    <PanelAccessGate
+      allowedRoles={['PROFESSOR', 'ADMIN', 'SUPER_ADMIN']}
+      defaultRole="PROFESSOR"
+      panelTitle="Painel do Professor / Formador"
+      panelSubtitle="Acesso Docente · User: professor | Senha: user"
+    >
+      {(onLockPanel) => (
+        <div className="min-h-[calc(100vh-8rem)] flex flex-col lg:flex-row bg-[#F5F9FC]">
+          <aside className="w-full lg:w-64 bg-[#061A2D] text-[#F5F9FC] p-4 shrink-0">
+            <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-semibold text-[#19B5FE]">Painel do Professor / Formador</p>
+                <p className="text-sm font-bold text-white mt-0.5">Equipa Pedagógica ALHAN</p>
+                <p className="text-[10px] font-mono-tabular text-[#9AA6AE]">User: professor · Senha: user</p>
+              </div>
+              <button
+                type="button"
+                onClick={onLockPanel}
+                title="Bloquear Painel / Mudar Utilizador"
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[#19B5FE] shrink-0"
+              >
+                <Lock className="w-3.5 h-3.5" />
+              </button>
+            </div>
         <nav className="mt-3 grid grid-cols-2 lg:grid-cols-1 gap-1">
           {professorMenu.map((item) => (
             <button
@@ -912,6 +1141,8 @@ export const ProfessorPortal: React.FC = () => {
         </div>
       </div>
     </div>
+      )}
+    </PanelAccessGate>
   );
 };
 
@@ -953,20 +1184,37 @@ export const CompanyPortal: React.FC = () => {
   };
 
   return (
-    <div className="py-10 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-      {/* Header */}
-      <div className="bg-[#061A2D] text-[#F5F9FC] rounded-2xl p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-        <div>
-          <p className="text-xs font-semibold text-[#19B5FE]">
-            Área Reservada de Clientes Empresariais · Isolamento por Empresa (Secção 17)
-          </p>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
-            {myProject?.companyName}
-          </h1>
-          <p className="text-xs text-[#F5F9FC]/80 mt-1">
-            <strong>Normas em implementação:</strong> {myProject?.standards} · <strong>Estado:</strong> {myProject?.status}
-          </p>
-        </div>
+    <PanelAccessGate
+      allowedRoles={['CLIENTE_EMPRESARIAL', 'ADMIN', 'SUPER_ADMIN']}
+      defaultRole="CLIENTE_EMPRESARIAL"
+      panelTitle="Painel de Cliente Empresarial (Consultoria ISO)"
+      panelSubtitle="Acesso Empresarial · User: empresa | Senha: user"
+    >
+      {(onLockPanel) => (
+        <div className="py-10 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+          {/* Header */}
+          <div className="bg-[#061A2D] text-[#F5F9FC] rounded-2xl p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div>
+              <div className="flex items-center gap-3">
+                <p className="text-xs font-semibold text-[#19B5FE]">
+                  Área Reservada de Clientes Empresariais · User: empresa | Senha: user
+                </p>
+                <button
+                  type="button"
+                  onClick={onLockPanel}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px] font-semibold text-white"
+                >
+                  <Lock className="w-3 h-3 text-[#19B5FE]" />
+                  <span>Mudar Utilizador</span>
+                </button>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+                {myProject?.companyName}
+              </h1>
+              <p className="text-xs text-[#F5F9FC]/80 mt-1">
+                <strong>Normas em implementação:</strong> {myProject?.standards} · <strong>Estado:</strong> {myProject?.status}
+              </p>
+            </div>
 
         <div className="bg-white/10 rounded-xl p-4 min-w-[220px]">
           <div className="flex items-center justify-between text-xs">
@@ -1209,6 +1457,8 @@ export const CompanyPortal: React.FC = () => {
         </div>
       )}
     </div>
+      )}
+    </PanelAccessGate>
   );
 };
 
@@ -1237,7 +1487,12 @@ export const AdminPortal: React.FC = () => {
     saveIsoDocument,
     saveIsoAudit,
     saveNonConformity,
+    addPresencialCertificate,
+    panelCredentials,
+    updatePanelCredential,
   } = useApp();
+
+  const [credSavedMsg, setCredSavedMsg] = useState<string | null>(null);
 
   const [activeModule, setActiveModule] = useState<
     | 'Dashboard & Indicadores'
@@ -1251,6 +1506,92 @@ export const AdminPortal: React.FC = () => {
     | 'Utilizadores, Parceiros & Configurações'
     | 'Registos de Actividade'
   >('Dashboard & Indicadores');
+
+  // Presencial Certificate attachment state
+  const [showPresencialModal, setShowPresencialModal] = useState(false);
+  const [presStudentName, setPresStudentName] = useState('');
+  const [presStudentBI, setPresStudentBI] = useState('');
+  const [presStudentPhone, setPresStudentPhone] = useState('');
+  const [presStudentEmail, setPresStudentEmail] = useState('');
+  const [presCourseTitle, setPresCourseTitle] = useState('Implementador e Auditor Líder SGI (ISO 9001, ISO 14001 e ISO 45001) - Presencial');
+  const [presWorkloadHours, setPresWorkloadHours] = useState(40);
+  const [presCompletionDate, setPresCompletionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [presGrade, setPresGrade] = useState('Aprovado com Distinção (18 valores)');
+  const [presFileUrl, setPresFileUrl] = useState('');
+  const [presFileName, setPresFileName] = useState('');
+  const [presSuccessMsg, setPresSuccessMsg] = useState<{ code: string; studentName: string; studentBI: string; phone?: string; email?: string } | null>(null);
+
+  const handlePresencialFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPresFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPresFileUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSavePresencialCertificate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!presStudentName.trim() || !presCourseTitle.trim()) return;
+    const newCert = await addPresencialCertificate({
+      studentName: presStudentName.trim(),
+      studentBI: presStudentBI.trim() || undefined,
+      studentPhone: presStudentPhone.trim() || undefined,
+      studentEmail: presStudentEmail.trim() || undefined,
+      courseTitle: presCourseTitle.trim(),
+      workloadHours: Number(presWorkloadHours) || 40,
+      grade: presGrade.trim() || undefined,
+      certificateFileUrl: presFileUrl || undefined,
+      certificateFileName: presFileName || undefined,
+      issuedDate: presCompletionDate,
+    });
+
+    setPresSuccessMsg({
+      code: newCert.code,
+      studentName: newCert.studentName,
+      studentBI: newCert.studentBI || '',
+      phone: newCert.studentPhone,
+      email: newCert.studentEmail,
+    });
+  };
+
+  const resetPresencialForm = () => {
+    setPresStudentName('');
+    setPresStudentBI('');
+    setPresStudentPhone('');
+    setPresStudentEmail('');
+    setPresWorkloadHours(40);
+    setPresGrade('Aprovado com Distinção (18 valores)');
+    setPresFileUrl('');
+    setPresFileName('');
+    setPresSuccessMsg(null);
+    setShowPresencialModal(false);
+  };
+
+  const buildEnrollmentWhatsAppUrl = (enr: EnrollmentItem) => {
+    const phone = (enr.studentPhone || '').replace(/[^0-9]/g, '');
+    const cleanPhone = phone.startsWith('244') ? phone : (phone ? `244${phone}` : '244922021211');
+    const msg = `Olá, prezado(a) ${enr.studentName}! O seu comprovativo de pagamento para a formação «${enr.courseTitle}» no valor de ${enr.amountKz.toLocaleString('pt-AO')} Kz foi CONFIRMADO e VALIDADO com sucesso pela ALHAN – Sistema de Gestão Integrado. O seu acesso à formação e materiais já se encontra activo! Qualquer dúvida contacte a nossa equipa: +244 922 021 211.`;
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+  };
+
+  const buildEnrollmentEmailUrl = (enr: EnrollmentItem) => {
+    const email = enr.studentEmail || 'geral@alhan.pro';
+    const subject = `Comprovativo Validado com Sucesso - Formação ALHAN: ${enr.courseTitle}`;
+    const body = `Prezado(a) ${enr.studentName},\n\nConfirmamos com satisfação a validação do seu comprovativo de pagamento referente à inscrição na formação:\n\nCurso: ${enr.courseTitle}\nValor: ${enr.amountKz.toLocaleString('pt-AO')} Kz\nReferência: ${enr.paymentReference}\nEstado: PAGO / ACTIVO\n\nO seu acesso ao conteúdo da ALHAN está libertado com sucesso.\n\nAtenciosamente,\nALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA\nNIF: 5003128261\nLuanda, Angola | WhatsApp: +244 922 021 211`;
+    return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+
+  const buildCertWhatsAppUrl = (cert: CertificateItem) => {
+    const phone = (cert.studentPhone || '').replace(/[^0-9]/g, '');
+    const cleanPhone = phone.startsWith('244') ? phone : (phone ? `244${phone}` : '244922021211');
+    const msg = `Olá ${cert.studentName}! O seu Certificado Oficial ALHAN de Conclusão da formação «${cert.courseTitle}» já se encontra emitido e validado! Código: ${cert.code}. Pode baixar directamente o documento oficial em https://www.alhan.pro/consultar-certificado utilizando o seu B.I. (${cert.studentBI || 'documento'}) ou código. Parabéns pela conclusão! ALHAN SGI.`;
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+  };
 
   // Course creation / edit state
   const [editingCourse, setEditingCourse] = useState<CourseItem | null>(null);
@@ -1354,14 +1695,32 @@ export const AdminPortal: React.FC = () => {
   ] as const;
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] flex flex-col lg:flex-row bg-[#F5F9FC]">
-      {/* Admin Sidebar */}
-      <aside className="w-full lg:w-72 bg-[#061A2D] text-[#F5F9FC] p-4 shrink-0">
-        <div className="px-3 py-3 border-b border-white/10">
-          <p className="text-[11px] font-semibold text-[#19B5FE]">Painel Administrativo Central · Secção 25</p>
-          <p className="text-sm font-bold text-white mt-0.5">ALHAN – Gestão Integrada</p>
-        </div>
-        <nav className="mt-3 space-y-1">
+    <PanelAccessGate
+      allowedRoles={['ADMIN', 'SUPER_ADMIN']}
+      defaultRole="ADMIN"
+      panelTitle="Painel Administrativo Central ALHAN"
+      panelSubtitle="Acesso Administrativo · User: admin / superadmin | Senha: user"
+    >
+      {(onLockPanel) => (
+        <div className="min-h-[calc(100vh-8rem)] flex flex-col lg:flex-row bg-[#F5F9FC]">
+          {/* Admin Sidebar */}
+          <aside className="w-full lg:w-72 bg-[#061A2D] text-[#F5F9FC] p-4 shrink-0">
+            <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-semibold text-[#19B5FE]">Painel Administrativo Central · Secção 25</p>
+                <p className="text-sm font-bold text-white mt-0.5">ALHAN – Gestão Integrada</p>
+                <p className="text-[10px] font-mono-tabular text-[#9AA6AE]">User: admin · Senha: user</p>
+              </div>
+              <button
+                type="button"
+                onClick={onLockPanel}
+                title="Bloquear Painel / Mudar Utilizador"
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[#19B5FE] shrink-0"
+              >
+                <Lock className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <nav className="mt-3 space-y-1">
           {adminModules.map((m) => (
             <button
               key={m}
@@ -1454,18 +1813,32 @@ export const AdminPortal: React.FC = () => {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-500">
-                      <th className="py-2.5 px-3">Aluno</th>
+                      <th className="py-2.5 px-3">Aluno & Contacto</th>
                       <th className="py-2.5 px-3">Formação</th>
                       <th className="py-2.5 px-3 text-right">Valor (Kz)</th>
                       <th className="py-2.5 px-3">Método / Referência</th>
                       <th className="py-2.5 px-3">Estado</th>
-                      <th className="py-2.5 px-3">Acção Administrativa</th>
+                      <th className="py-2.5 px-3">Validação & Notificação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {enrollments.map((enr) => (
                       <tr key={enr.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-3 font-semibold text-[#061A2D]">{enr.studentName}</td>
+                        <td className="py-3 px-3">
+                          <p className="font-semibold text-[#061A2D]">{enr.studentName}</p>
+                          {enr.studentPhone && (
+                            <p className="text-[11px] text-slate-500 font-mono-tabular flex items-center gap-1 mt-0.5">
+                              <Phone className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                              <span>{enr.studentPhone}</span>
+                            </p>
+                          )}
+                          {enr.studentEmail && (
+                            <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                              <Mail className="w-2.5 h-2.5 text-[#0077C8] shrink-0" />
+                              <span>{enr.studentEmail}</span>
+                            </p>
+                          )}
+                        </td>
                         <td className="py-3 px-3">{enr.courseTitle}</td>
                         <td className="py-3 px-3 text-right font-mono-tabular font-bold">
                           {enr.amountKz.toLocaleString('pt-AO')} Kz
@@ -1475,22 +1848,46 @@ export const AdminPortal: React.FC = () => {
                         </td>
                         <td className="py-3 px-3 font-bold text-[#0077C8]">{enr.paymentStatus}</td>
                         <td className="py-3 px-3">
-                          <select
-                            value={enr.paymentStatus}
-                            onChange={(e) =>
-                              updateEnrollmentStatus(
-                                enr.id,
-                                e.target.value as EnrollmentItem['paymentStatus']
-                              )
-                            }
-                            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold"
-                          >
-                            <option>Pendente</option>
-                            <option>Pago</option>
-                            <option>Falhado</option>
-                            <option>Cancelado</option>
-                            <option>Reembolsado</option>
-                          </select>
+                          <div className="space-y-1.5">
+                            <select
+                              value={enr.paymentStatus}
+                              onChange={(e) =>
+                                updateEnrollmentStatus(
+                                  enr.id,
+                                  e.target.value as EnrollmentItem['paymentStatus']
+                                )
+                              }
+                              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold w-full"
+                            >
+                              <option>Pendente</option>
+                              <option>Pago</option>
+                              <option>Falhado</option>
+                              <option>Cancelado</option>
+                              <option>Reembolsado</option>
+                            </select>
+                            {enr.paymentStatus === 'Pago' && (
+                              <div className="flex items-center gap-1">
+                                <a
+                                  href={buildEnrollmentWhatsAppUrl(enr)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold"
+                                  title="Notificar no WhatsApp do Aluno"
+                                >
+                                  <Phone className="w-2.5 h-2.5" />
+                                  <span>WhatsApp</span>
+                                </a>
+                                <a
+                                  href={buildEnrollmentEmailUrl(enr)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white text-[10px] font-bold"
+                                  title="Notificar por E-mail"
+                                >
+                                  <Mail className="w-2.5 h-2.5" />
+                                  <span>E-mail</span>
+                                </a>
+                              </div>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1757,19 +2154,33 @@ export const AdminPortal: React.FC = () => {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-500">
-                    <th className="py-2.5 px-3">Formando</th>
+                    <th className="py-2.5 px-3">Formando & Contacto</th>
                     <th className="py-2.5 px-3">Curso</th>
                     <th className="py-2.5 px-3 text-right">Valor</th>
                     <th className="py-2.5 px-3">Método / Referência</th>
                     <th className="py-2.5 px-3">Nota do Comprovativo</th>
                     <th className="py-2.5 px-3">Estado</th>
-                    <th className="py-2.5 px-3">Certificado</th>
+                    <th className="py-2.5 px-3">Notificação & Certificado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {enrollments.map((enr) => (
                     <tr key={enr.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-3 font-semibold text-[#061A2D]">{enr.studentName}</td>
+                      <td className="py-3 px-3">
+                        <p className="font-semibold text-[#061A2D]">{enr.studentName}</p>
+                        {enr.studentPhone && (
+                          <p className="text-[11px] text-slate-500 font-mono-tabular flex items-center gap-1 mt-0.5">
+                            <Phone className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                            <span>{enr.studentPhone}</span>
+                          </p>
+                        )}
+                        {enr.studentEmail && (
+                          <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                            <Mail className="w-2.5 h-2.5 text-[#0077C8] shrink-0" />
+                            <span>{enr.studentEmail}</span>
+                          </p>
+                        )}
+                      </td>
                       <td className="py-3 px-3">{enr.courseTitle}</td>
                       <td className="py-3 px-3 text-right font-mono-tabular font-bold">
                         {enr.amountKz.toLocaleString('pt-AO')} Kz
@@ -1797,12 +2208,36 @@ export const AdminPortal: React.FC = () => {
                         </select>
                       </td>
                       <td className="py-3 px-3">
-                        <button
-                          onClick={() => issueCertificate(enr)}
-                          className="px-2.5 py-1 rounded bg-[#061A2D] text-white font-semibold hover:bg-[#0077C8]"
-                        >
-                          Emitir Certificado
-                        </button>
+                        <div className="flex flex-col gap-1.5">
+                          {enr.paymentStatus === 'Pago' && (
+                            <div className="flex items-center gap-1">
+                              <a
+                                href={buildEnrollmentWhatsAppUrl(enr)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold"
+                                title="Notificar confirmação no WhatsApp"
+                              >
+                                <Phone className="w-3 h-3" />
+                                <span>WhatsApp</span>
+                              </a>
+                              <a
+                                href={buildEnrollmentEmailUrl(enr)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold"
+                                title="Notificar por E-mail"
+                              >
+                                <Mail className="w-3 h-3" />
+                                <span>E-mail</span>
+                              </a>
+                            </div>
+                          )}
+                          <button
+                            onClick={() => issueCertificate(enr)}
+                            className="px-2.5 py-1 rounded bg-[#061A2D] text-white font-semibold hover:bg-[#0077C8] text-[11px]"
+                          >
+                            Emitir Certificado LMS
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1812,33 +2247,327 @@ export const AdminPortal: React.FC = () => {
           </div>
         )}
 
-        {/* 4. CERTIFICADOS QR (Section 13) */}
+        {/* 4. CERTIFICADOS QR & ANEXO DE FORMAÇÃO PRESENCIAL (Section 13) */}
         {activeModule === 'Certificados QR' && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-            <h2 className="text-base font-bold text-[#061A2D]">
-              Controlo de Certificados Emitidos e Validação QR
-            </h2>
+          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-[#061A2D]">
+                  Controlo de Certificados Emitidos, Anexo Presencial e Validação QR (Secção 13)
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Emita e anexe certificados oficiais para formandos presenciais (com upload de PDF/imagem e registo do B.I. para download público directo), ou certifique formandos do LMS.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPresSuccessMsg(null);
+                  setShowPresencialModal(true);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shrink-0 shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Anexar / Emitir Certificado Presencial</span>
+              </button>
+            </div>
+
+            {/* Modal para Anexar Certificado Presencial */}
+            {showPresencialModal && (
+              <div className="p-6 rounded-xl border-2 border-[#0077C8] bg-slate-50/60 space-y-5 animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Award className="w-5 h-5 text-[#0077C8]" />
+                    <h3 className="text-sm font-bold text-[#061A2D]">
+                      Anexo e Emissão de Certificado de Formação Presencial
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetPresencialForm}
+                    className="text-xs text-slate-500 hover:text-slate-800"
+                  >
+                    Fechar
+                  </button>
+                </div>
+
+                {presSuccessMsg ? (
+                  <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-bold text-emerald-900">
+                          Certificado Presencial Emitido e Anexado com Sucesso!
+                        </p>
+                        <p className="text-xs text-emerald-800 mt-1">
+                          Código de Validação:{' '}
+                          <span className="font-mono-tabular font-bold text-[#061A2D] bg-white px-2 py-0.5 rounded border border-emerald-300">
+                            {presSuccessMsg.code}
+                          </span>
+                        </p>
+                        <p className="text-xs text-emerald-700 mt-1">
+                          O formando <span className="font-semibold">{presSuccessMsg.studentName}</span> pode agora aceder ao portal público{' '}
+                          <Link to="/consultar-certificado" className="font-bold underline text-[#0077C8]">
+                            /consultar-certificado
+                          </Link>{' '}
+                          e baixar o ficheiro oficial anexado inserindo o seu B.I. ({presSuccessMsg.studentBI || 'B.I.'}) ou o código único.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-emerald-200">
+                      {presSuccessMsg.phone && (
+                        <a
+                          href={`https://wa.me/${presSuccessMsg.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                            `Olá ${presSuccessMsg.studentName}! O seu Certificado Oficial ALHAN de Conclusão de Formação Presencial já se encontra disponível. Código Único: ${presSuccessMsg.code}. Pode baixar directamente em https://www.alhan.pro/consultar-certificado utilizando o seu B.I. (${presSuccessMsg.studentBI}). Parabéns pela conclusão! ALHAN SGI.`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span>Notificar Aluno no WhatsApp ({presSuccessMsg.phone})</span>
+                        </a>
+                      )}
+                      {presSuccessMsg.email && (
+                        <a
+                          href={`mailto:${presSuccessMsg.email}?subject=${encodeURIComponent(
+                            `Certificado Oficial Emitido - ALHAN SGI (${presSuccessMsg.code})`
+                          )}&body=${encodeURIComponent(
+                            `Prezado(a) ${presSuccessMsg.studentName},\n\nO seu Certificado Oficial de Formação Presencial foi emitido e anexado pela ALHAN.\n\nCódigo de Validação: ${presSuccessMsg.code}\nB.I. Associado: ${presSuccessMsg.studentBI}\n\nPode consultar e descarregar o ficheiro oficial directamente no nosso portal em https://www.alhan.pro/consultar-certificado inserindo o seu B.I.\n\nAtenciosamente,\nALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA`
+                          )}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                          <span>Notificar por E-mail</span>
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={resetPresencialForm}
+                        className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        Concluir e Fechar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSavePresencialCertificate} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          Nome Completo do Aluno (Formação Presencial) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={presStudentName}
+                          onChange={(e) => setPresStudentName(e.target.value)}
+                          placeholder="Ex: Eng.º Manuel Silva dos Santos"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-[#061A2D] focus:border-[#0077C8] focus:ring-1 focus:ring-[#0077C8]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          Nº do Bilhete de Identidade (B.I.) / NIF *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={presStudentBI}
+                          onChange={(e) => setPresStudentBI(e.target.value.toUpperCase())}
+                          placeholder="Ex: 007891234LA042"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular text-[#061A2D] focus:border-[#0077C8] focus:ring-1 focus:ring-[#0077C8]"
+                        />
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          Usado pelo aluno para consultar e baixar em /consultar-certificado
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          Telefone / WhatsApp do Aluno
+                        </label>
+                        <input
+                          type="tel"
+                          value={presStudentPhone}
+                          onChange={(e) => setPresStudentPhone(e.target.value)}
+                          placeholder="Ex: +244 923 000 000"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular text-[#061A2D]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          E-mail do Aluno
+                        </label>
+                        <input
+                          type="email"
+                          value={presStudentEmail}
+                          onChange={(e) => setPresStudentEmail(e.target.value)}
+                          placeholder="Ex: manuel.santos@empresa.ao"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-[#061A2D]"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          Nome da Formação Presencial *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={presCourseTitle}
+                          onChange={(e) => setPresCourseTitle(e.target.value)}
+                          placeholder="Ex: Formação Presencial em Auditoria Interna ISO 9001:2015"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-[#061A2D]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          Carga Horária (Horas)
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min={4}
+                          max={200}
+                          value={presWorkloadHours}
+                          onChange={(e) => setPresWorkloadHours(Number(e.target.value))}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular text-[#061A2D]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          Data de Emissão / Conclusão
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={presCompletionDate}
+                          onChange={(e) => setPresCompletionDate(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-[#061A2D]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          Aproveitamento / Classificação
+                        </label>
+                        <input
+                          type="text"
+                          value={presGrade}
+                          onChange={(e) => setPresGrade(e.target.value)}
+                          placeholder="Ex: Aprovado com Distinção (18 valores)"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-[#061A2D]"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          Anexar Ficheiro do Certificado (PDF ou Imagem Digitalizada)
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                            <Upload className="w-3.5 h-3.5 text-[#0077C8]" />
+                            <span>Seleccionar Ficheiro</span>
+                            <input
+                              type="file"
+                              accept=".pdf,image/*"
+                              onChange={handlePresencialFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+                          <span className="text-xs text-slate-600 truncate max-w-xs font-mono-tabular">
+                            {presFileName ? presFileName : 'Nenhum ficheiro anexado (pode ser emitido sem anexo ou com template ALHAN)'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                      <button
+                        type="button"
+                        onClick={resetPresencialForm}
+                        className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shadow-sm"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Emitir e Anexar Certificado</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-500">
                     <th className="py-2.5 px-3">Código Único</th>
-                    <th className="py-2.5 px-3">Formando</th>
-                    <th className="py-2.5 px-3">Formação</th>
+                    <th className="py-2.5 px-3">Formando & Identificação (B.I.)</th>
+                    <th className="py-2.5 px-3">Formação & Modalidade</th>
                     <th className="py-2.5 px-3 text-right">Carga Horária</th>
                     <th className="py-2.5 px-3">Data</th>
+                    <th className="py-2.5 px-3">Ficheiro Anexado</th>
                     <th className="py-2.5 px-3">Estado</th>
-                    <th className="py-2.5 px-3">Consulta Pública</th>
+                    <th className="py-2.5 px-3">Acções & Notificação</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {certificates.map((cert) => (
                     <tr key={cert.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-3 font-mono-tabular font-bold text-[#0077C8]">{cert.code}</td>
-                      <td className="py-3 px-3 font-semibold text-[#061A2D]">{cert.studentName}</td>
-                      <td className="py-3 px-3">{cert.courseTitle}</td>
+                      <td className="py-3 px-3 font-mono-tabular font-bold text-[#0077C8] whitespace-nowrap">
+                        {cert.code}
+                      </td>
+                      <td className="py-3 px-3">
+                        <p className="font-semibold text-[#061A2D]">{cert.studentName}</p>
+                        {cert.studentBI && (
+                          <p className="text-[11px] text-slate-500 font-mono-tabular mt-0.5">
+                            B.I.: <span className="font-semibold text-[#061A2D]">{cert.studentBI}</span>
+                          </p>
+                        )}
+                        {cert.studentPhone && (
+                          <p className="text-[10px] text-slate-500 font-mono-tabular flex items-center gap-1 mt-0.5">
+                            <Phone className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                            <span>{cert.studentPhone}</span>
+                          </p>
+                        )}
+                      </td>
+                      <td className="py-3 px-3">
+                        <p className="font-medium text-[#061A2D]">{cert.courseTitle}</p>
+                        <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                          cert.modality === 'Presencial' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-[#0077C8]'
+                        }`}>
+                          {cert.modality || 'Online'}
+                        </span>
+                      </td>
                       <td className="py-3 px-3 text-right font-mono-tabular">{cert.workloadHours}h</td>
-                      <td className="py-3 px-3 font-mono-tabular">{cert.issuedDate}</td>
+                      <td className="py-3 px-3 font-mono-tabular whitespace-nowrap">{cert.issuedDate}</td>
+                      <td className="py-3 px-3">
+                        {cert.certificateFileUrl ? (
+                          <a
+                            href={cert.certificateFileUrl}
+                            download={cert.certificateFileName || `Certificado-${cert.code}.pdf`}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#061A2D] hover:bg-[#0077C8] text-white text-[11px] font-bold"
+                            title="Baixar ficheiro anexado"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Baixar ({cert.certificateFileName ? 'Anexo' : 'Doc'})</span>
+                          </a>
+                        ) : (
+                          <span className="text-slate-400 text-[11px] italic">Sem anexo</span>
+                        )}
+                      </td>
                       <td className="py-3 px-3">
                         <select
                           value={cert.status}
@@ -1856,12 +2585,26 @@ export const AdminPortal: React.FC = () => {
                         </select>
                       </td>
                       <td className="py-3 px-3">
-                        <Link
-                          to={`/consultar-certificado?codigo=${encodeURIComponent(cert.code)}`}
-                          className="text-[#0077C8] font-semibold hover:underline"
-                        >
-                          Abrir Validador →
-                        </Link>
+                        <div className="flex flex-col gap-1.5">
+                          <Link
+                            to={`/consultar-certificado?codigo=${encodeURIComponent(cert.code)}`}
+                            className="text-[#0077C8] font-semibold hover:underline text-[11px]"
+                          >
+                            Abrir Validador →
+                          </Link>
+                          {cert.studentPhone && (
+                            <a
+                              href={buildCertWhatsAppUrl(cert)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold"
+                              title="Notificar formando no WhatsApp"
+                            >
+                              <Phone className="w-2.5 h-2.5" />
+                              <span>WhatsApp</span>
+                            </a>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -2157,73 +2900,162 @@ export const AdminPortal: React.FC = () => {
           </div>
         )}
 
-        {/* 9. UTILIZADORES, PARCEIROS & CONFIGURAÇÕES (Transparent Pending Integrations) */}
+        {/* 9. UTILIZADORES, PARCEIROS & CONFIGURAÇÕES (Credenciais por Painel + Integrações) */}
         {activeModule === 'Utilizadores, Parceiros & Configurações' && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">
-            <div>
-              <h2 className="text-base font-bold text-[#061A2D]">
-                Estado das Integrações Externas e Credenciais de Comerciante
-              </h2>
-              <p className="text-xs text-slate-600 mt-1">
-                Conforme a instrução principal do projecto, serviços externos que aguardam chaves de comerciante estão estruturados e identificados de forma transparente como «Configuração pendente», sem simular chamadas automáticas falsas.
-              </p>
+          <div className="space-y-6">
+            {/* Gestão de Credenciais de Acesso por Painel (User & Senha) */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-base font-bold text-[#061A2D]">
+                    Gestão de Acesso e Credenciais para Cada Painel Administrativo (Utilizador & Senha)
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Configure abaixo o <strong>Utilizador (User)</strong> e a <strong>Senha</strong> de acesso directo para cada um dos 5 painéis da plataforma (senha padrão: <code>user</code>).
+                  </p>
+                </div>
+                {credSavedMsg && (
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg">
+                    {credSavedMsg}
+                  </span>
+                )}
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500">
+                      <th className="py-2.5 px-3">Painel / Perfil RBAC</th>
+                      <th className="py-2.5 px-3">Rota</th>
+                      <th className="py-2.5 px-3">Utilizador (User)</th>
+                      <th className="py-2.5 px-3">E-mail de Acesso</th>
+                      <th className="py-2.5 px-3">Senha</th>
+                      <th className="py-2.5 px-3">Acção</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {panelCredentials.map((cred) => (
+                      <tr key={cred.role} className="hover:bg-slate-50">
+                        <td className="py-3 px-3">
+                          <p className="font-bold text-[#061A2D]">{cred.panelName}</p>
+                          <p className="text-[11px] text-slate-500">{cred.description}</p>
+                        </td>
+                        <td className="py-3 px-3 font-mono-tabular text-[#0077C8] font-bold">{cred.route}</td>
+                        <td className="py-3 px-3">
+                          <input
+                            type="text"
+                            value={cred.username}
+                            onChange={(e) =>
+                              updatePanelCredential(cred.role, e.target.value, cred.email, cred.password)
+                            }
+                            className="w-32 rounded border border-slate-300 px-2.5 py-1.5 font-mono-tabular font-bold text-[#061A2D]"
+                          />
+                        </td>
+                        <td className="py-3 px-3">
+                          <input
+                            type="email"
+                            value={cred.email}
+                            onChange={(e) =>
+                              updatePanelCredential(cred.role, cred.username, e.target.value, cred.password)
+                            }
+                            className="w-44 rounded border border-slate-300 px-2.5 py-1.5 font-mono-tabular text-slate-700"
+                          />
+                        </td>
+                        <td className="py-3 px-3">
+                          <input
+                            type="text"
+                            value={cred.password}
+                            onChange={(e) =>
+                              updatePanelCredential(cred.role, cred.username, cred.email, e.target.value)
+                            }
+                            className="w-28 rounded border border-slate-300 px-2.5 py-1.5 font-mono-tabular font-bold text-emerald-700"
+                          />
+                        </td>
+                        <td className="py-3 px-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCredSavedMsg(`Credenciais do painel ${cred.role} guardadas!`);
+                              setTimeout(() => setCredSavedMsg(null), 2500);
+                            }}
+                            className="px-3 py-1.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white font-bold text-[11px]"
+                          >
+                            Guardar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-[#061A2D]">Base de Dados & Autenticação (Firebase Cloud)</p>
-                  <p className="text-slate-500 mt-0.5">Persistência Firestore, OAuth e Regras RBAC</p>
-                </div>
-                <span className="font-bold text-emerald-700">Operacional</span>
+            <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">
+              <div>
+                <h2 className="text-base font-bold text-[#061A2D]">
+                  Estado das Integrações Externas e Credenciais de Comerciante
+                </h2>
+                <p className="text-xs text-slate-600 mt-1">
+                  Conforme a instrução principal do projecto, serviços externos que aguardam chaves de comerciante estão estruturados e identificados de forma transparente como «Configuração pendente», sem simular chamadas automáticas falsas.
+                </p>
               </div>
-              <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-[#061A2D]">API Automática EMIS / Multicaixa Express</p>
-                  <p className="text-slate-500 mt-0.5">Validação manual de comprovativo activa</p>
-                </div>
-                <span className="font-bold text-amber-700">Configuração pendente</span>
-              </div>
-              <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-[#061A2D]">API Unitel Money / Africell Money / KWiK</p>
-                  <p className="text-slate-500 mt-0.5">Validação manual de comprovativo activa</p>
-                </div>
-                <span className="font-bold text-amber-700">Configuração pendente</span>
-              </div>
-              <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-[#061A2D]">Servidor SMTP Externo / SMS Gateway Angola</p>
-                  <p className="text-slate-500 mt-0.5">Notificações Push Web e internas activas</p>
-                </div>
-                <span className="font-bold text-amber-700">Configuração pendente</span>
-              </div>
-              <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-[#061A2D]">Hospedagem Hostinger (`public_html` + `.htaccess` SPA)</p>
-                  <p className="text-slate-500 mt-0.5">Compatível com Apache/LiteSpeed, Desktop e Dispositivos Móveis (Android/iOS)</p>
-                </div>
-                <span className="font-bold text-emerald-700">Pronto para Hospedar</span>
-              </div>
-              <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-[#061A2D]">Redes Sociais Oficiais (Facebook & Instagram @alhan.sgi)</p>
-                  <p className="text-slate-500 mt-0.5">Links directos e Feed integrados na plataforma</p>
-                </div>
-                <span className="font-bold text-emerald-700">Operacional</span>
-              </div>
-            </div>
 
-            <div className="p-5 rounded-xl bg-[#061A2D] text-[#F5F9FC] space-y-2 text-xs">
-              <p className="font-bold text-[#19B5FE]">
-                Guia Rápido de Publicação na Hostinger (www.alhan.pro) — Desktop & Mobile:
-              </p>
-              <ol className="list-decimal list-inside space-y-1 text-[#F5F9FC]/85 leading-relaxed">
-                <li>Execute <code>npm run build</code> para gerar a pasta de produção optimizada <code>dist/</code>.</li>
-                <li>No painel hPanel da <strong>Hostinger</strong>, aceda ao <strong>Gestor de Ficheiros</strong> → pasta <code>public_html</code> do domínio <code>alhan.pro</code>.</li>
-                <li>Carregue todo o conteúdo da pasta <code>dist/</code> (incluindo o ficheiro <code>.htaccess</code> já configurado na raiz) para <code>public_html</code>.</li>
-                <li>O ficheiro <code>.htaccess</code> garante que todas as rotas (<code>/formacoes</code>, <code>/consultoria-iso</code>, <code>/aluno</code>, <code>/admin</code>) abrem directamente sem erro 404 tanto em computadores (Desktop) como em telemóveis Android e iPhone.</li>
-              </ol>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-[#061A2D]">Base de Dados & Autenticação (Firebase Cloud)</p>
+                    <p className="text-slate-500 mt-0.5">Persistência Firestore, OAuth e Regras RBAC</p>
+                  </div>
+                  <span className="font-bold text-emerald-700">Operacional</span>
+                </div>
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-[#061A2D]">Canais Express (927496287/927099484) & BANCO SOL (Graciete Garcia)</p>
+                    <p className="text-slate-500 mt-0.5">Validação no mesmo dia (Banco Sol/Express) ou 24h (outros bancos)</p>
+                  </div>
+                  <span className="font-bold text-emerald-700">Operacional</span>
+                </div>
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-[#061A2D]">API Unitel Money / Africell Money / KWiK</p>
+                    <p className="text-slate-500 mt-0.5">Validação manual de comprovativo activa</p>
+                  </div>
+                  <span className="font-bold text-amber-700">Configuração pendente</span>
+                </div>
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-[#061A2D]">Servidor SMTP Externo / SMS Gateway Angola</p>
+                    <p className="text-slate-500 mt-0.5">Notificações WhatsApp/E-mail 1-clique e Push Web activas</p>
+                  </div>
+                  <span className="font-bold text-amber-700">Configuração pendente</span>
+                </div>
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-[#061A2D]">Hospedagem Hostinger (`public_html` + `.htaccess` SPA)</p>
+                    <p className="text-slate-500 mt-0.5">Compatível com Apache/LiteSpeed, Desktop e Dispositivos Móveis (Android/iOS)</p>
+                  </div>
+                  <span className="font-bold text-emerald-700">Pronto para Hospedar</span>
+                </div>
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-[#061A2D]">Redes Sociais Oficiais (Facebook & Instagram @alhan.sgi)</p>
+                    <p className="text-slate-500 mt-0.5">Links directos e Feed integrados na plataforma</p>
+                  </div>
+                  <span className="font-bold text-emerald-700">Operacional</span>
+                </div>
+              </div>
+
+              <div className="p-5 rounded-xl bg-[#061A2D] text-[#F5F9FC] space-y-2 text-xs">
+                <p className="font-bold text-[#19B5FE]">
+                  Guia Rápido de Publicação na Hostinger (www.alhan.pro) — Desktop & Mobile:
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-[#F5F9FC]/85 leading-relaxed">
+                  <li>Execute <code>npm run build</code> para gerar a pasta de produção optimizada <code>dist/</code>.</li>
+                  <li>No painel hPanel da <strong>Hostinger</strong>, aceda ao <strong>Gestor de Ficheiros</strong> → pasta <code>public_html</code> do domínio <code>alhan.pro</code>.</li>
+                  <li>Carregue todo o conteúdo da pasta <code>dist/</code> (incluindo o ficheiro <code>.htaccess</code> já configurado na raiz) para <code>public_html</code>.</li>
+                  <li>O ficheiro <code>.htaccess</code> garante que todas as rotas (<code>/formacoes</code>, <code>/consultoria-iso</code>, <code>/aluno</code>, <code>/admin</code>) abrem directamente sem erro 404 tanto em computadores (Desktop) como em telemóveis Android e iPhone.</li>
+                </ol>
+              </div>
             </div>
           </div>
         )}
@@ -2251,5 +3083,7 @@ export const AdminPortal: React.FC = () => {
         )}
       </div>
     </div>
+      )}
+    </PanelAccessGate>
   );
 };

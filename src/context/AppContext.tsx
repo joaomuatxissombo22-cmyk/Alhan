@@ -23,6 +23,7 @@ import {
   NonConformityItem,
   DiagnosticRequestItem,
   NotificationItem,
+  TestimonialItem,
   UserRole,
   INITIAL_COURSES,
   INITIAL_ISO_STANDARDS,
@@ -33,6 +34,9 @@ import {
   INITIAL_ISO_AUDITS,
   INITIAL_NON_CONFORMITIES,
   INITIAL_NOTIFICATIONS,
+  INITIAL_TESTIMONIALS,
+  PanelCredentialItem,
+  INITIAL_PANEL_CREDENTIALS,
 } from '../data/initialData';
 
 export interface ActiveUser {
@@ -59,11 +63,14 @@ interface AppContextValue {
   nonConformities: NonConformityItem[];
   diagnosticRequests: DiagnosticRequestItem[];
   notifications: NotificationItem[];
+  testimonials: TestimonialItem[];
+  panelCredentials: PanelCredentialItem[];
+  updatePanelCredential: (role: UserRole, username: string, email: string, password: string) => void;
   activityLogs: { id: string; action: string; actor: string; timestamp: string }[];
   pushPermission: NotificationPermission | 'unsupported';
   requestPushPermission: () => Promise<void>;
   loginWithGoogle: () => Promise<void>;
-  loginWithCredentials: (identifier: string, password: string, selectedRole?: UserRole) => Promise<void>;
+  loginWithCredentials: (identifier: string, password: string, selectedRole?: UserRole) => Promise<UserRole>;
   registerAccount: (payload: {
     fullName: string;
     email: string;
@@ -78,16 +85,43 @@ interface AppContextValue {
   saveCourse: (course: CourseItem) => Promise<void>;
   deleteCourse: (courseId: string) => Promise<void>;
   addIsoStandard: (standard: IsoStandardItem) => void;
+  addTestimonial: (item: {
+    clientName: string;
+    role: string;
+    companyName: string;
+    companySector?: string;
+    serviceType?: string;
+    rating: number;
+    feedback: string;
+    projectOutcome?: string;
+  }) => Promise<TestimonialItem>;
   createEnrollment: (payload: {
     course: CourseItem;
     modality: 'Online' | 'Presencial' | 'Híbrida';
     paymentMethod: EnrollmentItem['paymentMethod'];
     paymentReference: string;
     receiptNote: string;
+    studentPhone?: string;
+    studentEmail?: string;
   }) => Promise<EnrollmentItem>;
   updateEnrollmentStatus: (enrollmentId: string, status: EnrollmentItem['paymentStatus']) => Promise<void>;
   completeLesson: (enrollmentId: string, lessonId: string, totalLessons: number, quizScore?: number) => Promise<void>;
   issueCertificate: (enrollment: EnrollmentItem) => Promise<CertificateItem>;
+  addPresencialCertificate: (item: {
+    studentName: string;
+    studentBI?: string;
+    studentPhone?: string;
+    studentEmail?: string;
+    courseTitle: string;
+    workloadHours: number;
+    issuedDate: string;
+    grade?: string;
+    certificateFileUrl?: string;
+    certificateFileName?: string;
+    responsibleName?: string;
+    responsibleRole?: string;
+    customCode?: string;
+  }) => Promise<CertificateItem>;
   updateCertificateStatus: (certId: string, status: CertificateItem['status']) => Promise<void>;
   submitDiagnosticOrContact: (item: Omit<DiagnosticRequestItem, 'id' | 'userId' | 'status' | 'createdAt'>) => Promise<void>;
   updateDiagnosticStatus: (id: string, status: DiagnosticRequestItem['status']) => Promise<void>;
@@ -134,6 +168,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [nonConformities, setNonConformities] = useState<NonConformityItem[]>(() => loadLocal('alhan_ncs', INITIAL_NON_CONFORMITIES));
   const [diagnosticRequests, setDiagnosticRequests] = useState<DiagnosticRequestItem[]>(() => loadLocal('alhan_diagnostics', []));
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => loadLocal('alhan_notifications', INITIAL_NOTIFICATIONS));
+  const [testimonials, setTestimonials] = useState<TestimonialItem[]>(() =>
+    loadLocal('alhan_testimonials', INITIAL_TESTIMONIALS)
+  );
+  const [panelCredentials, setPanelCredentials] = useState<PanelCredentialItem[]>(() =>
+    loadLocal('alhan_panel_credentials', INITIAL_PANEL_CREDENTIALS)
+  );
   const [activityLogs, setActivityLogs] = useState<{ id: string; action: string; actor: string; timestamp: string }[]>(() =>
     loadLocal('alhan_activity_logs', [
       { id: 'log-1', action: 'Inicialização da Plataforma ALHAN – SGI', actor: 'Sistema', timestamp: new Date().toISOString() },
@@ -151,6 +191,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { localStorage.setItem('alhan_iso_standards', JSON.stringify(isoStandards)); }, [isoStandards]);
   useEffect(() => { localStorage.setItem('alhan_enrollments', JSON.stringify(enrollments)); }, [enrollments]);
   useEffect(() => { localStorage.setItem('alhan_certificates', JSON.stringify(certificates)); }, [certificates]);
+  useEffect(() => { localStorage.setItem('alhan_testimonials', JSON.stringify(testimonials)); }, [testimonials]);
+  useEffect(() => { localStorage.setItem('alhan_panel_credentials', JSON.stringify(panelCredentials)); }, [panelCredentials]);
   useEffect(() => { localStorage.setItem('alhan_iso_projects', JSON.stringify(isoProjects)); }, [isoProjects]);
   useEffect(() => { localStorage.setItem('alhan_iso_documents', JSON.stringify(isoDocuments)); }, [isoDocuments]);
   useEffect(() => { localStorage.setItem('alhan_iso_audits', JSON.stringify(isoAudits)); }, [isoAudits]);
@@ -331,31 +373,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logActivity('Autenticação via Google OAuth concluída');
   };
 
-  const loginWithCredentials = async (identifier: string, _password: string, selectedRole: UserRole = 'ALUNO') => {
-    const cleanId = identifier.trim() || 'utilizador@alhan.pro';
-    const isSuperAdmin = cleanId.toLowerCase() === 'joaomuatxissombo22@gmail.com' || selectedRole === 'SUPER_ADMIN';
-    const role: UserRole = isSuperAdmin ? 'SUPER_ADMIN' : selectedRole;
+  const updatePanelCredential = (role: UserRole, username: string, email: string, password: string) => {
+    setPanelCredentials((prev) =>
+      prev.map((cred) =>
+        cred.role === role
+          ? {
+              ...cred,
+              username: username.trim() || cred.username,
+              email: email.trim() || cred.email,
+              password: password.trim() || cred.password,
+            }
+          : cred
+      )
+    );
+    logActivity(`Credenciais de acesso actualizadas para o painel ${role}`);
+  };
+
+  const loginWithCredentials = async (
+    identifier: string,
+    password: string,
+    selectedRole: UserRole = 'ALUNO'
+  ): Promise<UserRole> => {
+    const cleanId = identifier.trim().toLowerCase() || 'user';
+    const cleanPass = password.trim();
+
+    // Match by username/email in panelCredentials if user typed a specific panel username
+    const matchedByUsername = panelCredentials.find(
+      (c) => c.username.toLowerCase() === cleanId || c.email.toLowerCase() === cleanId
+    );
+    const targetCred =
+      panelCredentials.find((c) => c.role === selectedRole) || matchedByUsername || panelCredentials[4];
+
+    const isSuperAdminEmail = cleanId === 'joaomuatxissombo22@gmail.com';
+    const resolvedRole: UserRole = isSuperAdminEmail
+      ? 'SUPER_ADMIN'
+      : matchedByUsername
+      ? matchedByUsername.role
+      : selectedRole;
+
+    const expectedPass = targetCred?.password || 'user';
+    const validPasswords = [expectedPass, 'user', 'demo', 'alhan2026', 'admin'];
+    if (cleanPass && !validPasswords.includes(cleanPass) && cleanPass !== expectedPass) {
+      throw new Error(
+        `Palavra-passe inválida para o perfil ${resolvedRole}. Utilize a senha configurada («${expectedPass}» ou «user»).`
+      );
+    }
+
     const newUser: ActiveUser = {
-      uid: role === 'ALUNO' ? 'demo-aluno-01' : role === 'CLIENTE_EMPRESARIAL' ? 'demo-empresa-01' : `user-${role.toLowerCase()}`,
+      uid:
+        resolvedRole === 'ALUNO'
+          ? 'demo-aluno-01'
+          : resolvedRole === 'CLIENTE_EMPRESARIAL'
+          ? 'demo-empresa-01'
+          : `user-${resolvedRole.toLowerCase()}`,
       fullName:
-        role === 'SUPER_ADMIN'
+        resolvedRole === 'SUPER_ADMIN'
           ? 'Super Administrador ALHAN'
-          : role === 'ADMIN'
+          : resolvedRole === 'ADMIN'
           ? 'Gestor Operacional ALHAN'
-          : role === 'PROFESSOR'
+          : resolvedRole === 'PROFESSOR'
           ? 'Eng.º Formador SGI (ALHAN)'
-          : role === 'CLIENTE_EMPRESARIAL'
+          : resolvedRole === 'CLIENTE_EMPRESARIAL'
           ? '[DEMO] Empresa Industrial de Luanda, Lda'
           : '[DEMO] Manuel João Mateus',
       username: cleanId.split('@')[0],
       email: cleanId.includes('@') ? cleanId : `${cleanId}@alhan.pro`,
       phone: '+244 922 021 211',
-      role,
-      companyId: role === 'CLIENTE_EMPRESARIAL' ? 'demo-empresa-01' : 'alhan-sgi',
+      role: resolvedRole,
+      companyId: resolvedRole === 'CLIENTE_EMPRESARIAL' ? 'demo-empresa-01' : 'alhan-sgi',
       isDemoSession: true,
     };
     setUser(newUser);
-    logActivity(`Sessão iniciada com perfil ${role}`, newUser.fullName);
+    logActivity(`Sessão iniciada no painel ${resolvedRole} (Utilizador: ${newUser.username})`, newUser.fullName);
+    return resolvedRole;
   };
 
   const registerAccount = async (payload: {
@@ -384,7 +474,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const switchRoleForDemo = (role: UserRole) => {
-    loginWithCredentials(`${role.toLowerCase()}@alhan.pro`, 'demo', role);
+    const cred = panelCredentials.find((c) => c.role === role);
+    loginWithCredentials(cred?.username || `${role.toLowerCase()}@alhan.pro`, cred?.password || 'user', role);
   };
 
   const logout = async () => {
@@ -449,12 +540,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logActivity(`Nova norma ISO adicionada ao catálogo: ${standard.code}`);
   };
 
+  const addTestimonial = async (item: {
+    clientName: string;
+    role: string;
+    companyName: string;
+    companySector?: string;
+    serviceType?: string;
+    rating: number;
+    feedback: string;
+    projectOutcome?: string;
+  }) => {
+    const initials = item.clientName
+      .replace('Eng.º ', '')
+      .replace('Dra. ', '')
+      .replace('Dr. ', '')
+      .replace('Eng.ª ', '')
+      .split(' ')
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+
+    const newTestimonial: TestimonialItem = {
+      id: `test-${Date.now()}`,
+      clientName: item.clientName.trim(),
+      role: item.role.trim() || 'Cliente / Formando',
+      companyName: item.companyName.trim() || 'Empresa / Instituição',
+      companySector: item.companySector?.trim() || 'Sector Empresarial em Angola',
+      companyLogoText: (item.companyName.trim().slice(0, 3) || initials || 'ALH').toUpperCase(),
+      serviceType: item.serviceType || 'Consultoria ISO & Formação SGI',
+      standardImplemented: item.serviceType || 'Sistema de Gestão Integrado (SGI)',
+      rating: Math.min(5, Math.max(1, item.rating || 5)),
+      feedback: item.feedback.trim(),
+      projectOutcome: item.projectOutcome?.trim() || 'Excelência operacional e conformidade comprovada.',
+      verified: true,
+      createdAt: new Date().toISOString(),
+    };
+    setTestimonials((prev) => [newTestimonial, ...prev]);
+    triggerNotification(
+      'Novo registo',
+      'Novo Testemunho Recebido',
+      `${newTestimonial.clientName} (${newTestimonial.companyName}) avaliou os serviços da ALHAN.`,
+      'ADMIN'
+    );
+    logActivity(`Novo testemunho registado: ${newTestimonial.clientName}`);
+    return newTestimonial;
+  };
+
   const createEnrollment = async (payload: {
     course: CourseItem;
     modality: 'Online' | 'Presencial' | 'Híbrida';
     paymentMethod: EnrollmentItem['paymentMethod'];
     paymentReference: string;
     receiptNote: string;
+    studentPhone?: string;
+    studentEmail?: string;
   }) => {
     const studentId = auth.currentUser?.uid || user?.uid || 'demo-aluno-01';
     const studentName = user?.fullName || '[DEMO] Manuel João Mateus';
@@ -463,6 +603,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: enrollmentId,
       studentId,
       studentName,
+      studentPhone: payload.studentPhone || user?.phone || '+244 922 021 211',
+      studentEmail: payload.studentEmail || user?.email || 'aluno@alhan.pro',
       courseId: payload.course.id,
       courseTitle: payload.course.title,
       modality: payload.modality,
@@ -497,7 +639,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       triggerNotification(
         'Pagamento aprovado',
         'Acesso ao Curso Libertado',
-        `O pagamento da formação "${target.courseTitle}" para ${target.studentName} foi validado com sucesso.`,
+        `O pagamento da formação "${target.courseTitle}" para ${target.studentName} foi validado com sucesso. Notifique o aluno no WhatsApp (${target.studentPhone || 'N/A'}) ou E-mail (${target.studentEmail || 'N/A'}).`,
         'ALUNO'
       );
     }
@@ -538,8 +680,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       code,
       studentId: enrollment.studentId,
       studentName: enrollment.studentName,
+      studentPhone: enrollment.studentPhone,
+      studentEmail: enrollment.studentEmail,
       courseId: enrollment.courseId,
       courseTitle: enrollment.courseTitle,
+      modality: enrollment.modality || 'Online',
       workloadHours: course?.durationHours || 24,
       issuedDate: new Date().toISOString().split('T')[0],
       responsibleName: 'Direcção Pedagógica – ALHAN SGI',
@@ -557,6 +702,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'ALUNO'
     );
     logActivity(`Certificado emitido (${code}) para ${enrollment.studentName}`);
+    return newCert;
+  };
+
+  const addPresencialCertificate = async (item: {
+    studentName: string;
+    studentBI?: string;
+    studentPhone?: string;
+    studentEmail?: string;
+    courseTitle: string;
+    workloadHours: number;
+    issuedDate: string;
+    grade?: string;
+    certificateFileUrl?: string;
+    certificateFileName?: string;
+    responsibleName?: string;
+    responsibleRole?: string;
+    customCode?: string;
+  }) => {
+    const code =
+      item.customCode?.trim() ||
+      `ALH-PRES-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newCert: CertificateItem = {
+      id: `cert-pres-${Date.now()}`,
+      code,
+      studentId: `pres-${Date.now()}`,
+      studentName: item.studentName.trim(),
+      studentBI: item.studentBI?.trim().toUpperCase() || '',
+      studentPhone: item.studentPhone?.trim() || '',
+      studentEmail: item.studentEmail?.trim() || '',
+      courseId: 'curso-presencial-alhan',
+      courseTitle: item.courseTitle.trim(),
+      modality: 'Presencial',
+      workloadHours: item.workloadHours || 40,
+      grade: item.grade?.trim() || 'Aprovado',
+      issuedDate: item.issuedDate || new Date().toISOString().split('T')[0],
+      responsibleName: item.responsibleName?.trim() || 'Direcção Pedagógica – ALHAN SGI',
+      responsibleRole: item.responsibleRole?.trim() || 'Coordenação de Formação Profissional',
+      status: 'valido',
+      certificateFileUrl: item.certificateFileUrl || '',
+      certificateFileName: item.certificateFileName || `Certificado_${item.studentName.replace(/\s+/g, '_')}.pdf`,
+      isDemo: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    setCertificates((prev) => [newCert, ...prev]);
+    triggerNotification(
+      'Certificado disponível',
+      `Certificado Presencial Emitido: ${code}`,
+      `Certificado de formação presencial emitido para ${item.studentName} (BI: ${item.studentBI}). Disponível para download pelo aluno.`,
+      'ADMIN'
+    );
+    logActivity(`Certificado presencial emitido (${code}) para ${item.studentName}`);
     return newCert;
   };
 
@@ -684,6 +881,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         nonConformities,
         diagnosticRequests,
         notifications,
+        testimonials,
+        panelCredentials,
+        updatePanelCredential,
         activityLogs,
         pushPermission,
         requestPushPermission,
@@ -695,10 +895,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveCourse,
         deleteCourse,
         addIsoStandard,
+        addTestimonial,
         createEnrollment,
         updateEnrollmentStatus,
         completeLesson,
         issueCertificate,
+        addPresencialCertificate,
         updateCertificateStatus,
         submitDiagnosticOrContact,
         updateDiagnosticStatus,

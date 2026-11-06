@@ -60,6 +60,8 @@ export interface EnrollmentItem {
   id: string;
   studentId: string;
   studentName: string;
+  studentPhone?: string;
+  studentEmail?: string;
   courseId: string;
   courseTitle: string;
   modality: 'Online' | 'Presencial' | 'Híbrida';
@@ -80,13 +82,20 @@ export interface CertificateItem {
   code: string;
   studentId: string;
   studentName: string;
+  studentBI?: string;
+  studentPhone?: string;
+  studentEmail?: string;
   courseId: string;
   courseTitle: string;
+  modality?: 'Online' | 'Presencial' | 'Híbrida';
   workloadHours: number;
+  grade?: string;
   issuedDate: string;
   responsibleName: string;
   responsibleRole: string;
   status: 'valido' | 'cancelado' | 'expirado';
+  certificateFileUrl?: string;
+  certificateFileName?: string;
   isDemo?: boolean;
   createdAt: string;
 }
@@ -220,9 +229,80 @@ export const COMPANY_INFO = {
   logoPath: '/assets/aistudio/LOGOTIPO_ALHAN-02_b8f5e974.png',
   teamFieldImage: '/assets/aistudio/imagm_da_alha_2a7ca3f2.png',
   sgiFlyerImage: '/assets/aistudio/iso_a9fe34ed.jpg',
+  paymentChannels: {
+    expressNumbers: ['927496287', '927099484'],
+    iban: '0044 0000 56903729141 08',
+    ibanFormatted: 'AO06 0044 0000 5690 3729 1410 8',
+    bankName: 'BANCO SOL',
+    accountHolder: 'Graciete Garcia',
+    proofWhatsApp: '+244 922 021 211',
+    proofWhatsAppNumber: '244922021211',
+    proofEmail: 'geral@alhan.pro',
+    sameBankValidationRule: 'O pagamento é validado no mesmo dia quando efectuado pelo mesmo banco (BANCO SOL) ou via Multicaixa Express.',
+    interbankValidationRule: 'Caso a transferência seja de um banco diferente (interbancária), leva até 24 horas (24h) para ser validado.',
+    enrollmentFirstRule: 'No acto de pagamento, o aluno deve primeiro realizar a sua inscrição na formação pretendida na plataforma antes de enviar o comprovativo.',
+  },
   certificationDisclaimer:
     'A Alhan Consultoria actua como empresa de consultoria, formação e implementação de Sistemas de Gestão. Não somos organismo de certificação nem organismo de acreditação. A certificação é realizada por organismo de certificação independente, de acordo com o respectivo processo de auditoria e decisão.',
 };
+
+export interface PanelCredentialItem {
+  role: UserRole;
+  panelName: string;
+  route: string;
+  username: string;
+  email: string;
+  password: string;
+  description: string;
+}
+
+export const INITIAL_PANEL_CREDENTIALS: PanelCredentialItem[] = [
+  {
+    role: 'SUPER_ADMIN',
+    panelName: 'Painel Super Administrativo Central',
+    route: '/admin',
+    username: 'superadmin',
+    email: 'superadmin@alhan.pro',
+    password: 'user',
+    description: 'Controlo total da plataforma, configurações, cursos, certificados e utilizadores.',
+  },
+  {
+    role: 'ADMIN',
+    panelName: 'Painel Administrativo Operacional',
+    route: '/admin',
+    username: 'admin',
+    email: 'admin@alhan.pro',
+    password: 'user',
+    description: 'Validação de pagamentos (Express / Banco Sol), inscrições, emissão e anexo de certificados.',
+  },
+  {
+    role: 'PROFESSOR',
+    panelName: 'Painel do Professor / Formador',
+    route: '/professor',
+    username: 'professor',
+    email: 'professor@alhan.pro',
+    password: 'user',
+    description: 'Gestão de módulos, videoaulas, materiais PDF, sessões ao vivo, presenças e pautas.',
+  },
+  {
+    role: 'CLIENTE_EMPRESARIAL',
+    panelName: 'Painel de Cliente Empresarial (Consultoria ISO)',
+    route: '/empresa',
+    username: 'empresa',
+    email: 'empresa@alhan.pro',
+    password: 'user',
+    description: 'Acompanhamento de projectos ISO, gestão documental, auditorias internas e não conformidades.',
+  },
+  {
+    role: 'ALUNO',
+    panelName: 'Painel do Aluno (Academia LMS)',
+    route: '/aluno',
+    username: 'aluno',
+    email: 'aluno@alhan.pro',
+    password: 'user',
+    description: 'Acesso aos cursos inscritos, aulas em vídeo, avaliações, progresso e download de certificados.',
+  },
+];
 
 export interface HeroSlideItem {
   id: string;
@@ -379,6 +459,96 @@ export const INSTAGRAM_FEED_POSTS = [
     caption:
       'Identificação de perigos, hierarquia de controlos e Análise Preliminar de Risco (APR) para ambientes industriais, construção e logística.',
     date: 'Consultoria SST · Angola',
+  },
+];
+
+export interface TestimonialItem {
+  id: string;
+  clientName: string;
+  role: string;
+  companyName: string;
+  companySector?: string;
+  companyLogoText?: string;
+  serviceType?: string;
+  avatarUrl?: string;
+  rating: number;
+  feedback: string;
+  standardImplemented: string;
+  projectOutcome: string;
+  verified: boolean;
+  createdAt?: string;
+}
+
+export const INITIAL_TESTIMONIALS: TestimonialItem[] = [
+  {
+    id: 'test-1',
+    clientName: 'Eng.º Mateus Cristóvão',
+    role: 'Director de Operações & Qualidade',
+    companyName: 'Sociedade Industrial de Luanda, S.A.',
+    companySector: 'Indústria Transformadora & Metalomecânica',
+    companyLogoText: 'SIL',
+    rating: 5,
+    feedback:
+      'A equipa da ALHAN transformou a nossa operação industrial. A estruturação do Sistema de Gestão Integrado (ISO 9001 e ISO 45001) eliminou redundâncias documentais e reduziu incidentes de SST em mais de 65%. A preparação para a auditoria externa foi exemplar.',
+    standardImplemented: 'SGI (ISO 9001:2015 & ISO 45001:2018)',
+    projectOutcome: '100% de conformidade nas auditorias internas e qualificação para novos concursos',
+    verified: true,
+  },
+  {
+    id: 'test-2',
+    clientName: 'Dra. Elsa Domingos',
+    role: 'Gestora de Compliance & Risco',
+    companyName: 'Kwanza Logistics & Supply Chain, Lda',
+    companySector: 'Logística Portuária & Distribuição',
+    companyLogoText: 'KLSC',
+    rating: 5,
+    feedback:
+      'A consultoria da ALHAN na implementação da ISO 14001 e ISO 37001 foi um marco estratégico. Mapeámos todos os aspectos e impactos ambientais no terminal e implementámos due diligence de fornecedores rigorosa. O portal empresarial facilitou o seguimento em tempo real.',
+    standardImplemented: 'ISO 14001:2015 & ISO 37001 (Compliance)',
+    projectOutcome: 'Plano de Gestão Ambiental operacional e aprovação corporativa sem ressalvas',
+    verified: true,
+  },
+  {
+    id: 'test-3',
+    clientName: 'Dr. Afonso Mukanda',
+    role: 'Director de QHSE',
+    companyName: 'Atlas Offshore & Energy Services',
+    companySector: 'Petróleo, Gás & Energia',
+    companyLogoText: 'ATLAS',
+    rating: 5,
+    feedback:
+      'Excelente rigor técnico e pontualidade. Os formadores da Academia ALHAN qualificaram 28 auditores internos da nossa equipa offshore com material didáctico irrepreensível e simulações realistas alinhadas à directriz ISO 19011. Recomendo vivamente.',
+    standardImplemented: 'Formação Auditor Líder ISO 19011 & ISO 45001',
+    projectOutcome: '28 auditores certificados com validação de QR Code emitida e registada',
+    verified: true,
+  },
+  {
+    id: 'test-4',
+    clientName: 'Eng.ª Paula Van-Dúnem',
+    role: 'Coordenadora Geral da Qualidade',
+    companyName: 'Empreendimentos de Construção Benguela, Lda',
+    companySector: 'Construção Civil & Obras Públicas',
+    companyLogoText: 'ECB',
+    rating: 5,
+    feedback:
+      'O acompanhamento em 14 etapas metodológicas da ALHAN deu-nos total clareza e previsibilidade de prazos. Conseguimos padronizar os procedimentos em 4 estaleiros de obras em Luanda e Benguela, com indicadores de desempenho (KPIs) consistentes.',
+    standardImplemented: 'ISO 9001:2015 & Mapeamento de Processos',
+    projectOutcome: 'Padronização integral dos processos de compras, estaleiro e entrega técnica',
+    verified: true,
+  },
+  {
+    id: 'test-5',
+    clientName: 'Dr. Sebastião Quaresma',
+    role: 'Director Executivo',
+    companyName: 'AgroSul Alimentos & Bebidas',
+    companySector: 'Agroindústria & Segurança Alimentar',
+    companyLogoText: 'AGROSUL',
+    rating: 5,
+    feedback:
+      'A equipa da ALHAN demonstrou profundo conhecimento do quadro legal angolano e das normas internacionais. A implementação das boas práticas e controlos preventivos permitiu-nos alcançar um patamar de excelência exigido pelas maiores redes retalhistas.',
+    standardImplemented: 'ISO 22000 & Boas Práticas Operacionais',
+    projectOutcome: 'Rastreabilidade total da cadeia produtiva e homologação como fornecedor classe A',
+    verified: true,
   },
 ];
 
@@ -983,8 +1153,10 @@ export const INITIAL_CERTIFICATES: CertificateItem[] = [
     code: 'ALHAN-DEMO-2026-001',
     studentId: 'demo-aluno-01',
     studentName: '[DEMO] Manuel João Mateus (Exemplo de Demonstração)',
+    studentBI: '005432198LA031',
     courseId: 'curso-sgi-01',
-    courseTitle: 'Sistema de Gestão Integrado – SGI',
+    courseTitle: 'Sistema de Gestão Integrado – SGI (ISO 9001, 14001 e 45001)',
+    modality: 'Online',
     workloadHours: 40,
     issuedDate: '2026-02-15',
     responsibleName: 'Direcção Pedagógica – ALHAN SGI',
@@ -992,6 +1164,28 @@ export const INITIAL_CERTIFICATES: CertificateItem[] = [
     status: 'valido',
     isDemo: true,
     createdAt: '2026-02-15T12:00:00Z',
+  },
+  {
+    id: 'cert-pres-demo-01',
+    code: 'ALH-PRES-2026-0042',
+    studentId: 'aluno-presencial-01',
+    studentName: 'Eng.º António Francisco da Costa',
+    studentBI: '007891234LA042',
+    studentPhone: '+244 923 111 222',
+    studentEmail: 'antonio.costa@empresa.ao',
+    courseId: 'curso-sgi-presencial-01',
+    courseTitle: 'Implementador e Auditor Interno SGI - Luanda Presencial (Kilamba)',
+    modality: 'Presencial',
+    workloadHours: 40,
+    grade: 'Aprovado com Distinção (18/20)',
+    issuedDate: '2026-02-28',
+    responsibleName: 'Direcção Pedagógica – ALHAN SGI',
+    responsibleRole: 'Coordenação de Formação Profissional',
+    status: 'valido',
+    certificateFileName: 'Certificado_Oficial_Presencial_SGI_Antonio_Costa.pdf',
+    certificateFileUrl: '',
+    isDemo: true,
+    createdAt: '2026-02-28T14:30:00Z',
   },
 ];
 
