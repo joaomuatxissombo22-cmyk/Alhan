@@ -1,0 +1,6 @@
+{
+  "name": "ALHAN – Sistema de Gestão Integrado",
+  "description": "Plataforma empresarial da ALHAN Consultoria e Prestação de Serviços, Lda em Luanda, Angola: Consultoria ISO, Formação Profissional (LMS), Auditorias, Gestão Documental e Validação de Certificados.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

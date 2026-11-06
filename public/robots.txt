@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /aluno
+Disallow: /professor
+Disallow: /empresa
+
+Sitemap: https://www.alhan.pro/sitemap.xml

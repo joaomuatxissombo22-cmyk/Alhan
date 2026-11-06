@@ -1,0 +1,1321 @@
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  ArrowRight,
+  CheckCircle2,
+  ShieldCheck,
+  BookOpen,
+  Building2,
+  Search,
+  MessageCircle,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+} from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import {
+  COMPANY_INFO,
+  HERO_SLIDES,
+  INSTAGRAM_FEED_POSTS,
+  ISO_IMPLEMENTATION_METHODOLOGY,
+} from '../data/initialData';
+
+export const IsoRecommendationQuiz: React.FC = () => {
+  const [sector, setSector] = useState('Prestação de Serviços / Consultoria');
+  const [activity, setActivity] = useState('Operações comerciais e prestação de serviços B2B');
+  const [employees, setEmployees] = useState('11 a 50 colaboradores');
+  const [processes, setProcesses] = useState('Em fase de organização e padronização');
+  const [clientReqs, setClientReqs] = useState('Sim, clientes exigem qualidade e conformidade');
+  const [tenders, setTenders] = useState('Sim, participamos em concursos públicos ou privados');
+  const [existingSys, setExistingSys] = useState('Ainda não possuímos sistema formal');
+  const [currentCerts, setCurrentCerts] = useState('Nenhuma certificação actual');
+  const [objective, setObjective] = useState('Qualidade operacional e satisfação do cliente');
+  const [integrateMulti, setIntegrateMulti] = useState('Sim, pretendemos um Sistema de Gestão Integrado (SGI)');
+  const [submitted, setSubmitted] = useState(false);
+
+  const computeRecommendations = () => {
+    const recs: { code: string; name: string; rationale: string }[] = [
+      {
+        code: 'ISO 9001:2015',
+        name: 'Sistema de Gestão da Qualidade',
+        rationale: 'Base estruturante para padronização de processos, controlo operacional e qualificação em concursos e contratos em Angola.',
+      },
+    ];
+
+    if (
+      sector.includes('Indústria') ||
+      sector.includes('Construção') ||
+      sector.includes('Petróleo') ||
+      objective.includes('Ambiental') ||
+      integrateMulti.startsWith('Sim')
+    ) {
+      recs.push({
+        code: 'ISO 14001:2015',
+        name: 'Sistema de Gestão Ambiental',
+        rationale: 'Recomendada para controlo sistemático de aspectos e impactos ambientais, gestão de resíduos e conformidade ambiental.',
+      });
+    }
+
+    if (
+      sector.includes('Construção') ||
+      sector.includes('Petróleo') ||
+      sector.includes('Logística') ||
+      objective.includes('Segurança') ||
+      integrateMulti.startsWith('Sim')
+    ) {
+      recs.push({
+        code: 'ISO 45001:2018',
+        name: 'Segurança e Saúde no Trabalho',
+        rationale: 'Essencial para prevenção de acidentes laborais, identificação de perigos e redução de riscos ocupacionais.',
+      });
+    }
+
+    if (sector.includes('Tecnologia') || sector.includes('Banca')) {
+      recs.push({
+        code: 'ISO/IEC 27001',
+        name: 'Segurança da Informação',
+        rationale: 'Protecção da confidencialidade, integridade e disponibilidade de dados corporativos e de clientes.',
+      });
+    }
+
+    if (sector.includes('Alimentar')) {
+      recs.push({
+        code: 'ISO 22000',
+        name: 'Segurança de Alimentos',
+        rationale: 'Controlo de perigos alimentares e rastreabilidade ao longo da cadeia produtiva e de distribuição.',
+      });
+    }
+
+    return recs;
+  };
+
+  const recommendations = computeRecommendations();
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-6 sm:p-8">
+      <div className="max-w-3xl">
+        <p className="text-xs font-semibold text-[#0077C8]">Orientação Preliminar Interactiva · Secção 23</p>
+        <h3 className="text-xl sm:text-2xl font-bold text-[#061A2D] mt-1">
+          Qual norma ISO a sua empresa precisa?
+        </h3>
+        <p className="text-sm text-slate-600 mt-2">
+          Responda aos 10 parâmetros abaixo para receber uma orientação preliminar sobre as normas ISO aplicáveis à realidade da sua organização em Angola.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+        <div>
+          <label className="block text-xs font-semibold text-[#061A2D] mb-1">1. Sector de Actividade</label>
+          <select
+            value={sector}
+            onChange={(e) => { setSector(e.target.value); setSubmitted(false); }}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-[#0077C8] focus:outline-none"
+          >
+            <option>Prestação de Serviços / Consultoria</option>
+            <option>Construção Civil e Obras Públicas</option>
+            <option>Petróleo, Gás, Energia e Mineração</option>
+            <option>Indústria Transformadora</option>
+            <option>Logística, Transportes e Portos</option>
+            <option>Agroindústria e Sector Alimentar</option>
+            <option>Tecnologia da Informação, Telecomunicações e Banca</option>
+            <option>Saúde, Clínicas e Dispositivos Médicos</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-[#061A2D] mb-1">2. Actividade Principal</label>
+          <input
+            type="text"
+            value={activity}
+            onChange={(e) => setActivity(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#0077C8] focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-[#061A2D] mb-1">3. Número de Colaboradores</label>
+          <select
+            value={employees}
+            onChange={(e) => setEmployees(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-[#0077C8] focus:outline-none"
+          >
+            <option>1 a 10 colaboradores</option>
+            <option>11 a 50 colaboradores</option>
+            <option>51 a 200 colaboradores</option>
+            <option>Mais de 200 colaboradores</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-[#061A2D] mb-1">4. Maturidade dos Processos</label>
+          <select
+            value={processes}
+            onChange={(e) => setProcesses(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-[#0077C8] focus:outline-none"
+          >
+            <option>Em fase de organização e padronização</option>
+            <option>Parcialmente documentados</option>
+            <option>Mapeados e com indicadores definidos</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-[#061A2D] mb-1">5. Exigências de Clientes</label>
+          <select
+            value={clientReqs}
+            onChange={(e) => setClientReqs(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-[#0077C8] focus:outline-none"
+          >
+            <option>Sim, clientes exigem qualidade e conformidade</option>
+            <option>Exigem requisitos específicos de Ambiente e SST (QSMS)</option>
+            <option>Não há exigência formal imediata, procuramos melhoria interna</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-[#061A2D] mb-1">6. Concursos e Contratos</label>
+          <select
+            value={tenders}
+            onChange={(e) => setTenders(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-[#0077C8] focus:outline-none"
+          >
+            <option>Sim, participamos em concursos públicos ou privados</option>
+            <option>Pretendemos qualificar a empresa como fornecedora certificada</option>
+            <option>Foco apenas no mercado retalhista</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-[#061A2D] mb-1">7. Sistema Existente</label>
+          <select
+            value={existingSys}
+            onChange={(e) => setExistingSys(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-[#0077C8] focus:outline-none"
+          >
+            <option>Ainda não possuímos sistema formal</option>
+            <option>Temos procedimentos internos em revisão</option>
+            <option>Já temos uma norma implementada e queremos expandir</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-[#061A2D] mb-1">8. Certificações Actuais</label>
+          <select
+            value={currentCerts}
+            onChange={(e) => setCurrentCerts(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-[#0077C8] focus:outline-none"
+          >
+            <option>Nenhuma certificação actual</option>
+            <option>ISO 9001 certificada</option>
+            <option>Outras certificações sectoriais</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-[#061A2D] mb-1">9. Objectivo Prioritário</label>
+          <select
+            value={objective}
+            onChange={(e) => { setObjective(e.target.value); setSubmitted(false); }}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-[#0077C8] focus:outline-none"
+          >
+            <option>Qualidade operacional e satisfação do cliente</option>
+            <option>Gestão Ambiental e controlo de resíduos</option>
+            <option>Segurança e Saúde no Trabalho (SST)</option>
+            <option>Integridade, Compliance e Antissuborno</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-[#061A2D] mb-1">10. Necessidade de Integrar Várias Normas</label>
+          <select
+            value={integrateMulti}
+            onChange={(e) => { setIntegrateMulti(e.target.value); setSubmitted(false); }}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-[#0077C8] focus:outline-none"
+          >
+            <option>Sim, pretendemos um Sistema de Gestão Integrado (SGI)</option>
+            <option>Não, pretendemos implementar uma norma de cada vez</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <button
+          type="button"
+          onClick={() => setSubmitted(true)}
+          className="px-5 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-sm font-semibold transition-colors"
+        >
+          Gerar Orientação Preliminar ISO
+        </button>
+      </div>
+
+      {submitted && (
+        <div className="mt-6 pt-6 border-t border-slate-200 space-y-4">
+          <h4 className="text-base font-bold text-[#061A2D]">
+            Normas Preliminarmente Recomendadas para o seu Perfil:
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {recommendations.map((rec) => (
+              <div key={rec.code} className="p-4 rounded-lg bg-[#F5F9FC] border border-slate-200">
+                <p className="text-sm font-bold text-[#0077C8]">{rec.code}</p>
+                <p className="text-sm font-semibold text-[#061A2D] mt-0.5">{rec.name}</p>
+                <p className="text-xs text-slate-600 mt-2 leading-relaxed">{rec.rationale}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="p-4 rounded-lg bg-[#061A2D] text-[#F5F9FC] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <p className="text-xs leading-relaxed text-[#F5F9FC]/90">
+              <strong>Nota Importante:</strong> «Esta é uma orientação preliminar e não substitui um diagnóstico técnico. Solicite uma avaliação com um consultor Alhan.»
+            </p>
+            <Link
+              to="/solicitar-diagnostico"
+              className="px-4 py-2 rounded-lg bg-[#008FEA] hover:bg-[#19B5FE] text-[#061A2D] font-bold text-xs whitespace-nowrap shrink-0"
+            >
+              Solicitar Diagnóstico Técnico
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const HomePage: React.FC = () => {
+  const { courses, isoStandards } = useApp();
+  const featuredCourses = courses.filter((c) => c.published).slice(0, 6);
+  const featuredStandards = isoStandards.slice(0, 6);
+
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveSlideIndex((prev) => (prev + 1) % HERO_SLIDES.length);
+    }, 6500);
+    return () => clearInterval(timer);
+  }, []);
+
+  const currentSlide = HERO_SLIDES[activeSlideIndex] || HERO_SLIDES[0];
+
+  const whatsappUrl = `https://wa.me/${COMPANY_INFO.whatsappNumber}?text=${encodeURIComponent(
+    COMPANY_INFO.whatsappDefaultMessage
+  )}`;
+
+  return (
+    <div>
+      {/* 1. DYNAMIC HERO SECTION (Responsive Desktop & Mobile) */}
+      <section className="bg-gradient-to-b from-[#061A2D] to-[#071B2F] text-[#F5F9FC] py-10 sm:py-16 lg:py-20 border-b border-white/10">
+        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
+            {/* Left Column: Dynamic Slide Copy & Actions */}
+            <div className="lg:col-span-7 flex flex-col justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#19B5FE] tracking-wide">
+                  <span>{currentSlide.kicker}</span>
+                  <span aria-hidden="true" className="text-white/30">·</span>
+                  <span className="font-mono-tabular text-[#9AA6AE]">
+                    Slide 0{activeSlideIndex + 1} / 0{HERO_SLIDES.length}
+                  </span>
+                </div>
+
+                <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white mt-3 leading-[1.12]">
+                  {currentSlide.headline}
+                </h1>
+
+                <p className="text-sm sm:text-base lg:text-lg text-[#F5F9FC]/85 mt-4 sm:mt-5 leading-relaxed max-w-2xl">
+                  {currentSlide.description}
+                </p>
+
+                <div className="flex flex-wrap items-center gap-3 mt-6 sm:mt-8">
+                  <Link
+                    to={currentSlide.primaryCta.to}
+                    className="inline-flex items-center gap-2 px-5 sm:px-6 py-3 sm:py-3.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white font-semibold text-xs sm:text-sm transition-colors whitespace-nowrap"
+                  >
+                    <span>{currentSlide.primaryCta.label}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                  <Link
+                    to={currentSlide.secondaryCta.to}
+                    className="inline-flex items-center gap-2 px-4 sm:px-5 py-3 sm:py-3.5 rounded-lg border border-white/25 hover:bg-white/10 text-white font-semibold text-xs sm:text-sm transition-colors whitespace-nowrap"
+                  >
+                    <span>{currentSlide.secondaryCta.label}</span>
+                  </Link>
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 sm:px-5 py-3 sm:py-3.5 rounded-lg border border-[#19B5FE]/40 text-[#19B5FE] hover:bg-[#19B5FE]/10 font-semibold text-xs sm:text-sm transition-colors whitespace-nowrap"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Falar com um Consultor</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Dynamic Slide Selector Controls */}
+              <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  {HERO_SLIDES.map((s, idx) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setActiveSlideIndex(idx)}
+                      aria-label={`Ver slide ${idx + 1}`}
+                      className={`h-2.5 rounded-full transition-all ${
+                        activeSlideIndex === idx
+                          ? 'w-10 bg-[#19B5FE]'
+                          : 'w-2.5 bg-white/25 hover:bg-white/50'
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveSlideIndex(
+                        (prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length
+                      )
+                    }
+                    aria-label="Slide anterior"
+                    className="p-2 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 text-white transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveSlideIndex((prev) => (prev + 1) % HERO_SLIDES.length)
+                    }
+                    aria-label="Próximo slide"
+                    className="p-2 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 text-white transition-colors"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Dynamic Visual Showcase + Official ALHAN Identity */}
+            <div className="lg:col-span-5 flex flex-col justify-between gap-4">
+              <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-[#061A2D] aspect-[4/3] sm:aspect-[16/11] lg:aspect-[4/3] shadow-xl">
+                <img
+                  key={currentSlide.image}
+                  src={currentSlide.image}
+                  alt={currentSlide.caption}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover object-top transition-all duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#061A2D] via-[#061A2D]/20 to-transparent" />
+
+                {/* Floating Brand Identity Badge inside Hero Frame */}
+                <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
+                  <div className="inline-flex items-center gap-2 bg-white/95 text-[#061A2D] px-3 py-1.5 rounded-lg shadow-md">
+                    <img
+                      src={COMPANY_INFO.logoPath}
+                      alt="Logotipo ALHAN"
+                      referrerPolicy="no-referrer"
+                      className="h-6 w-6 object-contain"
+                    />
+                    <span className="text-[11px] font-extrabold tracking-tight">ALHAN – SGI</span>
+                  </div>
+                  <span className="px-2.5 py-1 rounded bg-[#061A2D]/85 border border-white/15 text-[11px] font-mono-tabular text-[#19B5FE]">
+                    NIF {COMPANY_INFO.nif}
+                  </span>
+                </div>
+
+                {/* Bottom Caption Bar */}
+                <div className="absolute bottom-0 inset-x-0 p-4 sm:p-5">
+                  <p className="text-xs font-bold text-white leading-snug">
+                    {currentSlide.caption}
+                  </p>
+                  <p className="text-[11px] text-[#F5F9FC]/80 mt-0.5">
+                    {COMPANY_INFO.address}
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick Portal & Social Bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                <Link
+                  to="/consultoria-iso"
+                  className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+                >
+                  <p className="font-bold text-white">Consultoria ISO</p>
+                  <p className="text-[11px] text-[#9AA6AE] mt-0.5">14 Etapas SGI</p>
+                </Link>
+                <Link
+                  to="/formacoes"
+                  className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+                >
+                  <p className="font-bold text-white">10 Formações</p>
+                  <p className="text-[11px] text-[#9AA6AE] mt-0.5">Online e Presencial</p>
+                </Link>
+                <a
+                  href={COMPANY_INFO.facebookUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+                >
+                  <p className="font-bold text-[#19B5FE]">Facebook Oficial</p>
+                  <p className="text-[11px] text-[#9AA6AE] mt-0.5">Página Alhan →</p>
+                </a>
+                <a
+                  href={COMPANY_INFO.instagramUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+                >
+                  <p className="font-bold text-[#19B5FE]">@{COMPANY_INFO.instagram}</p>
+                  <p className="text-[11px] text-[#9AA6AE] mt-0.5">Feed Instagram →</p>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Full-width KPI Strip below Hero split */}
+          <div className="mt-10 pt-8 border-t border-white/10 grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div>
+              <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-[#19B5FE]">10</p>
+              <p className="text-xs text-[#9AA6AE] mt-1">Programas de Formação Especializada</p>
+            </div>
+            <div>
+              <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-[#19B5FE]">12</p>
+              <p className="text-xs text-[#9AA6AE] mt-1">Normas ISO no Catálogo Técnico</p>
+            </div>
+            <div>
+              <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-[#19B5FE]">14 Etapas</p>
+              <p className="text-xs text-[#9AA6AE] mt-1">Metodologia de Implementação SGI</p>
+            </div>
+            <div>
+              <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-[#19B5FE]">5 Perfis</p>
+              <p className="text-xs text-[#9AA6AE] mt-1">Plataforma Integrada Desktop & Mobile</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 2. APRESENTAÇÃO E SERVIÇOS (Asymmetric Bento Grid) */}
+      <section className="py-16 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold text-[#0077C8]">Engenharia de Processos e Conformidade</p>
+            <h2 className="text-2xl sm:text-3xl font-bold text-[#061A2D] mt-1">
+              Serviços de Consultoria e Implementação SGI
+            </h2>
+          </div>
+          <Link
+            to="/consultoria-iso"
+            className="text-sm font-semibold text-[#0077C8] hover:text-[#008FEA] inline-flex items-center gap-1.5"
+          >
+            <span>Explorar todos os serviços de consultoria</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+          <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-6 sm:p-8 flex flex-col justify-between">
+            <div>
+              <p className="text-xs font-mono-tabular text-[#0077C8] font-semibold">01. Sistemas de Gestão Integrados (SGI)</p>
+              <h3 className="text-xl font-bold text-[#061A2D] mt-2">
+                Implementação ISO 9001, ISO 14001 e ISO 45001
+              </h3>
+              <p className="text-sm text-slate-600 mt-3 leading-relaxed">
+                Desenvolvemos e implementamos Sistemas de Gestão sob medida para a realidade operacional de empresas em Angola. Unificamos Qualidade, Ambiente e Segurança e Saúde no Trabalho numa única estrutura documental ágil, reduzindo burocracia e elevando o desempenho operacional.
+              </p>
+            </div>
+            <div className="mt-6 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+              <span>Diagnóstico Inicial e Gap Analysis</span>
+              <span aria-hidden="true">·</span>
+              <span>Mapeamento de Processos</span>
+              <span aria-hidden="true">·</span>
+              <span>Gestão Documental Controlada</span>
+            </div>
+          </div>
+
+          <div className="bg-[#061A2D] text-[#F5F9FC] rounded-xl p-6 sm:p-8 flex flex-col justify-between">
+            <div>
+              <p className="text-xs font-mono-tabular text-[#19B5FE] font-semibold">02. Auditoria ISO 19011</p>
+              <h3 className="text-xl font-bold text-white mt-2">
+                Auditorias Internas e Pré-Certificação
+              </h3>
+              <p className="text-sm text-[#F5F9FC]/80 mt-3 leading-relaxed">
+                Avaliação independente do grau de conformidade do seu sistema, identificação de oportunidades de melhoria, tratamento de não conformidades e preparação para auditorias externas.
+              </p>
+            </div>
+            <div className="mt-6">
+              <Link
+                to="/solicitar-diagnostico"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#19B5FE] hover:underline"
+              >
+                <span>Agendar Auditoria de Diagnóstico</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-6">
+            <p className="text-xs font-mono-tabular text-[#0077C8] font-semibold">03. Gestão Ambiental</p>
+            <h3 className="text-lg font-bold text-[#061A2D] mt-2">Consultoria Ambiental e LAIA</h3>
+            <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+              Levantamento de aspectos e impactos ambientais, planos de gestão de resíduos, ecoeficiência e conformidade ambiental operacional.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-6">
+            <p className="text-xs font-mono-tabular text-[#0077C8] font-semibold">04. Governança Corporativa</p>
+            <h3 className="text-lg font-bold text-[#061A2D] mt-2">Compliance e Gestão de Riscos</h3>
+            <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+              Matrizes de risco operacional e estratégico, programas de integridade, prevenção ao suborno (ISO 37001) e controlo interno.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-6">
+            <p className="text-xs font-mono-tabular text-[#0077C8] font-semibold">05. Academia Profissional</p>
+            <h3 className="text-lg font-bold text-[#061A2D] mt-2">Formação In-Company e Online</h3>
+            <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+              Capacitação de equipas, formação de auditores internos e líderes, com plataforma LMS própria e validação de certificados por QR Code.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. FORMAÇÕES EM DESTAQUE */}
+      <section className="py-16 bg-white border-y border-slate-200">
+        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold text-[#0077C8]">Academia ALHAN · LMS & Formação Presencial</p>
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#061A2D] mt-1">
+                Formações Profissionais em Destaque
+              </h2>
+            </div>
+            <Link
+              to="/formacoes"
+              className="text-sm font-semibold text-[#0077C8] hover:text-[#008FEA] inline-flex items-center gap-1.5"
+            >
+              <span>Ver catálogo completo ({courses.filter((c) => c.published).length} cursos)</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
+            {featuredCourses.map((course) => (
+              <div
+                key={course.id}
+                className="rounded-xl border border-slate-200 bg-[#F5F9FC] overflow-hidden flex flex-col justify-between hover:border-[#0077C8] transition-colors group"
+              >
+                <div>
+                  <div className="relative h-48 w-full bg-[#061A2D] overflow-hidden border-b border-slate-200">
+                    <img
+                      src={course.imageUrl}
+                      alt={course.title}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                    />
+                  </div>
+
+                  <div className="p-6">
+                    {/* Clean unboxed metadata per frontend-design zero-pill rule */}
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <span className="font-semibold text-[#0077C8]">{course.category}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>Modalidade {course.modality}</span>
+                      <span aria-hidden="true">·</span>
+                      <span className="font-mono-tabular">{course.durationHours}h</span>
+                    </div>
+
+                    <h3 className="text-lg font-bold text-[#061A2D] mt-2">{course.title}</h3>
+                    <p className="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
+                      {course.description}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="px-6 pb-6 pt-4 border-t border-slate-200/80 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] text-slate-500">Investimento</p>
+                    <p className="text-base font-extrabold font-mono-tabular text-[#061A2D]">
+                      {course.priceKz.toLocaleString('pt-AO')} Kz
+                    </p>
+                  </div>
+                  <Link
+                    to={`/formacoes?curso=${course.id}`}
+                    className="px-4 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-semibold transition-colors whitespace-nowrap"
+                  >
+                    Inscrever-se
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 4. METODOLOGIA DE TRABALHO (14 Etapas) */}
+      <section className="py-16 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl">
+          <p className="text-xs font-semibold text-[#0077C8]">Rigor Técnico do Diagnóstico à Certificação</p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#061A2D] mt-1">
+            Metodologia de Implementação ALHAN em 14 Etapas
+          </h2>
+          <p className="text-sm text-slate-600 mt-2">
+            Conduzimos cada projecto através de fases claras e auditáveis, acompanhando a sua empresa em todas as etapas.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+          {ISO_IMPLEMENTATION_METHODOLOGY.slice(0, 8).map((item) => (
+            <div key={item.step} className="bg-white rounded-xl border border-slate-200 p-5">
+              <p className="text-xs font-mono-tabular font-bold text-[#0077C8]">Etapa {item.step}</p>
+              <h3 className="text-sm font-bold text-[#061A2D] mt-1">{item.title}</h3>
+              <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">{item.description}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 text-right">
+          <Link to="/consultoria-iso" className="text-xs font-semibold text-[#0077C8] hover:underline">
+            Ver todas as 14 etapas da metodologia →
+          </Link>
+        </div>
+      </section>
+
+      {/* 5. NORMAS ISO EM DESTAQUE */}
+      <section className="py-16 bg-[#061A2D] text-[#F5F9FC]">
+        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold text-[#19B5FE]">Referenciais Internacionais Aplicáveis em Angola</p>
+              <h2 className="text-2xl sm:text-3xl font-bold text-white mt-1">
+                Principais Normas ISO que Implementamos
+              </h2>
+            </div>
+            <Link
+              to="/normas-iso"
+              className="text-sm font-semibold text-[#19B5FE] hover:underline inline-flex items-center gap-1.5"
+            >
+              <span>Consultar todas as {isoStandards.length} normas</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mt-8">
+            {featuredStandards.map((std) => (
+              <div key={std.id} className="rounded-xl bg-white/5 border border-white/10 p-6 flex flex-col justify-between">
+                <div>
+                  <p className="text-xs font-mono-tabular font-bold text-[#19B5FE]">{std.code}</p>
+                  <h3 className="text-base font-bold text-white mt-1">{std.name}</h3>
+                  <p className="text-xs text-[#9AA6AE] mt-2 leading-relaxed">{std.description}</p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-white/10 text-[11px] text-[#F5F9FC]/75">
+                  Sectores: {std.sectorsInAngola.slice(0, 3).join(' · ')}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 6. QUESTIONÁRIO INTERACTIVO DE RECOMENDAÇÃO ISO */}
+      <section className="py-16 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
+        <IsoRecommendationQuiz />
+      </section>
+
+      {/* 7. FEED DO INSTAGRAM (@alhan.sgi) & PÁGINA OFICIAL DO FACEBOOK */}
+      <section className="py-16 bg-white border-t border-slate-200">
+        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold text-[#0077C8]">
+                Presença Digital Oficial · Instagram @{COMPANY_INFO.instagram} & Facebook
+              </p>
+              <h2 className="text-2xl sm:text-3xl font-bold text-[#061A2D] mt-1">
+                Acompanhe a ALHAN no Instagram e no Facebook
+              </h2>
+              <p className="text-sm text-slate-600 mt-1">
+                Destaques das nossas formações, projectos de consultoria SGI e actividades técnicas em Luanda e em toda Angola.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <a
+                href={COMPANY_INFO.instagramUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold transition-colors"
+              >
+                <span>Seguir @{COMPANY_INFO.instagram} no Instagram</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+              <a
+                href={COMPANY_INFO.facebookUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+              >
+                <span>Página Oficial no Facebook</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {INSTAGRAM_FEED_POSTS.map((post) => (
+              <a
+                key={post.id}
+                href={COMPANY_INFO.instagramUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group rounded-xl border border-slate-200 bg-[#F5F9FC] overflow-hidden flex flex-col justify-between hover:border-[#0077C8] transition-all"
+              >
+                <div>
+                  <div className="relative aspect-square w-full bg-[#061A2D] overflow-hidden border-b border-slate-200">
+                    <img
+                      src={post.image}
+                      alt={post.title}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                    />
+                  </div>
+                  <div className="p-4">
+                    <p className="text-[11px] font-semibold text-[#0077C8]">{post.tag}</p>
+                    <h3 className="text-sm font-bold text-[#061A2D] mt-1 line-clamp-2">
+                      {post.title}
+                    </h3>
+                    <p className="text-xs text-slate-600 mt-1.5 line-clamp-3 leading-relaxed">
+                      {post.caption}
+                    </p>
+                  </div>
+                </div>
+                <div className="px-4 pb-4 pt-2 border-t border-slate-200/70 flex items-center justify-between text-[11px] text-slate-500">
+                  <span>{post.date}</span>
+                  <span className="font-semibold text-[#0077C8] group-hover:underline">
+                    Ver no Instagram →
+                  </span>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+};
+
+export const AboutPage: React.FC = () => {
+  const servicesList = [
+    '01. Consultoria empresarial',
+    '02. Implementação de Sistemas de Gestão',
+    '03. Formação profissional',
+    '04. Sistemas de Gestão Integrados (SGI)',
+    '05. Auditoria interna',
+    '06. Preparação para certificação',
+    '07. Gestão ambiental',
+    '08. Compliance',
+    '09. Gestão de riscos',
+    '10. Mapeamento e melhoria de processos',
+  ];
+
+  return (
+    <div className="py-14 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-14">
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        <div className="lg:col-span-7">
+          <p className="text-xs font-semibold text-[#0077C8]">Identidade Institucional · {COMPANY_INFO.address}</p>
+          <h1 className="text-2xl sm:text-4xl font-extrabold text-[#061A2D] mt-2">
+            {COMPANY_INFO.legalName}
+          </h1>
+          <p className="text-sm font-mono-tabular text-slate-500 mt-1">
+            Marca Comercial: {COMPANY_INFO.brandName} · NIF: {COMPANY_INFO.nif}
+          </p>
+          <p className="text-sm sm:text-base text-slate-600 mt-4 leading-relaxed">
+            A <strong>ALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA</strong> é uma empresa angolana sediada em Luanda ({COMPANY_INFO.address}), especializada no apoio técnico a organizações públicas e privadas na estruturação, implementação, auditoria e melhoria contínua de Sistemas de Gestão alinhados às normas internacionais ISO.
+          </p>
+          <p className="text-sm text-slate-600 mt-3 leading-relaxed">
+            Combinamos rigor metodológico, conhecimento profundo do mercado angolano e uma plataforma tecnológica integrada que une formação profissional (LMS), acompanhamento de projectos empresariais e gestão documental.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center gap-3 text-xs">
+            <a
+              href={COMPANY_INFO.facebookUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 rounded-lg bg-[#061A2D] text-white font-semibold hover:bg-[#0077C8] transition-colors"
+            >
+              Visitar Página Oficial no Facebook
+            </a>
+            <a
+              href={COMPANY_INFO.instagramUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 rounded-lg border border-slate-300 text-[#061A2D] font-semibold hover:bg-slate-50 transition-colors"
+            >
+              Instagram @{COMPANY_INFO.instagram}
+            </a>
+          </div>
+        </div>
+        <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="rounded-xl overflow-hidden border border-slate-200 bg-[#061A2D] aspect-[3/4]">
+            <img
+              src={COMPANY_INFO.teamFieldImage}
+              alt="Equipa Técnica ALHAN em Operações Industriais"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover object-top"
+            />
+          </div>
+          <div className="rounded-xl overflow-hidden border border-slate-200 bg-[#061A2D] aspect-[3/4]">
+            <img
+              src={COMPANY_INFO.sgiFlyerImage}
+              alt="Formação em Sistema de Gestão Integrado ALHAN"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover object-top"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 10 Core Areas */}
+      <div>
+        <h2 className="text-2xl font-bold text-[#061A2D]">Áreas de Actuação da Alhan</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-6">
+          {servicesList.map((srv) => (
+            <div key={srv} className="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-[#0077C8] shrink-0 mt-0.5" />
+              <span className="text-xs font-semibold text-[#061A2D]">{srv}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Missão, Visão, Valores e Melhoria Contínua */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <p className="text-xs font-bold text-[#0077C8]">01. Missão</p>
+          <h3 className="text-base font-bold text-[#061A2D] mt-1">Propósito Corporativo</h3>
+          <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+            Transformar requisitos normativos em Sistemas de Gestão práticos, eficientes e sustentáveis que impulsionem a competitividade das organizações e a qualificação dos profissionais em Angola.
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <p className="text-xs font-bold text-[#0077C8]">02. Visão</p>
+          <h3 className="text-base font-bold text-[#061A2D] mt-1">Horizonte Estratégico</h3>
+          <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+            Ser a referência nacional em consultoria de Sistemas de Gestão Integrados (SGI) e formação profissional certificada em Angola, reconhecida pela excelência técnica e ética.
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <p className="text-xs font-bold text-[#0077C8]">03. Valores</p>
+          <h3 className="text-base font-bold text-[#061A2D] mt-1">Princípios Inegociáveis</h3>
+          <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+            Rigor técnico, ética e transparência, confidencialidade, foco em resultados reais, valorização das pessoas e responsabilidade socioambiental.
+          </p>
+        </div>
+        <div className="bg-[#061A2D] text-white rounded-xl p-6">
+          <p className="text-xs font-bold text-[#19B5FE]">04. Compromisso</p>
+          <h3 className="text-base font-bold text-white mt-1">Melhoria Contínua</h3>
+          <p className="text-xs text-[#F5F9FC]/80 mt-2 leading-relaxed">
+            Aplicamos o ciclo PDCA em todos os nossos projectos de consultoria e programas pedagógicos, garantindo evolução permanente de processos e resultados.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export const ConsultoriaIsoPage: React.FC = () => {
+  const consultingServices = [
+    { num: '01', title: 'Implementação ISO 9001', desc: 'Estruturação completa do Sistema de Gestão da Qualidade para padronização de processos e satisfação do cliente.' },
+    { num: '02', title: 'Implementação ISO 14001', desc: 'Desenvolvimento do Sistema de Gestão Ambiental, controlo operacional de resíduos, efluentes e matriz LAIA.' },
+    { num: '03', title: 'Implementação ISO 45001', desc: 'Gestão de Segurança e Saúde no Trabalho, identificação de perigos, avaliação de riscos e redução de sinistralidade.' },
+    { num: '04', title: 'Implementação de SGI', desc: 'Integração inteligente de múltiplas normas (Qualidade, Ambiente, SST e outras) num sistema único e coeso.' },
+    { num: '05', title: 'Auditorias internas', desc: 'Planeamento e execução de auditorias internas segundo a norma ISO 19011 por auditores qualificados.' },
+    { num: '06', title: 'Formação empresarial', desc: 'Capacitação in-company e online das equipas operacionais, gestores de processo e auditores internos.' },
+    { num: '07', title: 'Gestão de riscos', desc: 'Identificação, análise, avaliação e tratamento de riscos estratégicos, operacionais, ambientais e ocupacionais.' },
+    { num: '08', title: 'Mapeamento de processos', desc: 'Modelação de fluxos operacionais, matrizes SIPOC, definição de responsabilidades e indicadores KPI.' },
+    { num: '09', title: 'Gestão documental', desc: 'Elaboração e controlo de políticas, manuais, procedimentos, instruções de trabalho, formulários e registos.' },
+    { num: '10', title: 'Compliance', desc: 'Programas de conformidade, integridade corporativa, código de conduta e gestão antissuborno (ISO 37001).' },
+    { num: '11', title: 'Consultoria ambiental', desc: 'Diagnósticos ambientais, planos de gestão ambiental (PGA), monitorização e boas práticas de sustentabilidade.' },
+    { num: '12', title: 'Preparação para certificação', desc: 'Pré-auditorias de verificação e apoio técnico na preparação para a auditoria do organismo certificador independente.' },
+  ];
+
+  return (
+    <div className="py-14 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="max-w-3xl">
+          <p className="text-xs font-semibold text-[#0077C8]">Consultoria Especializada · Secção 14</p>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-[#061A2D] mt-2">
+            Consultoria e Implementação de Sistemas de Gestão ISO
+          </h1>
+          <p className="text-sm sm:text-base text-slate-600 mt-3 leading-relaxed">
+            Apoiamos a sua organização desde o diagnóstico inicial até à preparação completa para a auditoria de certificação, garantindo processos sólidos e alinhados à realidade do mercado angolano.
+          </p>
+        </div>
+        <Link
+          to="/solicitar-diagnostico"
+          className="px-5 py-3 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-sm font-semibold whitespace-nowrap shrink-0"
+        >
+          Solicitar Diagnóstico Empresarial
+        </Link>
+      </div>
+
+      {/* 12 Consulting Services */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {consultingServices.map((srv) => (
+          <div key={srv.num} className="bg-white rounded-xl border border-slate-200 p-6">
+            <p className="text-xs font-mono-tabular font-bold text-[#0077C8]">{srv.num}. Serviço Especializado</p>
+            <h2 className="text-base font-bold text-[#061A2D] mt-1">{srv.title}</h2>
+            <p className="text-xs text-slate-600 mt-2 leading-relaxed">{srv.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* 14-Step Implementation Methodology */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-10">
+        <div className="max-w-3xl">
+          <p className="text-xs font-semibold text-[#0077C8]">Roteiro Estruturado de Projecto</p>
+          <h2 className="text-2xl font-bold text-[#061A2D] mt-1">
+            As 14 Etapas da Metodologia de Implementação ALHAN
+          </h2>
+          <p className="text-sm text-slate-600 mt-2">
+            Cada etapa produz entregáveis verificáveis que ficam disponíveis em tempo real na Área de Clientes Empresariais da nossa plataforma.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
+          {ISO_IMPLEMENTATION_METHODOLOGY.map((m) => (
+            <div key={m.step} className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-start gap-4">
+              <span className="font-mono-tabular text-sm font-extrabold text-[#0077C8] bg-white border border-slate-200 rounded-lg px-2.5 py-1 shrink-0">
+                {m.step}
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-[#061A2D]">{m.title}</h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">{m.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Interactive ISO Recommendation Questionnaire */}
+      <IsoRecommendationQuiz />
+    </div>
+  );
+};
+
+export const NormasIsoPage: React.FC = () => {
+  const { isoStandards } = useApp();
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filtered = isoStandards.filter(
+    (s) =>
+      s.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.sectorsInAngola.some((sec) => sec.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  return (
+    <div className="py-14 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="max-w-3xl">
+          <p className="text-xs font-semibold text-[#0077C8]">Catálogo Técnico · Secção 15</p>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-[#061A2D] mt-2">
+            Principais Normas ISO Aplicáveis a Diferentes Sectores em Angola
+          </h1>
+          <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+            Este catálogo apresenta as principais normas internacionais de Sistemas de Gestão aplicáveis às organizações em Angola (não constituindo uma lista exaustiva de todas as normas publicadas pela ISO). A adopção de normas ISO é, por regra, de carácter voluntário e estratégico, salvo quando expressamente exigida por regulamentação sectorial ou contratual específica.
+          </p>
+        </div>
+
+        <div className="w-full md:w-80 relative">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Pesquisar norma ou sector..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-white border border-slate-300 text-sm focus:border-[#0077C8] focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {filtered.map((std) => (
+          <div key={std.id} className="bg-white rounded-xl border border-slate-200 p-6 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-mono-tabular font-extrabold text-[#0077C8]">{std.code}</span>
+                <span className="text-xs text-slate-500">Aplicabilidade: Multi-sectorial</span>
+              </div>
+              <h2 className="text-xl font-bold text-[#061A2D] mt-1">{std.name}</h2>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">{std.description}</p>
+
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <p className="text-xs font-bold text-[#061A2D]">Objectivo Principal:</p>
+                <p className="text-xs text-slate-600 mt-1">{std.objective}</p>
+              </div>
+
+              <div className="mt-4">
+                <p className="text-xs font-bold text-[#061A2D]">Benefícios para a Organização:</p>
+                <ul className="mt-1.5 space-y-1">
+                  {std.benefits.map((b) => (
+                    <li key={b} className="text-xs text-slate-600 flex items-start gap-2">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#0077C8] shrink-0 mt-0.5" />
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-5 pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs text-slate-500">
+                <strong className="text-[#061A2D]">Sectores relevantes:</strong> {std.sectorsInAngola.join(' · ')}
+              </div>
+              <Link
+                to={`/solicitar-diagnostico?norma=${encodeURIComponent(std.code)}`}
+                className="text-xs font-semibold text-[#0077C8] hover:underline whitespace-nowrap shrink-0"
+              >
+                Solicitar Implementação →
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export const HowItWorksPage: React.FC = () => {
+  return (
+    <div className="py-14 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+      <div className="max-w-3xl">
+        <p className="text-xs font-semibold text-[#0077C8]">Guia Operacional da Plataforma ALHAN</p>
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-[#061A2D] mt-2">
+          Como Funciona a Plataforma Integrada ALHAN – SGI
+        </h1>
+        <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+          A nossa plataforma reúne num único ambiente seguro a Academia de Formação Profissional (LMS) e o Sistema de Gestão de Projectos de Consultoria ISO para empresas clientes.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="bg-white rounded-xl border border-slate-200 p-6 sm:p-8 space-y-4">
+          <div className="flex items-center gap-3">
+            <BookOpen className="w-6 h-6 text-[#0077C8]" />
+            <h2 className="text-xl font-bold text-[#061A2D]">1. Para Formandos e Profissionais (LMS)</h2>
+          </div>
+          <ol className="space-y-3 text-xs text-slate-600 leading-relaxed">
+            <li><strong>Passo 01 · Escolha da Formação:</strong> Consulte o catálogo de cursos Online, Presenciais ou Híbridos com preços em Kwanzas (Kz).</li>
+            <li><strong>Passo 02 · Inscrição e Pagamento Local:</strong> Seleccione o método (Express Angola, Unitel Money, Africell Money ou KWiK) e envie o comprovativo para validação, ou preencha a ficha de inscrição presencial.</li>
+            <li><strong>Passo 03 · Aprendizagem Estruturada:</strong> Após validação pelo Administrador, aceda aos módulos, vídeo-aulas protegidas com marca de água, materiais técnicos e avaliações.</li>
+            <li><strong>Passo 04 · Certificado com QR Code:</strong> Concluídos os requisitos, o sistema emite o certificado com código único verificável em <Link to="/consultar-certificado" className="text-[#0077C8] underline">/consultar-certificado</Link>.</li>
+          </ol>
+          <div className="pt-2">
+            <Link to="/formacoes" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0077C8] hover:underline">
+              Ir para o Catálogo de Formações →
+            </Link>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-6 sm:p-8 space-y-4">
+          <div className="flex items-center gap-3">
+            <Building2 className="w-6 h-6 text-[#0077C8]" />
+            <h2 className="text-xl font-bold text-[#061A2D]">2. Para Empresas Clientes (Consultoria ISO)</h2>
+          </div>
+          <ol className="space-y-3 text-xs text-slate-600 leading-relaxed">
+            <li><strong>Passo 01 · Pedido de Diagnóstico:</strong> Preencha o formulário de diagnóstico empresarial ou utilize o questionário interactivo de recomendação ISO.</li>
+            <li><strong>Passo 02 · Abertura do Projecto ISO:</strong> A equipa técnica Alhan estrutura o cronograma nas 14 etapas de implementação e disponibiliza o acesso ao Portal da Empresa.</li>
+            <li><strong>Passo 03 · Gestão Documental e Auditorias:</strong> Consulte políticas, manuais, procedimentos, relatórios de auditoria interna, não conformidades e acções correctivas do seu projecto.</li>
+            <li><strong>Passo 04 · Preparação para Certificação:</strong> Acompanhamos a revisão pela gestão e a preparação para a auditoria externa pelo organismo de certificação independente.</li>
+          </ol>
+          <div className="pt-2">
+            <Link to="/solicitar-diagnostico" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0077C8] hover:underline">
+              Solicitar Diagnóstico para a minha Empresa →
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export const CompaniesCasesPage: React.FC = () => {
+  const { isoProjects } = useApp();
+
+  return (
+    <div className="py-14 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+      <div className="max-w-3xl">
+        <p className="text-xs font-semibold text-[#0077C8]">Portfólio e Transparência Institucional · Secção 24</p>
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-[#061A2D] mt-2">
+          Empresas que Confiaram na Alhan e Cases de Projecto
+        </h1>
+        <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+          Em cumprimento rigoroso da nossa política de confidencialidade e ética corporativa (Secções 24 e 32), apenas publicamos cases, logotipos e testemunhos quando formalmente autorizados pelos respectivos clientes. Os registos identificados como <strong>[DEMO]</strong> servem exclusivamente para demonstração funcional da plataforma.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {isoProjects.map((proj) => (
+          <div key={proj.id} className="bg-white rounded-xl border border-slate-200 p-6 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span className="font-semibold text-[#0077C8]">
+                  {proj.isDemo ? 'Registo de Demonstração [DEMO]' : 'Projecto Verificado'}
+                </span>
+                <span className="font-mono-tabular">Execução: {proj.executionPercent}%</span>
+              </div>
+              <h2 className="text-lg font-bold text-[#061A2D] mt-2">{proj.companyName}</h2>
+              <p className="text-xs text-slate-600 mt-1">
+                <strong>Normas em implementação:</strong> {proj.standards}
+              </p>
+              <p className="text-xs text-slate-600 mt-2">
+                <strong>Fase actual:</strong> {proj.status} · {proj.nextActivity}
+              </p>
+            </div>
+            <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs text-slate-500">Acompanhamento no Portal Empresarial</span>
+              <Link to="/empresa" className="text-xs font-semibold text-[#0077C8] hover:underline">
+                Ver no Painel da Empresa →
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export const PartnersPage: React.FC = () => {
+  return (
+    <div className="py-14 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+      <div className="max-w-3xl">
+        <p className="text-xs font-semibold text-[#0077C8]">Ecossistema Institucional · Secção 24</p>
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-[#061A2D] mt-2">
+          Parceiros de Certificação e Entidades Verificadas
+        </h1>
+        <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+          A Alhan Consultoria actua na preparação, consultoria e formação. Quando o cliente conclui a implementação do seu Sistema de Gestão, articulamos o processo com organismos de certificação independentes acreditados internacionalmente.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-8">
+        <div className="flex items-start gap-4">
+          <ShieldCheck className="w-7 h-7 text-[#0077C8] shrink-0 mt-0.5" />
+          <div className="space-y-3">
+            <h2 className="text-lg font-bold text-[#061A2D]">
+              Política de Publicação de Parceiros e Acreditações Verificadas
+            </h2>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              De acordo com os princípios de transparência da ALHAN (Secção 24 e Secção 32), não exibimos logotipos nem acreditações não verificadas. Os organismos de certificação parceiros são registados e publicados pela Administração no <strong>Painel Administrativo Central → Parceiros</strong> mediante validação documental das respectivas acreditações e escopos normativos.
+            </p>
+            <div className="pt-2 flex flex-wrap gap-3">
+              <Link
+                to="/solicitar-diagnostico"
+                className="px-4 py-2 rounded-lg bg-[#0077C8] text-white text-xs font-semibold hover:bg-[#008FEA]"
+              >
+                Solicitar Orientação para Certificação
+              </Link>
+              <Link
+                to="/contactos"
+                className="px-4 py-2 rounded-lg border border-slate-300 text-[#061A2D] text-xs font-semibold hover:bg-slate-50"
+              >
+                Propor Parceria Institucional
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export const LegalPage: React.FC<{ section: 'termos' | 'privacidade' | 'pagamentos' | 'formacao' | 'certificacao' }> = ({
+  section,
+}) => {
+  const titles = {
+    termos: 'Termos e Condições de Utilização',
+    privacidade: 'Política de Privacidade e Protecção de Dados',
+    pagamentos: 'Política de Pagamentos e Reembolsos',
+    formacao: 'Política Pedagógica e de Formação Profissional',
+    certificacao: 'Aviso Oficial sobre Consultoria, Certificação e Acreditação ISO',
+  };
+
+  return (
+    <div className="py-14 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+      <div className="bg-white rounded-2xl border border-slate-200 p-8 space-y-6">
+        <div>
+          <p className="text-xs font-semibold text-[#0077C8]">Informação Legal e Institucional · Secção 31</p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#061A2D] mt-1">{titles[section]}</h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Entidade Responsável: {COMPANY_INFO.legalName} · NIF {COMPANY_INFO.nif} · {COMPANY_INFO.location}
+          </p>
+        </div>
+
+        <div className="space-y-4 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-6">
+          {section === 'certificacao' && (
+            <>
+              <div className="p-5 rounded-xl bg-[#061A2D] text-white">
+                <p className="font-semibold text-[#19B5FE] text-xs">Declaração Obrigatória (Secção 16)</p>
+                <p className="mt-2 text-sm leading-relaxed">{COMPANY_INFO.certificationDisclaimer}</p>
+              </div>
+              <p>
+                <strong>1. Distinção entre Consultoria, Certificação e Acreditação:</strong> A consultoria e implementação (realizada pela ALHAN) consiste no apoio técnico para organizar processos, elaborar documentação, formar equipas e realizar auditorias internas. A certificação ISO é o acto pelo qual um organismo de certificação independente atesta, após auditoria externa (Fase 1 e Fase 2), que o sistema cumpre a norma. A acreditação é o reconhecimento formal da competência do organismo de certificação por uma entidade acreditadora internacional.
+              </p>
+              <p>
+                <strong>2. Certificados Emitidos na Plataforma ALHAN:</strong> Os certificados emitidos directamente nesta plataforma e consultáveis em <code>/consultar-certificado</code> referem-se exclusivamente à conclusão de acções de <strong>Formação Profissional</strong> ministradas pela Academia ALHAN.
+              </p>
+            </>
+          )}
+
+          {section === 'termos' && (
+            <>
+              <p>
+                <strong>1. Objecto:</strong> Os presentes Termos regulam o acesso ao website institucional, à plataforma de formação online (LMS) e à área de clientes empresariais da {COMPANY_INFO.legalName}.
+              </p>
+              <p>
+                <strong>2. Perfis e Responsabilidades:</strong> O acesso às áreas reservadas (Aluno, Professor, Cliente Empresarial e Administração) é pessoal e intransmissível. Cada utilizador compromete-se a manter a confidencialidade das suas credenciais.
+              </p>
+              <p>
+                <strong>3. Propriedade Intelectual e Protecção de Conteúdos:</strong> Todos os vídeos, manuais, matrizes, procedimentos e materiais disponibilizados nos cursos possuem marca de água identificadora e destinam-se exclusivamente ao uso pedagógico individual do formando inscrito.
+              </p>
+            </>
+          )}
+
+          {section === 'privacidade' && (
+            <>
+              <p>
+                <strong>1. Recolha e Isolamento de Dados:</strong> Os dados pessoais recolhidos no registo (nome, email, telefone) e nos pedidos de diagnóstico empresarial destinam-se exclusivamente à gestão académica, emissão de certificados e prestação de serviços de consultoria pela ALHAN.
+              </p>
+              <p>
+                <strong>2. Separação de Dados por Utilizador e Empresa:</strong> A arquitectura de segurança da plataforma garante que cada aluno consulta apenas os seus cursos e certificados, e cada empresa cliente acede unicamente ao seu próprio projecto ISO.
+              </p>
+            </>
+          )}
+
+          {section === 'pagamentos' && (
+            <>
+              <p>
+                <strong>1. Meios de Pagamento em Angola:</strong> As inscrições nas formações da ALHAN podem ser liquidadas em Kwanzas (Kz) através de Express Angola, Unitel Money, Africell Money, KWiK ou transferência bancária com submissão de comprovativo na plataforma.
+              </p>
+              <p>
+                <strong>2. Libertação de Acesso:</strong> Após validação do comprovativo pela Administração da ALHAN, o estado da inscrição passa de «Pendente» para «Pago» e o acesso às aulas e materiais é libertado imediatamente.
+              </p>
+            </>
+          )}
+
+          {section === 'formacao' && (
+            <>
+              <p>
+                <strong>1. Modalidades:</strong> A Academia ALHAN ministra cursos nas modalidades Online (assíncrona e sessões ao vivo via Teams/Zoom/Meet/Jitsi), Presencial (em Luanda e noutras províncias) e Híbrida.
+              </p>
+              <p>
+                <strong>2. Requisitos para Emissão de Certificado:</strong> A emissão do certificado de formação com QR Code depende do cumprimento da frequência mínima, realização das aulas e aprovação nas avaliações definidas para cada curso.
+              </p>
+            </>
+          )}
+
+          <p className="text-xs text-slate-400 pt-4 border-t border-slate-100">
+            Nota: Este texto institucional encontra-se estruturado e disponível para revisão e personalização jurídica no Painel Administrativo da ALHAN.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};

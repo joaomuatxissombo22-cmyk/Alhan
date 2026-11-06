@@ -1,0 +1,389 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1 & Phase 4.1: Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Hardened Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'joaomuatxissombo22@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Validation Blueprints
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'fullName', 'username', 'role', 'companyId', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'fullName', 'username', 'role', 'companyId', 'status', 'createdAt']) &&
+        isValidId(data.uid) &&
+        data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120 &&
+        data.username is string && data.username.size() >= 2 && data.username.size() <= 60 &&
+        data.role in ['SUPER_ADMIN', 'ADMIN', 'PROFESSOR', 'ALUNO', 'CLIENTE_EMPRESARIAL'] &&
+        data.companyId is string && data.companyId.size() >= 1 && data.companyId.size() <= 128 &&
+        data.status in ['ativo', 'inativo'] &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll(['uid', 'email', 'phone', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'phone', 'createdAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.phone is string && data.phone.size() >= 3 && data.phone.size() <= 40 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidCourse(data) {
+      return data.keys().hasAll(['id', 'title', 'category', 'modality', 'priceKz', 'durationHours', 'lessonsCount', 'instructorName', 'instructorId', 'published', 'description', 'objectives', 'syllabus', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'title', 'category', 'modality', 'priceKz', 'durationHours', 'lessonsCount', 'instructorName', 'instructorId', 'published', 'description', 'objectives', 'syllabus', 'createdAt']) &&
+        isValidId(data.id) &&
+        data.title is string && data.title.size() >= 3 && data.title.size() <= 160 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+        data.modality in ['Online', 'Presencial', 'Híbrida'] &&
+        data.priceKz is number && data.priceKz >= 0 &&
+        data.durationHours is number && data.durationHours >= 1 &&
+        data.lessonsCount is number && data.lessonsCount >= 1 &&
+        data.instructorName is string && data.instructorName.size() >= 2 && data.instructorName.size() <= 120 &&
+        data.instructorId is string && data.instructorId.size() >= 1 && data.instructorId.size() <= 128 &&
+        data.published is bool &&
+        data.description is string && data.description.size() <= 1500 &&
+        data.objectives is string && data.objectives.size() <= 1500 &&
+        data.syllabus is string && data.syllabus.size() <= 2000 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidEnrollment(data) {
+      return data.keys().hasAll(['id', 'studentId', 'studentName', 'courseId', 'courseTitle', 'modality', 'amountKz', 'paymentMethod', 'paymentReference', 'receiptNote', 'paymentStatus', 'progressPercent', 'completed', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'studentId', 'studentName', 'courseId', 'courseTitle', 'modality', 'amountKz', 'paymentMethod', 'paymentReference', 'receiptNote', 'paymentStatus', 'progressPercent', 'completed', 'createdAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.studentId) &&
+        data.studentName is string && data.studentName.size() >= 2 && data.studentName.size() <= 120 &&
+        isValidId(data.courseId) &&
+        data.courseTitle is string && data.courseTitle.size() >= 2 && data.courseTitle.size() <= 160 &&
+        data.modality in ['Online', 'Presencial', 'Híbrida'] &&
+        data.amountKz is number && data.amountKz >= 0 &&
+        data.paymentMethod in ['Express Angola', 'Unitel Money', 'Africell Money', 'KWiK', 'Transferência / Comprovativo'] &&
+        data.paymentReference is string && data.paymentReference.size() <= 120 &&
+        data.receiptNote is string && data.receiptNote.size() <= 500 &&
+        data.paymentStatus in ['Pendente', 'Pago', 'Falhado', 'Cancelado', 'Reembolsado'] &&
+        data.progressPercent is number && data.progressPercent >= 0 && data.progressPercent <= 100 &&
+        data.completed is bool &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidCertificate(data) {
+      return data.keys().hasAll(['id', 'code', 'studentId', 'studentName', 'courseId', 'courseTitle', 'workloadHours', 'issuedDate', 'responsibleName', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'code', 'studentId', 'studentName', 'courseId', 'courseTitle', 'workloadHours', 'issuedDate', 'responsibleName', 'status', 'createdAt']) &&
+        isValidId(data.id) &&
+        data.code is string && data.code.size() >= 4 && data.code.size() <= 64 && data.code.matches('^[a-zA-Z0-9_\\-]+$') &&
+        isValidId(data.studentId) &&
+        data.studentName is string && data.studentName.size() >= 2 && data.studentName.size() <= 120 &&
+        isValidId(data.courseId) &&
+        data.courseTitle is string && data.courseTitle.size() >= 2 && data.courseTitle.size() <= 160 &&
+        data.workloadHours is number && data.workloadHours >= 1 &&
+        data.issuedDate is string && data.issuedDate.size() >= 4 && data.issuedDate.size() <= 40 &&
+        data.responsibleName is string && data.responsibleName.size() >= 2 && data.responsibleName.size() <= 120 &&
+        data.status in ['valido', 'cancelado', 'expirado'] &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidIsoProject(data) {
+      return data.keys().hasAll(['id', 'companyId', 'companyName', 'standards', 'status', 'executionPercent', 'nextActivity', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'companyId', 'companyName', 'standards', 'status', 'executionPercent', 'nextActivity', 'createdAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.companyId) &&
+        data.companyName is string && data.companyName.size() >= 2 && data.companyName.size() <= 160 &&
+        data.standards is string && data.standards.size() >= 2 && data.standards.size() <= 200 &&
+        data.status in ['Diagnóstico', 'Mapeamento', 'Implementação', 'Auditoria Interna', 'Concluído'] &&
+        data.executionPercent is number && data.executionPercent >= 0 && data.executionPercent <= 100 &&
+        data.nextActivity is string && data.nextActivity.size() <= 300 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidIsoDocument(data) {
+      return data.keys().hasAll(['id', 'code', 'title', 'category', 'standard', 'processName', 'version', 'responsibleName', 'approverName', 'status', 'companyId', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'code', 'title', 'category', 'standard', 'processName', 'version', 'responsibleName', 'approverName', 'status', 'companyId', 'createdAt']) &&
+        isValidId(data.id) &&
+        data.code is string && data.code.size() >= 2 && data.code.size() <= 60 &&
+        data.title is string && data.title.size() >= 2 && data.title.size() <= 160 &&
+        data.category in ['Políticas', 'Manuais', 'Procedimentos', 'Instruções de trabalho', 'Formulários', 'Registos', 'Matrizes', 'Planos', 'Relatórios'] &&
+        data.standard is string && data.standard.size() <= 80 &&
+        data.processName is string && data.processName.size() <= 120 &&
+        data.version is string && data.version.size() <= 20 &&
+        data.responsibleName is string && data.responsibleName.size() <= 120 &&
+        data.approverName is string && data.approverName.size() <= 120 &&
+        data.status in ['Rascunho', 'Em revisão', 'Aprovado', 'Obsoleto'] &&
+        isValidId(data.companyId) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidIsoAudit(data) {
+      return data.keys().hasAll(['id', 'companyId', 'companyName', 'standard', 'processName', 'auditorName', 'auditDate', 'location', 'criteria', 'classification', 'findings', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'companyId', 'companyName', 'standard', 'processName', 'auditorName', 'auditDate', 'location', 'criteria', 'classification', 'findings', 'createdAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.companyId) &&
+        data.companyName is string && data.companyName.size() >= 2 && data.companyName.size() <= 160 &&
+        data.standard is string && data.standard.size() <= 80 &&
+        data.processName is string && data.processName.size() <= 120 &&
+        data.auditorName is string && data.auditorName.size() <= 120 &&
+        data.auditDate is string && data.auditDate.size() <= 40 &&
+        data.location is string && data.location.size() <= 120 &&
+        data.criteria is string && data.criteria.size() <= 500 &&
+        data.classification in ['Conformidade', 'Não conformidade', 'Observação', 'Oportunidade de melhoria'] &&
+        data.findings is string && data.findings.size() <= 1500 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidNonConformity(data) {
+      return data.keys().hasAll(['id', 'code', 'companyId', 'companyName', 'processName', 'standard', 'problemDescription', 'rootCause', 'correctiveAction', 'responsibleName', 'deadline', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'code', 'companyId', 'companyName', 'processName', 'standard', 'problemDescription', 'rootCause', 'correctiveAction', 'responsibleName', 'deadline', 'status', 'createdAt']) &&
+        isValidId(data.id) &&
+        data.code is string && data.code.size() >= 2 && data.code.size() <= 60 &&
+        isValidId(data.companyId) &&
+        data.companyName is string && data.companyName.size() >= 2 && data.companyName.size() <= 160 &&
+        data.processName is string && data.processName.size() <= 120 &&
+        data.standard is string && data.standard.size() <= 80 &&
+        data.problemDescription is string && data.problemDescription.size() <= 1000 &&
+        data.rootCause is string && data.rootCause.size() <= 1000 &&
+        data.correctiveAction is string && data.correctiveAction.size() <= 1000 &&
+        data.responsibleName is string && data.responsibleName.size() <= 120 &&
+        data.deadline is string && data.deadline.size() <= 40 &&
+        data.status in ['Aberta', 'Em tratamento', 'Aguardando verificação', 'Concluída', 'Reaberta'] &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidDiagnosticRequest(data) {
+      return data.keys().hasAll(['id', 'type', 'companyName', 'contactName', 'role', 'phone', 'whatsapp', 'email', 'province', 'sector', 'employeesCount', 'targetStandard', 'objective', 'message', 'userId', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'type', 'companyName', 'contactName', 'role', 'phone', 'whatsapp', 'email', 'province', 'sector', 'employeesCount', 'targetStandard', 'objective', 'message', 'userId', 'status', 'createdAt']) &&
+        isValidId(data.id) &&
+        data.type in ['diagnostico', 'contacto', 'inscricao_presencial'] &&
+        data.companyName is string && data.companyName.size() <= 160 &&
+        data.contactName is string && data.contactName.size() >= 2 && data.contactName.size() <= 120 &&
+        data.role is string && data.role.size() <= 100 &&
+        data.phone is string && data.phone.size() <= 40 &&
+        data.whatsapp is string && data.whatsapp.size() <= 40 &&
+        data.email is string && data.email.size() <= 160 &&
+        data.province is string && data.province.size() <= 80 &&
+        data.sector is string && data.sector.size() <= 100 &&
+        data.employeesCount is string && data.employeesCount.size() <= 40 &&
+        data.targetStandard is string && data.targetStandard.size() <= 160 &&
+        data.objective is string && data.objective.size() <= 500 &&
+        data.message is string && data.message.size() <= 1500 &&
+        isValidId(data.userId) &&
+        data.status in ['Novo', 'Em análise', 'Respondido', 'Concluído'] &&
+        data.createdAt is timestamp;
+    }
+
+    // Admins registry
+    match /admins/{adminId} {
+      allow get: if isOwner(adminId) || isAdmin();
+      allow list: if isAdmin() && resource.data.uid == request.auth.uid;
+      allow create, update, delete: if isAdmin() && isValidId(adminId);
+    }
+
+    // 1. Users Profile (Public / Non-PII)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(userId) && isValidUserProfile(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().uid == userId &&
+        incoming().createdAt == request.time &&
+        (incoming().role in ['ALUNO', 'CLIENTE_EMPRESARIAL'] || isAdmin());
+      allow update: if isVerifiedUser() && isValidId(userId) && isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt && (
+          isAdmin() ||
+          (isOwner(userId) && existing().status == 'ativo' && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'username']))
+        );
+      allow delete: if isValidId(userId) && isAdmin();
+
+      // 2. Users Private Info (Isolated PII - Pillar 1 Master Gate & Pillar 6)
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId) &&
+          exists(/databases/$(database)/documents/users/$(userId)) &&
+          (isOwner(userId) || isAdmin());
+        allow list: if false;
+        allow create: if isVerifiedUser() && isValidId(userId) && isValidId(docId) &&
+          isValidUserPrivateInfo(incoming()) &&
+          incoming().uid == request.auth.uid &&
+          incoming().uid == userId &&
+          incoming().createdAt == request.time &&
+          exists(/databases/$(database)/documents/users/$(userId));
+        allow update: if isVerifiedUser() && isValidId(userId) && isValidId(docId) &&
+          isValidUserPrivateInfo(incoming()) &&
+          incoming().uid == existing().uid &&
+          incoming().createdAt == existing().createdAt &&
+          exists(/databases/$(database)/documents/users/$(userId)) && (
+            isAdmin() ||
+            (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['phone']))
+          );
+        allow delete: if isValidId(userId) && isValidId(docId) && isAdmin();
+      }
+    }
+
+    // 3. Courses Catalog
+    match /courses/{courseId} {
+      allow get: if isValidId(courseId) && (existing().published == true || isAdmin());
+      allow list: if resource.data.published == true || isAdmin();
+      allow create: if isVerifiedUser() && isValidId(courseId) && isValidCourse(incoming()) &&
+        incoming().id == courseId &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(courseId) && isValidCourse(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        isAdmin();
+      allow delete: if isValidId(courseId) && isAdmin();
+    }
+
+    // 4. Enrollments
+    match /enrollments/{enrollmentId} {
+      allow get: if isValidId(enrollmentId) && isVerifiedUser() && (existing().studentId == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.studentId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(enrollmentId) && isValidEnrollment(incoming()) &&
+        incoming().id == enrollmentId &&
+        incoming().studentId == request.auth.uid &&
+        incoming().paymentStatus == 'Pendente' &&
+        incoming().progressPercent == 0 &&
+        incoming().completed == false &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/courses/$(incoming().courseId));
+      allow update: if isVerifiedUser() && isValidId(enrollmentId) && isValidEnrollment(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().studentId == existing().studentId &&
+        incoming().courseId == existing().courseId &&
+        incoming().createdAt == existing().createdAt && (
+          isAdmin() ||
+          (existing().studentId == request.auth.uid &&
+           !(existing().paymentStatus in ['Cancelado', 'Reembolsado']) &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['progressPercent', 'completed', 'paymentReference', 'receiptNote']))
+        );
+      allow delete: if isValidId(enrollmentId) && isAdmin();
+    }
+
+    // 5. Certificates
+    match /certificates/{certificateId} {
+      allow get: if isValidId(certificateId) && (existing().status in ['valido', 'cancelado', 'expirado'] || isAdmin());
+      allow list: if resource.data.status in ['valido', 'cancelado', 'expirado'] || isAdmin();
+      allow create: if isVerifiedUser() && isValidId(certificateId) && isValidCertificate(incoming()) &&
+        incoming().id == certificateId &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(certificateId) && isValidCertificate(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().code == existing().code &&
+        incoming().studentId == existing().studentId &&
+        incoming().courseId == existing().courseId &&
+        incoming().createdAt == existing().createdAt &&
+        isAdmin();
+      allow delete: if isValidId(certificateId) && isAdmin();
+    }
+
+    // 6. ISO Projects
+    match /isoProjects/{projectId} {
+      allow get: if isValidId(projectId) && isVerifiedUser() && (existing().companyId == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.companyId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(projectId) && isValidIsoProject(incoming()) &&
+        incoming().id == projectId &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(projectId) && isValidIsoProject(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().companyId == existing().companyId &&
+        incoming().createdAt == existing().createdAt &&
+        isAdmin();
+      allow delete: if isValidId(projectId) && isAdmin();
+    }
+
+    // 7. ISO Documents
+    match /isoDocuments/{documentId} {
+      allow get: if isValidId(documentId) && isVerifiedUser() && (existing().companyId == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.companyId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(documentId) && isValidIsoDocument(incoming()) &&
+        incoming().id == documentId &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(documentId) && isValidIsoDocument(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().companyId == existing().companyId &&
+        incoming().createdAt == existing().createdAt &&
+        isAdmin();
+      allow delete: if isValidId(documentId) && isAdmin();
+    }
+
+    // 8. ISO Audits
+    match /audits/{auditId} {
+      allow get: if isValidId(auditId) && isVerifiedUser() && (existing().companyId == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.companyId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(auditId) && isValidIsoAudit(incoming()) &&
+        incoming().id == auditId &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(auditId) && isValidIsoAudit(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().companyId == existing().companyId &&
+        incoming().createdAt == existing().createdAt &&
+        isAdmin();
+      allow delete: if isValidId(auditId) && isAdmin();
+    }
+
+    // 9. Non-Conformities & Corrective Actions
+    match /nonConformities/{ncId} {
+      allow get: if isValidId(ncId) && isVerifiedUser() && (existing().companyId == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.companyId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(ncId) && isValidNonConformity(incoming()) &&
+        incoming().id == ncId &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() && isValidId(ncId) && isValidNonConformity(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().companyId == existing().companyId &&
+        incoming().createdAt == existing().createdAt && (
+          isAdmin() ||
+          (existing().companyId == request.auth.uid &&
+           existing().status != 'Concluída' &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['rootCause', 'correctiveAction', 'status']))
+        );
+      allow delete: if isValidId(ncId) && isAdmin();
+    }
+
+    // 10. Diagnostic Requests, Contact Forms & Presential Registrations
+    match /diagnosticRequests/{requestId} {
+      allow get: if isValidId(requestId) && isVerifiedUser() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(requestId) && isValidDiagnosticRequest(incoming()) &&
+        incoming().id == requestId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'Novo' &&
+        incoming().createdAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(requestId) && isValidDiagnosticRequest(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        isAdmin();
+      allow delete: if isValidId(requestId) && isAdmin();
+    }
+  }
+}

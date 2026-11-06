@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-sans: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #F5F9FC;
+    color: #061A2D;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-sans {
+  font-family: var(--font-sans);
+}
+
+.font-mono-tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Watermark protection pattern for protected LMS viewer */
+.alhan-protected-content {
+  user-select: none;
+  -webkit-user-select: none;
+}

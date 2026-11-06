@@ -1,0 +1,238 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public role and workspace profile for platform users without PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "username": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "role": { "type": "string", "enum": ["SUPER_ADMIN", "ADMIN", "PROFESSOR", "ALUNO", "CLIENTE_EMPRESARIAL"] },
+        "companyId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["ativo", "inativo"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "fullName", "username", "role", "companyId", "status", "createdAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII record for a user (email and phone).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 160 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "phone", "createdAt"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Training course in the ALHAN LMS catalog.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "category": { "type": "string", "maxLength": 80 },
+        "modality": { "type": "string", "enum": ["Online", "Presencial", "Híbrida"] },
+        "priceKz": { "type": "number" },
+        "durationHours": { "type": "number" },
+        "lessonsCount": { "type": "number" },
+        "instructorName": { "type": "string", "maxLength": 120 },
+        "instructorId": { "type": "string", "maxLength": 128 },
+        "published": { "type": "boolean" },
+        "description": { "type": "string", "maxLength": 1500 },
+        "objectives": { "type": "string", "maxLength": 1500 },
+        "syllabus": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "category", "modality", "priceKz", "durationHours", "lessonsCount", "instructorName", "instructorId", "published", "description", "objectives", "syllabus", "createdAt"]
+    },
+    "Enrollment": {
+      "title": "Enrollment",
+      "description": "Student enrollment, Angola payment status, and LMS course progress.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentName": { "type": "string", "maxLength": 120 },
+        "courseId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "courseTitle": { "type": "string", "maxLength": 160 },
+        "modality": { "type": "string", "enum": ["Online", "Presencial", "Híbrida"] },
+        "amountKz": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["Express Angola", "Unitel Money", "Africell Money", "KWiK", "Transferência / Comprovativo"] },
+        "paymentReference": { "type": "string", "maxLength": 120 },
+        "receiptNote": { "type": "string", "maxLength": 500 },
+        "paymentStatus": { "type": "string", "enum": ["Pendente", "Pago", "Falhado", "Cancelado", "Reembolsado"] },
+        "progressPercent": { "type": "number" },
+        "completed": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "studentId", "studentName", "courseId", "courseTitle", "modality", "amountKz", "paymentMethod", "paymentReference", "receiptNote", "paymentStatus", "progressPercent", "completed", "createdAt"]
+    },
+    "Certificate": {
+      "title": "Certificate",
+      "description": "Training certificate with unique validation code and QR support.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "code": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentName": { "type": "string", "maxLength": 120 },
+        "courseId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "courseTitle": { "type": "string", "maxLength": 160 },
+        "workloadHours": { "type": "number" },
+        "issuedDate": { "type": "string", "maxLength": 40 },
+        "responsibleName": { "type": "string", "maxLength": 120 },
+        "status": { "type": "string", "enum": ["valido", "cancelado", "expirado"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "code", "studentId", "studentName", "courseId", "courseTitle", "workloadHours", "issuedDate", "responsibleName", "status", "createdAt"]
+    },
+    "IsoProject": {
+      "title": "IsoProject",
+      "description": "Corporate client ISO implementation project.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "companyId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "companyName": { "type": "string", "maxLength": 160 },
+        "standards": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["Diagnóstico", "Mapeamento", "Implementação", "Auditoria Interna", "Concluído"] },
+        "executionPercent": { "type": "number" },
+        "nextActivity": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "companyId", "companyName", "standards", "status", "executionPercent", "nextActivity", "createdAt"]
+    },
+    "IsoDocument": {
+      "title": "IsoDocument",
+      "description": "Document in the ISO Document Management System.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "code": { "type": "string", "maxLength": 60 },
+        "title": { "type": "string", "maxLength": 160 },
+        "category": { "type": "string", "enum": ["Políticas", "Manuais", "Procedimentos", "Instruções de trabalho", "Formulários", "Registos", "Matrizes", "Planos", "Relatórios"] },
+        "standard": { "type": "string", "maxLength": 80 },
+        "processName": { "type": "string", "maxLength": 120 },
+        "version": { "type": "string", "maxLength": 20 },
+        "responsibleName": { "type": "string", "maxLength": 120 },
+        "approverName": { "type": "string", "maxLength": 120 },
+        "status": { "type": "string", "enum": ["Rascunho", "Em revisão", "Aprovado", "Obsoleto"] },
+        "companyId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "code", "title", "category", "standard", "processName", "version", "responsibleName", "approverName", "status", "companyId", "createdAt"]
+    },
+    "IsoAudit": {
+      "title": "IsoAudit",
+      "description": "Internal ISO audit record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "companyId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "companyName": { "type": "string", "maxLength": 160 },
+        "standard": { "type": "string", "maxLength": 80 },
+        "processName": { "type": "string", "maxLength": 120 },
+        "auditorName": { "type": "string", "maxLength": 120 },
+        "auditDate": { "type": "string", "maxLength": 40 },
+        "location": { "type": "string", "maxLength": 120 },
+        "criteria": { "type": "string", "maxLength": 500 },
+        "classification": { "type": "string", "enum": ["Conformidade", "Não conformidade", "Observação", "Oportunidade de melhoria"] },
+        "findings": { "type": "string", "maxLength": 1500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "companyId", "companyName", "standard", "processName", "auditorName", "auditDate", "location", "criteria", "classification", "findings", "createdAt"]
+    },
+    "NonConformity": {
+      "title": "NonConformity",
+      "description": "Non-conformity and corrective action record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "code": { "type": "string", "maxLength": 60 },
+        "companyId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "companyName": { "type": "string", "maxLength": 160 },
+        "processName": { "type": "string", "maxLength": 120 },
+        "standard": { "type": "string", "maxLength": 80 },
+        "problemDescription": { "type": "string", "maxLength": 1000 },
+        "rootCause": { "type": "string", "maxLength": 1000 },
+        "correctiveAction": { "type": "string", "maxLength": 1000 },
+        "responsibleName": { "type": "string", "maxLength": 120 },
+        "deadline": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["Aberta", "Em tratamento", "Aguardando verificação", "Concluída", "Reaberta"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "code", "companyId", "companyName", "processName", "standard", "problemDescription", "rootCause", "correctiveAction", "responsibleName", "deadline", "status", "createdAt"]
+    },
+    "DiagnosticRequest": {
+      "title": "DiagnosticRequest",
+      "description": "Corporate diagnostic request, contact form, or presential training registration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "type": { "type": "string", "enum": ["diagnostico", "contacto", "inscricao_presencial"] },
+        "companyName": { "type": "string", "maxLength": 160 },
+        "contactName": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "whatsapp": { "type": "string", "maxLength": 40 },
+        "email": { "type": "string", "maxLength": 160 },
+        "province": { "type": "string", "maxLength": 80 },
+        "sector": { "type": "string", "maxLength": 100 },
+        "employeesCount": { "type": "string", "maxLength": 40 },
+        "targetStandard": { "type": "string", "maxLength": 160 },
+        "objective": { "type": "string", "maxLength": 500 },
+        "message": { "type": "string", "maxLength": 1500 },
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "status": { "type": "string", "enum": ["Novo", "Em análise", "Respondido", "Concluído"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "type", "companyName", "contactName", "role", "phone", "whatsapp", "email", "province", "sector", "employeesCount", "targetStandard", "objective", "message", "userId", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Public role and workspace profile for platform users."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated PII record for a user."
+    },
+    "/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/Course" },
+      "description": "Training courses in the ALHAN LMS catalog."
+    },
+    "/enrollments/{enrollmentId}": {
+      "schema": { "$ref": "#/entities/Enrollment" },
+      "description": "Student enrollments, Angola payment statuses, and course progress."
+    },
+    "/certificates/{certificateId}": {
+      "schema": { "$ref": "#/entities/Certificate" },
+      "description": "Training certificates with unique validation code and QR support."
+    },
+    "/isoProjects/{projectId}": {
+      "schema": { "$ref": "#/entities/IsoProject" },
+      "description": "Corporate client ISO implementation projects."
+    },
+    "/isoDocuments/{documentId}": {
+      "schema": { "$ref": "#/entities/IsoDocument" },
+      "description": "Documents in the ISO Document Management System."
+    },
+    "/audits/{auditId}": {
+      "schema": { "$ref": "#/entities/IsoAudit" },
+      "description": "Internal ISO audit records."
+    },
+    "/nonConformities/{ncId}": {
+      "schema": { "$ref": "#/entities/NonConformity" },
+      "description": "Non-conformities and corrective actions."
+    },
+    "/diagnosticRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/DiagnosticRequest" },
+      "description": "Diagnostic requests, contact inquiries, and presential training registrations."
+    }
+  }
+}
