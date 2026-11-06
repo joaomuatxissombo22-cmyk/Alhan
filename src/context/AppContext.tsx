@@ -114,7 +114,21 @@ interface AppContextValue {
     paymentMethod: EnrollmentItem['paymentMethod'];
     paymentReference: string;
     receiptNote: string;
+    receiptFileUrl?: string;
+    receiptFileName?: string;
     studentName?: string;
+    studentPhone?: string;
+    studentEmail?: string;
+  }) => Promise<EnrollmentItem>;
+  submitStudentPaymentProof: (payload: {
+    enrollmentId?: string;
+    course: CourseItem;
+    modality: 'Online' | 'Presencial' | 'Híbrida';
+    paymentMethod: EnrollmentItem['paymentMethod'];
+    paymentReference: string;
+    receiptNote: string;
+    receiptFileUrl?: string;
+    receiptFileName?: string;
     studentPhone?: string;
     studentEmail?: string;
   }) => Promise<EnrollmentItem>;
@@ -719,6 +733,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     paymentMethod: EnrollmentItem['paymentMethod'];
     paymentReference: string;
     receiptNote: string;
+    receiptFileUrl?: string;
+    receiptFileName?: string;
     studentName?: string;
     studentPhone?: string;
     studentEmail?: string;
@@ -739,6 +755,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paymentMethod: payload.paymentMethod,
       paymentReference: payload.paymentReference || `REF-${Date.now().toString().slice(-6)}`,
       receiptNote: payload.receiptNote || 'Comprovativo submetido para validação administrativa.',
+      receiptFileUrl: payload.receiptFileUrl,
+      receiptFileName: payload.receiptFileName,
       paymentStatus: 'Pendente',
       progressPercent: 0,
       completedLessons: [],
@@ -755,6 +773,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logActivity(`Nova inscrição no curso ${payload.course.title} (${payload.paymentMethod})`);
 
     return newEnrollment;
+  };
+
+  const submitStudentPaymentProof = async (payload: {
+    enrollmentId?: string;
+    course: CourseItem;
+    modality: 'Online' | 'Presencial' | 'Híbrida';
+    paymentMethod: EnrollmentItem['paymentMethod'];
+    paymentReference: string;
+    receiptNote: string;
+    receiptFileUrl?: string;
+    receiptFileName?: string;
+    studentPhone?: string;
+    studentEmail?: string;
+  }) => {
+    const studentId = auth.currentUser?.uid || user?.uid || `inscrito-${Date.now()}`;
+    const studentName = user?.fullName || 'Aluno Registado';
+
+    const existing = enrollments.find(
+      (e) =>
+        (payload.enrollmentId && e.id === payload.enrollmentId) ||
+        (e.courseId === payload.course.id &&
+          (e.studentId === studentId ||
+            (user?.email && e.studentEmail?.toLowerCase() === user.email.toLowerCase())))
+    );
+
+    if (existing) {
+      const updated: EnrollmentItem = {
+        ...existing,
+        studentId,
+        studentName,
+        studentPhone: payload.studentPhone || existing.studentPhone || user?.phone || '+244 922 021 211',
+        studentEmail: payload.studentEmail || existing.studentEmail || user?.email || 'aluno@alhan.pro',
+        paymentMethod: payload.paymentMethod,
+        paymentReference: payload.paymentReference || existing.paymentReference || `REF-${Date.now().toString().slice(-6)}`,
+        receiptNote: payload.receiptNote || existing.receiptNote || `Comprovativo via ${payload.paymentMethod} submetido no Painel do Aluno.`,
+        receiptFileUrl: payload.receiptFileUrl || existing.receiptFileUrl,
+        receiptFileName: payload.receiptFileName || existing.receiptFileName,
+      };
+      setEnrollments((prev) => prev.map((e) => (e.id === existing.id ? updated : e)));
+      triggerNotification(
+        'Nova inscrição',
+        `Comprovativo Enviado pelo Aluno: ${payload.course.title}`,
+        `O aluno ${studentName} submeteu o comprovativo de pagamento (${payload.paymentMethod} · Ref: ${updated.paymentReference}) para liberar a formação.`,
+        'ADMIN'
+      );
+      logActivity(`Comprovativo de pagamento submetido pelo aluno ${studentName} (${payload.course.title})`, studentName);
+      return updated;
+    }
+
+    return createEnrollment({
+      course: payload.course,
+      modality: payload.modality,
+      paymentMethod: payload.paymentMethod,
+      paymentReference: payload.paymentReference,
+      receiptNote: payload.receiptNote,
+      receiptFileUrl: payload.receiptFileUrl,
+      receiptFileName: payload.receiptFileName,
+      studentName,
+      studentPhone: payload.studentPhone,
+      studentEmail: payload.studentEmail,
+    });
   };
 
   const updateEnrollmentStatus = async (enrollmentId: string, status: EnrollmentItem['paymentStatus']) => {
@@ -1025,6 +1104,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addIsoStandard,
         addTestimonial,
         createEnrollment,
+        submitStudentPaymentProof,
         updateEnrollmentStatus,
         completeLesson,
         issueCertificate,

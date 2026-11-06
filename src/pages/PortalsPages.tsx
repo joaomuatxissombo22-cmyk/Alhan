@@ -34,6 +34,11 @@ import {
   Mail,
   Send,
   X,
+  CreditCard,
+  Copy,
+  Check,
+  MessageCircle,
+  Clock,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -370,6 +375,7 @@ export const StudentPortal: React.FC = () => {
     enrollments,
     certificates,
     notifications,
+    submitStudentPaymentProof,
     completeLesson,
     issueCertificate,
     logout,
@@ -379,6 +385,7 @@ export const StudentPortal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<
     | 'Dashboard'
     | 'Meus Cursos'
+    | 'Pagamentos'
     | 'Aulas'
     | 'Materiais'
     | 'Avaliações'
@@ -411,6 +418,68 @@ export const StudentPortal: React.FC = () => {
     myEnrollments.find((e) => e.id === selectedEnrollmentId) || myEnrollments[0];
   const activeCourse = courses.find((c) => c.id === activeEnrollment?.courseId) || courses[0];
 
+  // Student Portal Payment & Proof State
+  const [payCourseId, setPayCourseId] = useState<string>(
+    activeEnrollment?.courseId || courses[0]?.id || ''
+  );
+  const [payMethod, setPayMethod] = useState<EnrollmentItem['paymentMethod']>('Express Angola');
+  const [payReference, setPayReference] = useState('');
+  const [payReceiptNote, setPayReceiptNote] = useState('');
+  const [payReceiptFileUrl, setPayReceiptFileUrl] = useState('');
+  const [payReceiptFileName, setPayReceiptFileName] = useState('');
+  const [payStudentPhone, setPayStudentPhone] = useState(user?.phone || '+244 ');
+  const [payStudentEmail, setPayStudentEmail] = useState(user?.email || '');
+  const [copiedPaymentField, setCopiedPaymentField] = useState<string | null>(null);
+  const [paymentSubmittedMsg, setPaymentSubmittedMsg] = useState<string | null>(null);
+
+  const selectedPayCourse =
+    courses.find((c) => c.id === payCourseId) || activeCourse || courses[0];
+  const matchingPayEnrollment = myEnrollments.find((e) => e.courseId === selectedPayCourse?.id);
+
+  const copyPaymentValue = (val: string, key: string) => {
+    navigator.clipboard.writeText(val);
+    setCopiedPaymentField(key);
+    setTimeout(() => setCopiedPaymentField(null), 2000);
+  };
+
+  const handleReceiptFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPayReceiptFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPayReceiptFileUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleStudentPaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPayCourse) return;
+    const saved = await submitStudentPaymentProof({
+      enrollmentId: matchingPayEnrollment?.id,
+      course: selectedPayCourse,
+      modality: selectedPayCourse.modality,
+      paymentMethod: payMethod,
+      paymentReference: payReference.trim() || `REF-${Date.now().toString().slice(-6)}`,
+      receiptNote:
+        payReceiptNote.trim() ||
+        `Comprovativo via ${payMethod} submetido pelo aluno no Painel do Aluno para liberar a formação.`,
+      receiptFileUrl: payReceiptFileUrl || undefined,
+      receiptFileName: payReceiptFileName || undefined,
+      studentPhone: payStudentPhone.trim(),
+      studentEmail: payStudentEmail.trim(),
+    });
+    setSelectedEnrollmentId(saved.id);
+    setPaymentSubmittedMsg(
+      `Comprovativo da formação «${selectedPayCourse.title}» (${selectedPayCourse.priceKz.toLocaleString(
+        'pt-AO'
+      )} Kz via ${payMethod}) registado com sucesso! Assim que a Direcção Operacional confirmar o comprovativo (no mesmo dia para BANCO SOL / Express ou em 24h para outros bancos), a sua formação será imediatamente liberada e receberá notificação no WhatsApp (${payStudentPhone}) e E-mail (${payStudentEmail}).`
+    );
+  };
+
   const allLessons = activeCourse?.modules.flatMap((m) => m.lessons) || [];
   const [selectedLessonId, setSelectedLessonId] = useState<string>(allLessons[0]?.id || '');
   const activeLesson = allLessons.find((l) => l.id === selectedLessonId) || allLessons[0];
@@ -421,6 +490,7 @@ export const StudentPortal: React.FC = () => {
   const menuItems = [
     { id: 'Dashboard', icon: LayoutDashboard },
     { id: 'Meus Cursos', icon: BookOpen },
+    { id: 'Pagamentos', icon: CreditCard },
     { id: 'Aulas', icon: PlayCircle },
     { id: 'Materiais', icon: FileText },
     { id: 'Avaliações', icon: CheckSquare },
@@ -520,6 +590,17 @@ export const StudentPortal: React.FC = () => {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPaymentSubmittedMsg(null);
+                setActiveTab('Pagamentos');
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-colors"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Canais de Pagamento & Liberar Formação</span>
+            </button>
             <Link
               to="/formacoes"
               className="px-4 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-semibold"
@@ -565,87 +646,481 @@ export const StudentPortal: React.FC = () => {
         {/* Enrollments List & Course Selector */}
         {(activeTab === 'Dashboard' || activeTab === 'Meus Cursos' || activeTab === 'Progresso') && (
           <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-            <h2 className="text-lg font-bold text-[#061A2D]">As Minhas Inscrições e Progresso por Curso</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {myEnrollments.map((enr) => {
-                const matchedCourse = courses.find((c) => c.id === enr.courseId);
-                return (
-                <div
-                  key={enr.id}
-                  className={`p-5 rounded-xl border transition-colors ${
-                    selectedEnrollmentId === enr.id
-                      ? 'border-[#0077C8] bg-[#F5F9FC]'
-                      : 'border-slate-200 bg-white'
-                  }`}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h2 className="text-lg font-bold text-[#061A2D]">As Minhas Inscrições e Progresso por Curso</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentSubmittedMsg(null);
+                  setActiveTab('Pagamentos');
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0077C8] hover:underline"
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                <span> efectuar pagamento / enviar comprovativo para liberar formação →</span>
+              </button>
+            </div>
+
+            {myEnrollments.length === 0 ? (
+              <div className="p-6 rounded-xl bg-[#F5F9FC] border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-[#061A2D]">
+                    Ainda não possui nenhuma formação activa na sua conta
+                  </p>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Seleccione uma formação aqui no seu painel, realize o pagamento pelos canais oficiais (Express ou BANCO SOL) e envie o comprovativo para liberar as suas aulas.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentSubmittedMsg(null);
+                    setActiveTab('Pagamentos');
+                  }}
+                  className="px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shrink-0"
                 >
-                  {matchedCourse?.imageUrl && (
-                    <div className="h-36 w-full rounded-lg overflow-hidden mb-3 border border-slate-200 bg-[#061A2D]">
-                      <img
-                        src={matchedCourse.imageUrl}
-                        alt={enr.courseTitle}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover object-top"
-                      />
+                  Inscrever e Pagar Formação Agora →
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {myEnrollments.map((enr) => {
+                  const matchedCourse = courses.find((c) => c.id === enr.courseId);
+                  return (
+                    <div
+                      key={enr.id}
+                      className={`p-5 rounded-xl border transition-colors ${
+                        selectedEnrollmentId === enr.id
+                          ? 'border-[#0077C8] bg-[#F5F9FC]'
+                          : 'border-slate-200 bg-white'
+                      }`}
+                    >
+                      {matchedCourse?.imageUrl && (
+                        <div className="h-36 w-full rounded-lg overflow-hidden mb-3 border border-slate-200 bg-[#061A2D]">
+                          <img
+                            src={matchedCourse.imageUrl}
+                            alt={enr.courseTitle}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover object-top"
+                          />
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span>Modalidade: {enr.modality}</span>
+                        <span
+                          className={`font-mono-tabular font-bold ${
+                            enr.paymentStatus === 'Pago' ? 'text-emerald-700' : 'text-amber-700'
+                          }`}
+                        >
+                          Estado Pagamento: {enr.paymentStatus}
+                        </span>
+                      </div>
+                      <h3 className="text-base font-bold text-[#061A2D] mt-1">{enr.courseTitle}</h3>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Método: {enr.paymentMethod} · Ref:{' '}
+                        <span className="font-mono-tabular">{enr.paymentReference}</span>
+                      </p>
+
+                      {/* Progress bar */}
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="text-slate-600">Progresso de Conclusão</span>
+                          <span className="font-mono-tabular font-bold text-[#0077C8]">
+                            {enr.progressPercent}%
+                          </span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+                          <div
+                            className="h-full bg-[#0077C8] transition-all"
+                            style={{ width: `${enr.progressPercent}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
+                        {enr.paymentStatus === 'Pago' ? (
+                          <button
+                            onClick={() => {
+                              setSelectedEnrollmentId(enr.id);
+                              setActiveTab('Aulas');
+                            }}
+                            className="px-3.5 py-1.5 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-semibold"
+                          >
+                            Assistir às Aulas e Materiais
+                          </button>
+                        ) : (
+                          <div className="w-full space-y-2">
+                            <p className="text-xs text-amber-800 font-medium">
+                              Acesso aguarda pagamento / validação do comprovativo para liberar a formação.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedEnrollmentId(enr.id);
+                                setPayCourseId(enr.courseId);
+                                setPayMethod(enr.paymentMethod);
+                                setPayReference(enr.paymentReference);
+                                setPayReceiptNote(enr.receiptNote);
+                                setPaymentSubmittedMsg(null);
+                                setActiveTab('Pagamentos');
+                              }}
+                              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+                            >
+                              <CreditCard className="w-3.5 h-3.5" />
+                              <span>Pagar / Enviar Comprovativo para Liberar Formação</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {enr.completed && enr.paymentStatus === 'Pago' && (
+                          <button
+                            onClick={async () => {
+                              await issueCertificate(enr);
+                              setActiveTab('Certificados');
+                            }}
+                            className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold"
+                          >
+                            Obter Certificado QR
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )}
-                  <div className="flex items-center justify-between text-xs text-slate-500">
-                    <span>Modalidade: {enr.modality}</span>
-                    <span className="font-mono-tabular font-semibold text-[#061A2D]">
-                      Estado Pagamento: {enr.paymentStatus}
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MODO DE PAGAMENTO E CANAIS OFICIAIS PARA LIBERAR A FORMAÇÃO NO PAINEL DO ALUNO */}
+        {(activeTab === 'Pagamentos' ||
+          (activeTab === 'Dashboard' &&
+            (myEnrollments.length === 0 ||
+              myEnrollments.some((e) => e.paymentStatus !== 'Pago')))) && (
+          <div className="bg-white rounded-2xl border-2 border-[#0077C8] p-6 sm:p-8 shadow-sm space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+              <div>
+                <p className="text-xs font-bold text-[#0077C8] uppercase tracking-wider">
+                  Modo de Pagamento no Painel do Aluno · Liberação de Formação
+                </p>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-[#061A2D] mt-1">
+                  Canais de Pagamento Oficiais para Liberar a sua Formação
+                </h2>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  Realize o pagamento através de um dos canais oficiais abaixo e submeta o comprovativo directamente neste painel (ou envie pelo WhatsApp / E-mail) para liberar o acesso às vídeo-aulas, materiais e avaliação.
+                </p>
+              </div>
+              <Link
+                to="/politica-pagamentos"
+                className="text-xs font-bold text-[#0077C8] hover:underline whitespace-nowrap shrink-0"
+              >
+                Ver Política de Pagamentos Completa →
+              </Link>
+            </div>
+
+            {/* Official Payment Channels Cards inside Student Portal */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Canal 1: Multicaixa Express */}
+              <div className="rounded-xl bg-[#061A2D] text-white p-5 border border-[#0077C8]/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-[#19B5FE]" />
+                    <span className="text-xs font-bold text-[#19B5FE] uppercase tracking-wider">
+                      Canal 1 · Multicaixa Express
                     </span>
                   </div>
-                  <h3 className="text-base font-bold text-[#061A2D] mt-1">{enr.courseTitle}</h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Método: {enr.paymentMethod} · Ref: <span className="font-mono-tabular">{enr.paymentReference}</span>
-                  </p>
-
-                  {/* Progress bar */}
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-slate-600">Progresso de Conclusão</span>
-                      <span className="font-mono-tabular font-bold text-[#0077C8]">{enr.progressPercent}%</span>
+                  <span className="text-[11px] font-bold text-emerald-400">
+                    Validação no mesmo dia
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Efectue transferência ou pagamento móvel no Multicaixa Express para um dos números oficiais da ALHAN:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-slate-400">Express Principal</p>
+                      <p className="text-sm font-mono-tabular font-extrabold text-white">
+                        927 496 287
+                      </p>
                     </div>
-                    <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
-                      <div
-                        className="h-full bg-[#0077C8] transition-all"
-                        style={{ width: `${enr.progressPercent}%` }}
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => copyPaymentValue('927496287', 'st-exp1')}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-[11px] font-bold text-white"
+                    >
+                      {copiedPaymentField === 'st-exp1' ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                      <span>{copiedPaymentField === 'st-exp1' ? 'Copiado!' : 'Copiar'}</span>
+                    </button>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
-                    {enr.paymentStatus === 'Pago' ? (
-                      <button
-                        onClick={() => {
-                          setSelectedEnrollmentId(enr.id);
-                          setActiveTab('Aulas');
-                        }}
-                        className="px-3.5 py-1.5 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-semibold"
-                      >
-                        Assistir às Aulas e Materiais
-                      </button>
-                    ) : (
-                      <span className="text-xs text-amber-700 font-medium">
-                        Acesso aguarda validação do comprovativo pelo Administrador
-                      </span>
-                    )}
-
-                    {enr.completed && enr.paymentStatus === 'Pago' && (
-                      <button
-                        onClick={async () => {
-                          await issueCertificate(enr);
-                          setActiveTab('Certificados');
-                        }}
-                        className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold"
-                      >
-                        Obter Certificado QR
-                      </button>
-                    )}
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-slate-400">Express Alternativo</p>
+                      <p className="text-sm font-mono-tabular font-extrabold text-white">
+                        927 099 484
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => copyPaymentValue('927099484', 'st-exp2')}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-[11px] font-bold text-white"
+                    >
+                      {copiedPaymentField === 'st-exp2' ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                      <span>{copiedPaymentField === 'st-exp2' ? 'Copiado!' : 'Copiar'}</span>
+                    </button>
                   </div>
                 </div>
-                );
-              })}
+              </div>
+
+              {/* Canal 2: BANCO SOL (IBAN em nome de Graciete Garcia) */}
+              <div className="rounded-xl bg-[#061A2D] text-white p-5 border border-[#0077C8]/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-[#19B5FE]" />
+                    <span className="text-xs font-bold text-[#19B5FE] uppercase tracking-wider">
+                      Canal 2 · Transferência Bancária (BANCO SOL)
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-bold text-amber-300">
+                    Mesmo dia (Sol) / 24h (Outro banco)
+                  </span>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] text-slate-400">Coordenadas IBAN (BANCO SOL)</p>
+                    <p className="text-sm sm:text-base font-mono-tabular font-extrabold text-white tracking-wide mt-0.5">
+                      0044 0000 56903729141 08
+                    </p>
+                    <p className="text-xs text-slate-200 mt-1">
+                      Banco: <strong>BANCO SOL</strong> · Titular: <strong className="text-[#19B5FE]">Graciete Garcia</strong>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyPaymentValue('004400005690372914108', 'st-iban')}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-xs font-bold text-white shrink-0"
+                  >
+                    {copiedPaymentField === 'st-iban' ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-300" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    <span>{copiedPaymentField === 'st-iban' ? 'IBAN Copiado!' : 'Copiar IBAN'}</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-slate-300">
+                  <Clock className="w-3.5 h-3.5 text-[#19B5FE] shrink-0" />
+                  <span>
+                    <strong>Mesmo banco (BANCO SOL / Express):</strong> validado no mesmo dia · <strong>Banco diferente:</strong> leva 24h para ser validado.
+                  </span>
+                </div>
+              </div>
             </div>
+
+            {paymentSubmittedMsg && (
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-emerald-950">
+                    Comprovativo Registado para Liberação da Formação
+                  </p>
+                  <p className="text-xs text-emerald-800 leading-relaxed">{paymentSubmittedMsg}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Payment & Proof Submission Form inside Student Portal */}
+            <form
+              onSubmit={handleStudentPaymentSubmit}
+              className="p-5 sm:p-6 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-4"
+            >
+              <h3 className="text-sm font-extrabold text-[#061A2D]">
+                Registar Pagamento e Anexar Comprovativo para Liberar Formação
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    1. Seleccionar Formação a Liberar *
+                  </label>
+                  <select
+                    value={selectedPayCourse?.id || ''}
+                    onChange={(e) => {
+                      setPayCourseId(e.target.value);
+                      setPaymentSubmittedMsg(null);
+                    }}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs font-bold text-[#061A2D] focus:border-[#0077C8] focus:outline-none"
+                  >
+                    {courses
+                      .filter((c) => c.published)
+                      .map((c) => {
+                        const enrStatus = myEnrollments.find((e) => e.courseId === c.id)?.paymentStatus;
+                        return (
+                          <option key={c.id} value={c.id}>
+                            {c.title} — {c.priceKz.toLocaleString('pt-AO')} Kz{' '}
+                            {enrStatus ? `[Estado: ${enrStatus}]` : '[Nova Inscrição]'}
+                          </option>
+                        );
+                      })}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    2. Canal / Modo de Pagamento Utilizado *
+                  </label>
+                  <select
+                    value={payMethod}
+                    onChange={(e) => setPayMethod(e.target.value as EnrollmentItem['paymentMethod'])}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs font-bold text-[#061A2D] focus:border-[#0077C8] focus:outline-none"
+                  >
+                    <option value="Express Angola">
+                      Multicaixa Express (927 496 287 / 927 099 484) — Validação no mesmo dia
+                    </option>
+                    <option value="BANCO SOL (IBAN)">
+                      BANCO SOL — IBAN 0044 0000 56903729141 08 (Graciete Garcia)
+                    </option>
+                    <option value="Transferência / Comprovativo">
+                      Transferência Interbancária (Outro Banco — Validação 24h)
+                    </option>
+                    <option value="Unitel Money">Unitel Money</option>
+                    <option value="Africell Money">Africell Money</option>
+                    <option value="KWiK">KWiK (Pagamentos Instantâneos)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    3. Nº de Transacção / Referência do Talão *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={payReference}
+                    onChange={(e) => setPayReference(e.target.value)}
+                    placeholder="Ex: EXP-2026-99412 ou Nº Operação"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    4. Seu WhatsApp (para alerta de liberação) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={payStudentPhone}
+                    onChange={(e) => setPayStudentPhone(e.target.value)}
+                    placeholder="+244 923 000 000"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    5. Seu E-mail *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={payStudentEmail}
+                    onChange={(e) => setPayStudentEmail(e.target.value)}
+                    placeholder="aluno@exemplo.ao"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    6. Anexar Comprovativo de Pagamento (PDF ou Imagem — Opcional)
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf,image/*"
+                    onChange={handleReceiptFileUpload}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-[#061A2D] file:text-white hover:file:bg-[#0077C8]"
+                  />
+                  {payReceiptFileName && (
+                    <p className="text-[11px] text-emerald-700 font-semibold mt-1">
+                      ✓ Ficheiro anexado: {payReceiptFileName}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    7. Observações / Banco de Origem e Titular
+                  </label>
+                  <input
+                    type="text"
+                    value={payReceiptNote}
+                    onChange={(e) => setPayReceiptNote(e.target.value)}
+                    placeholder="Ex: Transferência Banco Sol em nome de..."
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200">
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shadow-sm transition-colors"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Submeter Comprovativo para Liberar Formação</span>
+                </button>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <a
+                    href={`https://wa.me/${COMPANY_INFO.whatsappNumber}?text=${encodeURIComponent(
+                      `Olá ALHAN, sou o(a) aluno(a) ${currentStudentName} e efectuei o pagamento da formação «${
+                        selectedPayCourse?.title || ''
+                      }» no valor de ${(selectedPayCourse?.priceKz || 0).toLocaleString(
+                        'pt-AO'
+                      )} Kz via ${payMethod} (Ref: ${
+                        payReference || 'Comprovativo'
+                      }). Solicito a validação para liberar a minha formação no Painel do Aluno. Meu WhatsApp: ${payStudentPhone}.`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>Enviar Comprovativo no WhatsApp</span>
+                  </a>
+
+                  <a
+                    href={`mailto:${COMPANY_INFO.email}?subject=${encodeURIComponent(
+                      `Comprovativo para Liberar Formação - ${selectedPayCourse?.title || ''}`
+                    )}&body=${encodeURIComponent(
+                      `Olá ALHAN,\n\nSou o(a) aluno(a) ${currentStudentName} e efectuei o pagamento para liberar a formação:\n\nCurso: ${
+                        selectedPayCourse?.title || ''
+                      }\nValor: ${(selectedPayCourse?.priceKz || 0).toLocaleString(
+                        'pt-AO'
+                      )} Kz\nCanal Utilizado: ${payMethod}\nReferência: ${payReference}\nWhatsApp: ${payStudentPhone}\nE-mail: ${payStudentEmail}\n\nSegue o comprovativo para validação administrativa.`
+                    )}`}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold transition-colors"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>Enviar por E-mail</span>
+                  </a>
+                </div>
+              </div>
+            </form>
           </div>
         )}
 
@@ -680,16 +1155,29 @@ export const StudentPortal: React.FC = () => {
               </div>
 
               {activeEnrollment.paymentStatus !== 'Pago' ? (
-                <div className="p-6 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3">
-                  <Lock className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-                  <div className="space-y-2">
-                    <h3 className="text-sm font-bold text-amber-950">
-                      Conteúdo Reservado a Alunos com Inscrição Validada
-                    </h3>
-                    <p className="text-xs text-amber-900 leading-relaxed">
-                      A sua inscrição no curso <strong>{activeEnrollment.courseTitle}</strong> encontra-se com estado <strong>«{activeEnrollment.paymentStatus}»</strong>. Assim que a Direcção Operacional da ALHAN validar o seu comprovativo de pagamento, os vídeos e materiais serão libertados automaticamente e receberá notificação no seu WhatsApp e E-mail.
-                    </p>
+                <div className="p-6 rounded-xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <Lock className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                    <div className="space-y-1.5">
+                      <h3 className="text-sm font-bold text-amber-950">
+                        Conteúdo Reservado — Realize o Pagamento para Liberar a Formação
+                      </h3>
+                      <p className="text-xs text-amber-900 leading-relaxed">
+                        A sua inscrição no curso <strong>{activeEnrollment.courseTitle}</strong> encontra-se com estado <strong>«{activeEnrollment.paymentStatus}»</strong>. Efectue o pagamento via <strong>Express (927496287 / 927099484)</strong> ou <strong>BANCO SOL (IBAN 0044 0000 56903729141 08 - Graciete Garcia)</strong> e submeta o comprovativo para liberar imediatamente as suas aulas.
+                      </p>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPayCourseId(activeEnrollment.courseId);
+                      setPaymentSubmittedMsg(null);
+                      setActiveTab('Pagamentos');
+                    }}
+                    className="px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shrink-0"
+                  >
+                    Canais de Pagamento & Enviar Comprovativo →
+                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -2314,7 +2802,19 @@ export const AdminPortal: React.FC = () => {
                       <td className="py-3 px-3">
                         {enr.paymentMethod} · <span className="font-mono-tabular">{enr.paymentReference}</span>
                       </td>
-                      <td className="py-3 px-3 text-slate-600">{enr.receiptNote}</td>
+                      <td className="py-3 px-3 text-slate-600">
+                        <p>{enr.receiptNote}</p>
+                        {enr.receiptFileUrl && (
+                          <a
+                            href={enr.receiptFileUrl}
+                            download={enr.receiptFileName || `Comprovativo_${enr.id}.pdf`}
+                            className="inline-flex items-center gap-1 mt-1 text-[11px] font-bold text-[#0077C8] hover:underline"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Baixar Comprovativo ({enr.receiptFileName || 'Anexo'})</span>
+                          </a>
+                        )}
+                      </td>
                       <td className="py-3 px-3">
                         <select
                           value={enr.paymentStatus}

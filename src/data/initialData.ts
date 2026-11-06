@@ -68,9 +68,17 @@ export interface EnrollmentItem {
   courseTitle: string;
   modality: 'Online' | 'Presencial' | 'Híbrida';
   amountKz: number;
-  paymentMethod: 'Express Angola' | 'Unitel Money' | 'Africell Money' | 'KWiK' | 'Transferência / Comprovativo';
+  paymentMethod:
+    | 'Express Angola'
+    | 'BANCO SOL (IBAN)'
+    | 'Unitel Money'
+    | 'Africell Money'
+    | 'KWiK'
+    | 'Transferência / Comprovativo';
   paymentReference: string;
   receiptNote: string;
+  receiptFileUrl?: string;
+  receiptFileName?: string;
   paymentStatus: 'Pendente' | 'Pago' | 'Falhado' | 'Cancelado' | 'Reembolsado';
   progressPercent: number;
   completedLessons: string[];
