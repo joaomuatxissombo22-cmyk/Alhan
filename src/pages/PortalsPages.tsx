@@ -48,7 +48,7 @@ import {
 } from '../data/initialData';
 
 // ==========================================
-// COMPONENTE DE CONTROLO DE ACESSO POR PAINEL (USER & SENHA)
+// COMPONENTE DE CONTROLO DE ACESSO PRIVADO POR PAINEL
 // ==========================================
 const PanelAccessGate: React.FC<{
   allowedRoles: UserRole[];
@@ -57,13 +57,24 @@ const PanelAccessGate: React.FC<{
   panelSubtitle: string;
   children: (onLockPanel: () => void) => React.ReactNode;
 }> = ({ allowedRoles, defaultRole, panelTitle, panelSubtitle, children }) => {
-  const { user, panelCredentials, loginWithCredentials, logout } = useApp();
+  const { user, loginWithCredentials, registerAccount, logout } = useApp();
   const navigate = useNavigate();
 
-  const defaultCred = panelCredentials.find((c) => c.role === defaultRole) || panelCredentials[0];
-  const [selectedRole, setSelectedRole] = useState<UserRole>(defaultRole);
-  const [usernameInput, setUsernameInput] = useState(defaultCred?.username || 'user');
-  const [passwordInput, setPasswordInput] = useState(defaultCred?.password || 'user');
+  const isRegistrationRequiredRole =
+    defaultRole === 'ALUNO' || defaultRole === 'CLIENTE_EMPRESARIAL';
+
+  const [gateMode, setGateMode] = useState<'login' | 'registo'>('login');
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+
+  // Registration fields for Aluno / Cliente Empresarial
+  const [regFullName, setRegFullName] = useState('');
+  const [regCompanyName, setRegCompanyName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPhone, setRegPhone] = useState('+244 ');
+  const [regUsername, setRegUsername] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [forceLocked, setForceLocked] = useState(false);
 
@@ -77,7 +88,21 @@ const PanelAccessGate: React.FC<{
     e.preventDefault();
     setErrorMsg(null);
     try {
-      const resolved = await loginWithCredentials(usernameInput, passwordInput, selectedRole);
+      if (gateMode === 'registo' && isRegistrationRequiredRole) {
+        await registerAccount({
+          fullName: regFullName,
+          email: regEmail,
+          phone: regPhone,
+          username: regUsername,
+          password: regPassword,
+          role: defaultRole,
+          companyName: defaultRole === 'CLIENTE_EMPRESARIAL' ? regCompanyName : undefined,
+        });
+        setForceLocked(false);
+        return;
+      }
+
+      const resolved = await loginWithCredentials(usernameInput, passwordInput, defaultRole);
       setForceLocked(false);
       if (!allowedRoles.includes(resolved)) {
         if (resolved === 'SUPER_ADMIN' || resolved === 'ADMIN') navigate('/admin');
@@ -91,9 +116,9 @@ const PanelAccessGate: React.FC<{
   };
 
   return (
-    <div className="py-12 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="py-14 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-5">
+        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-5">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-[#061A2D] text-[#19B5FE] flex items-center justify-center shrink-0">
               <Lock className="w-5 h-5" />
@@ -104,75 +129,187 @@ const PanelAccessGate: React.FC<{
             </div>
           </div>
 
+          {isRegistrationRequiredRole && (
+            <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
+              <button
+                type="button"
+                onClick={() => {
+                  setGateMode('login');
+                  setErrorMsg(null);
+                }}
+                className={`py-2 text-xs font-bold rounded-md ${
+                  gateMode === 'login' ? 'bg-white text-[#061A2D] shadow-sm' : 'text-slate-600'
+                }`}
+              >
+                Já sou Cadastrado (Login)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGateMode('registo');
+                  setErrorMsg(null);
+                }}
+                className={`py-2 text-xs font-bold rounded-md ${
+                  gateMode === 'registo' ? 'bg-white text-[#061A2D] shadow-sm' : 'text-slate-600'
+                }`}
+              >
+                Cadastrar Conta Agora
+              </button>
+            </div>
+          )}
+
           <p className="text-xs text-slate-600 leading-relaxed">
-            Introduza o <strong>Utilizador (User)</strong> e a <strong>Senha</strong> de acesso para entrar neste painel.
+            {isRegistrationRequiredRole
+              ? gateMode === 'registo'
+                ? defaultRole === 'ALUNO'
+                  ? 'Preencha os seus dados abaixo para criar a sua conta de Aluno e activar o seu Painel LMS privado.'
+                  : 'Preencha os dados da sua organização abaixo para cadastrar a sua empresa e activar o Painel do Cliente Empresarial.'
+                : 'Este painel é privado e exclusivo para utilizadores cadastrados. Introduza o seu Utilizador/E-mail e Senha ou cadastre a sua conta.'
+              : 'Painel de acesso estritamente privado e restrito. Introduza as suas credenciais corporativas autorizadas pela ALHAN.'}
           </p>
 
           {errorMsg && (
-            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+            <div className="p-3.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 leading-relaxed">
               {errorMsg}
             </div>
           )}
 
           <form onSubmit={handleAuth} className="space-y-3.5">
-            <div>
-              <label className="block text-xs font-bold text-[#061A2D] mb-1">Painel de Destino</label>
-              <select
-                value={selectedRole}
-                onChange={(e) => {
-                  const r = e.target.value as UserRole;
-                  setSelectedRole(r);
-                  const cred = panelCredentials.find((c) => c.role === r);
-                  if (cred) {
-                    setUsernameInput(cred.username);
-                    setPasswordInput(cred.password);
-                  }
-                }}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#061A2D] bg-white"
-              >
-                {panelCredentials.map((c) => (
-                  <option key={c.role} value={c.role}>
-                    {c.panelName} (User: {c.username})
-                  </option>
-                ))}
-              </select>
-            </div>
+            {gateMode === 'registo' && isRegistrationRequiredRole ? (
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    {defaultRole === 'CLIENTE_EMPRESARIAL'
+                      ? 'Nome do Responsável / Representante *'
+                      : 'Nome Completo do Aluno *'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={regFullName}
+                    onChange={(e) => setRegFullName(e.target.value)}
+                    placeholder="Nome completo"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-xs font-bold text-[#061A2D] mb-1">Utilizador (User) *</label>
-              <input
-                type="text"
-                required
-                value={usernameInput}
-                onChange={(e) => setUsernameInput(e.target.value)}
-                placeholder="Ex: admin, superadmin, professor, empresa, aluno"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
-              />
-            </div>
+                {defaultRole === 'CLIENTE_EMPRESARIAL' && (
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      Nome da Empresa / Organização *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={regCompanyName}
+                      onChange={(e) => setRegCompanyName(e.target.value)}
+                      placeholder="Ex: Sociedade Industrial de Luanda, Lda"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                    />
+                  </div>
+                )}
 
-            <div>
-              <label className="block text-xs font-bold text-[#061A2D] mb-1">Senha (Palavra-passe) *</label>
-              <input
-                type="password"
-                required
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="Senha: user"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
-              />
-            </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">E-mail *</label>
+                    <input
+                      type="email"
+                      required
+                      value={regEmail}
+                      onChange={(e) => setRegEmail(e.target.value)}
+                      placeholder="email@dominio.ao"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">Telefone / WhatsApp *</label>
+                    <input
+                      type="text"
+                      required
+                      value={regPhone}
+                      onChange={(e) => setRegPhone(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                    />
+                  </div>
+                </div>
 
-            <button
-              type="submit"
-              className="w-full py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
-            >
-              Autenticar e Entrar no Painel
-            </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">Utilizador (User) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={regUsername}
+                      onChange={(e) => setRegUsername(e.target.value)}
+                      placeholder="Ex: joao.mateus"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">Criar Senha *</label>
+                    <input
+                      type="password"
+                      required
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                      placeholder="Crie a sua senha"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+                >
+                  Concluir Cadastro e Abrir Meu Painel Privado
+                </button>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    Utilizador (User) ou E-mail *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    placeholder="Introduza o seu utilizador ou e-mail"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    Senha (Palavra-passe) *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    placeholder="Introduza a sua palavra-passe"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+                >
+                  Autenticar e Entrar no Painel Privado
+                </button>
+              </>
+            )}
           </form>
 
           {user && (
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-              <span>Sessão actual: <strong>{user.role}</strong></span>
+              <span>
+                Sessão activa: <strong>{user.fullName}</strong> ({user.role})
+              </span>
               <button
                 type="button"
                 onClick={() => logout()}
@@ -184,47 +321,39 @@ const PanelAccessGate: React.FC<{
           )}
         </div>
 
-        <div className="lg:col-span-6 bg-[#061A2D] text-white rounded-2xl border border-[#0077C8]/40 p-6 sm:p-8 space-y-4">
+        <div className="lg:col-span-5 bg-[#061A2D] text-white rounded-2xl border border-[#0077C8]/40 p-6 sm:p-8 space-y-4">
           <div>
-            <p className="text-xs font-semibold text-[#19B5FE]">Credenciais Oficiais RBAC</p>
-            <h2 className="text-base sm:text-lg font-extrabold text-white mt-0.5">
-              Acesso a Cada Painel Administrativo (User & Senha)
+            <p className="text-xs font-semibold text-[#19B5FE]">Acesso Protegido ALHAN SGI</p>
+            <h2 className="text-base sm:text-lg font-extrabold text-white mt-1">
+              {isRegistrationRequiredRole
+                ? 'Painel Exclusivo para Contas Cadastradas'
+                : 'Ambiente Corporativo Restrito'}
             </h2>
-            <p className="text-xs text-slate-300 mt-1">
-              Seleccione qualquer painel abaixo para preencher automaticamente o <strong>User</strong> e a <strong>Senha (`user`)</strong>:
+            <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+              {isRegistrationRequiredRole
+                ? 'Por razões de segurança e confidencialidade, o Painel do Aluno e o Painel do Cliente Empresarial não possuem modo público de demonstração e só existem após o cadastro do aluno ou da empresa.'
+                : 'O Painel do Professor e o Painel Administrativo Central são estritamente privados e reservados à equipa autorizada da ALHAN.'}
             </p>
           </div>
 
-          <div className="space-y-2.5">
-            {panelCredentials.map((cred) => (
-              <div
-                key={cred.role}
-                className="p-3.5 rounded-xl bg-white/5 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-              >
-                <div>
-                  <p className="text-xs font-bold text-white">{cred.panelName}</p>
-                  <p className="text-[11px] font-mono-tabular text-slate-300 mt-0.5">
-                    User: <strong className="text-[#19B5FE]">{cred.username}</strong> · Senha:{' '}
-                    <strong className="text-emerald-400">{cred.password}</strong>
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const r = await loginWithCredentials(cred.username, cred.password, cred.role);
-                    setForceLocked(false);
-                    if (r === 'SUPER_ADMIN' || r === 'ADMIN') navigate('/admin');
-                    else if (r === 'PROFESSOR') navigate('/professor');
-                    else if (r === 'CLIENTE_EMPRESARIAL') navigate('/empresa');
-                    else navigate('/aluno');
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold whitespace-nowrap shrink-0"
-                >
-                  Entrar ({cred.username})
-                </button>
-              </div>
-            ))}
+          <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2 text-xs text-slate-300">
+            <p className="font-bold text-white">Isolamento e Protecção de Dados:</p>
+            <ul className="space-y-1.5 list-disc list-inside text-[11px] leading-relaxed">
+              <li>Autenticação obrigatória por utilizador e palavra-passe;</li>
+              <li>Protecção de vídeos, materiais pedagógicos e certificados QR;</li>
+              <li>Isolamento rigoroso de projectos ISO, auditorias e RNCs por empresa.</li>
+            </ul>
           </div>
+
+          {isRegistrationRequiredRole && gateMode === 'login' && (
+            <button
+              type="button"
+              onClick={() => setGateMode('registo')}
+              className="w-full py-2.5 px-4 rounded-xl bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+            >
+              Ainda não tem conta? Cadastrar Agora →
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -244,7 +373,6 @@ export const StudentPortal: React.FC = () => {
     completeLesson,
     issueCertificate,
     logout,
-    switchRoleForDemo,
   } = useApp();
   const navigate = useNavigate();
 
@@ -261,15 +389,19 @@ export const StudentPortal: React.FC = () => {
     | 'Meu Perfil'
   >('Dashboard');
 
-  const currentStudentId = user?.role === 'ALUNO' ? user.uid : 'demo-aluno-01';
-  const currentStudentName = user?.role === 'ALUNO' ? user.fullName : '[DEMO] Manuel João Mateus';
+  const currentStudentId = user?.uid || '';
+  const currentStudentName = user?.fullName || 'Aluno Registado';
 
-  // Data isolation: student only sees their own enrollments & certificates
+  // Data isolation: student sees their own enrollments & certificates (matched by uid or registered email)
   const myEnrollments = enrollments.filter(
-    (e) => e.studentId === currentStudentId || e.studentId === 'demo-aluno-01'
+    (e) =>
+      e.studentId === currentStudentId ||
+      (user?.email && e.studentEmail?.toLowerCase() === user.email.toLowerCase())
   );
   const myCertificates = certificates.filter(
-    (c) => c.studentId === currentStudentId || c.studentId === 'demo-aluno-01'
+    (c) =>
+      c.studentId === currentStudentId ||
+      (user?.email && c.studentEmail?.toLowerCase() === user.email.toLowerCase())
   );
 
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string>(
@@ -313,10 +445,10 @@ export const StudentPortal: React.FC = () => {
 
   return (
     <PanelAccessGate
-      allowedRoles={['ALUNO', 'ADMIN', 'SUPER_ADMIN']}
+      allowedRoles={['ALUNO']}
       defaultRole="ALUNO"
-      panelTitle="Painel do Aluno (Academia LMS)"
-      panelSubtitle="Acesso Reservado ao Formando · User: aluno | Senha: user"
+      panelTitle="Painel Privado do Aluno (Academia LMS)"
+      panelSubtitle="Acesso Exclusivo para Alunos Cadastrados"
     >
       {(onLockPanel) => (
         <div className="min-h-[calc(100vh-8rem)] flex flex-col lg:flex-row bg-[#F5F9FC]">
@@ -325,14 +457,14 @@ export const StudentPortal: React.FC = () => {
             <div>
               <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold text-[#19B5FE]">Área Reservada do Aluno · LMS</p>
+                  <p className="text-[11px] font-semibold text-[#19B5FE]">Área Privada do Aluno · LMS</p>
                   <p className="text-sm font-bold text-white truncate mt-0.5">{currentStudentName}</p>
-                  <p className="text-[11px] font-mono-tabular text-[#9AA6AE]">User: aluno · Senha: user</p>
+                  <p className="text-[11px] font-mono-tabular text-[#9AA6AE] truncate">{user?.email}</p>
                 </div>
                 <button
                   type="button"
                   onClick={onLockPanel}
-                  title="Bloquear Painel / Mudar Utilizador"
+                  title="Bloquear Painel"
                   className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[#19B5FE] shrink-0"
                 >
                   <Lock className="w-3.5 h-3.5" />
@@ -555,17 +687,8 @@ export const StudentPortal: React.FC = () => {
                       Conteúdo Reservado a Alunos com Inscrição Validada
                     </h3>
                     <p className="text-xs text-amber-900 leading-relaxed">
-                      A sua inscrição no curso <strong>{activeEnrollment.courseTitle}</strong> encontra-se com estado <strong>«{activeEnrollment.paymentStatus}»</strong>. Assim que o Administrador validar o seu pagamento no Painel Administrativo, os vídeos e materiais serão libertados.
+                      A sua inscrição no curso <strong>{activeEnrollment.courseTitle}</strong> encontra-se com estado <strong>«{activeEnrollment.paymentStatus}»</strong>. Assim que a Direcção Operacional da ALHAN validar o seu comprovativo de pagamento, os vídeos e materiais serão libertados automaticamente e receberá notificação no seu WhatsApp e E-mail.
                     </p>
-                    <button
-                      onClick={() => {
-                        switchRoleForDemo('ADMIN');
-                        navigate('/admin');
-                      }}
-                      className="px-3.5 py-1.5 rounded-lg bg-[#061A2D] text-white text-xs font-semibold"
-                    >
-                      Testar Validação como Administrador →
-                    </button>
                   </div>
                 </div>
               ) : (
@@ -894,22 +1017,22 @@ export const ProfessorPortal: React.FC = () => {
     <PanelAccessGate
       allowedRoles={['PROFESSOR', 'ADMIN', 'SUPER_ADMIN']}
       defaultRole="PROFESSOR"
-      panelTitle="Painel do Professor / Formador"
-      panelSubtitle="Acesso Docente · User: professor | Senha: user"
+      panelTitle="Painel Privado do Professor / Formador"
+      panelSubtitle="Acesso Docente Estritamente Privado · ALHAN SGI"
     >
       {(onLockPanel) => (
         <div className="min-h-[calc(100vh-8rem)] flex flex-col lg:flex-row bg-[#F5F9FC]">
           <aside className="w-full lg:w-64 bg-[#061A2D] text-[#F5F9FC] p-4 shrink-0">
             <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between gap-2">
               <div>
-                <p className="text-[11px] font-semibold text-[#19B5FE]">Painel do Professor / Formador</p>
+                <p className="text-[11px] font-semibold text-[#19B5FE]">Painel Privado do Professor</p>
                 <p className="text-sm font-bold text-white mt-0.5">Equipa Pedagógica ALHAN</p>
-                <p className="text-[10px] font-mono-tabular text-[#9AA6AE]">User: professor · Senha: user</p>
+                <p className="text-[10px] font-mono-tabular text-[#9AA6AE]">Sessão Docente Autenticada</p>
               </div>
               <button
                 type="button"
                 onClick={onLockPanel}
-                title="Bloquear Painel / Mudar Utilizador"
+                title="Bloquear Painel"
                 className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[#19B5FE] shrink-0"
               >
                 <Lock className="w-3.5 h-3.5" />
@@ -1151,6 +1274,7 @@ export const ProfessorPortal: React.FC = () => {
 // ==========================================
 export const CompanyPortal: React.FC = () => {
   const {
+    user,
     isoProjects,
     isoDocuments,
     isoAudits,
@@ -1163,8 +1287,10 @@ export const CompanyPortal: React.FC = () => {
     'Visão Geral & Cronograma' | 'Gestão Documental ISO' | 'Auditorias Internas' | 'Não Conformidades e Acções Correctivas' | 'Indicadores'
   >('Visão Geral & Cronograma');
 
-  // Strict Company Isolation: Company only sees its own ISO project
-  const myProject = isoProjects[0];
+  // Strict Company Isolation: Registered company sees its own ISO project
+  const myProject =
+    isoProjects.find((p) => user?.companyId && p.companyId === user.companyId) ||
+    isoProjects[0];
   const myDocs = isoDocuments.filter((d) => d.companyId === myProject?.companyId);
   const myAudits = isoAudits.filter((a) => a.companyId === myProject?.companyId);
   const myNCs = nonConformities.filter((n) => n.companyId === myProject?.companyId);
@@ -1185,10 +1311,10 @@ export const CompanyPortal: React.FC = () => {
 
   return (
     <PanelAccessGate
-      allowedRoles={['CLIENTE_EMPRESARIAL', 'ADMIN', 'SUPER_ADMIN']}
+      allowedRoles={['CLIENTE_EMPRESARIAL']}
       defaultRole="CLIENTE_EMPRESARIAL"
-      panelTitle="Painel de Cliente Empresarial (Consultoria ISO)"
-      panelSubtitle="Acesso Empresarial · User: empresa | Senha: user"
+      panelTitle="Painel Privado do Cliente Empresarial (Consultoria ISO)"
+      panelSubtitle="Acesso Exclusivo para Empresas Cadastradas"
     >
       {(onLockPanel) => (
         <div className="py-10 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
@@ -1197,7 +1323,7 @@ export const CompanyPortal: React.FC = () => {
             <div>
               <div className="flex items-center gap-3">
                 <p className="text-xs font-semibold text-[#19B5FE]">
-                  Área Reservada de Clientes Empresariais · User: empresa | Senha: user
+                  Ambiente Privado de Clientes Empresariais · Isolamento por Empresa Activo
                 </p>
                 <button
                   type="button"
@@ -1205,11 +1331,11 @@ export const CompanyPortal: React.FC = () => {
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px] font-semibold text-white"
                 >
                   <Lock className="w-3 h-3 text-[#19B5FE]" />
-                  <span>Mudar Utilizador</span>
+                  <span>Bloquear Painel</span>
                 </button>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
-                {myProject?.companyName}
+                {user?.companyName || myProject?.companyName}
               </h1>
               <p className="text-xs text-[#F5F9FC]/80 mt-1">
                 <strong>Normas em implementação:</strong> {myProject?.standards} · <strong>Estado:</strong> {myProject?.status}
@@ -1699,7 +1825,7 @@ export const AdminPortal: React.FC = () => {
       allowedRoles={['ADMIN', 'SUPER_ADMIN']}
       defaultRole="ADMIN"
       panelTitle="Painel Administrativo Central ALHAN"
-      panelSubtitle="Acesso Administrativo · User: admin / superadmin | Senha: user"
+      panelSubtitle="Acesso Administrativo Estritamente Privado · Direcção ALHAN"
     >
       {(onLockPanel) => (
         <div className="min-h-[calc(100vh-8rem)] flex flex-col lg:flex-row bg-[#F5F9FC]">
@@ -1707,14 +1833,14 @@ export const AdminPortal: React.FC = () => {
           <aside className="w-full lg:w-72 bg-[#061A2D] text-[#F5F9FC] p-4 shrink-0">
             <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between gap-2">
               <div>
-                <p className="text-[11px] font-semibold text-[#19B5FE]">Painel Administrativo Central · Secção 25</p>
+                <p className="text-[11px] font-semibold text-[#19B5FE]">Painel Administrativo Privado</p>
                 <p className="text-sm font-bold text-white mt-0.5">ALHAN – Gestão Integrada</p>
-                <p className="text-[10px] font-mono-tabular text-[#9AA6AE]">User: admin · Senha: user</p>
+                <p className="text-[10px] font-mono-tabular text-[#9AA6AE]">Sessão Administrativa Autenticada</p>
               </div>
               <button
                 type="button"
                 onClick={onLockPanel}
-                title="Bloquear Painel / Mudar Utilizador"
+                title="Bloquear Painel"
                 className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[#19B5FE] shrink-0"
               >
                 <Lock className="w-3.5 h-3.5" />

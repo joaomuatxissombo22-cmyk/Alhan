@@ -28,7 +28,7 @@ import { useApp } from '../context/AppContext';
 import { COMPANY_INFO, CourseItem, EnrollmentItem, UserRole } from '../data/initialData';
 
 export const CoursesCatalogPage: React.FC = () => {
-  const { courses, createEnrollment, submitDiagnosticOrContact, user, switchRoleForDemo } = useApp();
+  const { courses, createEnrollment, submitDiagnosticOrContact, user } = useApp();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -47,6 +47,7 @@ export const CoursesCatalogPage: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<EnrollmentItem['paymentMethod']>('Express Angola');
   const [paymentRef, setPaymentRef] = useState('');
   const [receiptNote, setReceiptNote] = useState('');
+  const [studentNameInput, setStudentNameInput] = useState(user?.fullName || '');
   const [studentWhatsapp, setStudentWhatsapp] = useState(user?.phone || '+244 ');
   const [studentEmailInput, setStudentEmailInput] = useState(user?.email || '');
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -80,20 +81,18 @@ export const CoursesCatalogPage: React.FC = () => {
   const handleOnlineEnroll = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCourse) return;
-    if (!user) {
-      switchRoleForDemo('ALUNO');
-    }
     const created = await createEnrollment({
       course: selectedCourse,
       modality: selectedCourse.modality,
       paymentMethod,
       paymentReference: paymentRef || `REF-${Date.now().toString().slice(-6)}`,
       receiptNote: receiptNote || `Comprovativo via ${paymentMethod} enviado pelo formando.`,
+      studentName: studentNameInput.trim() || user?.fullName || 'Formando Inscrito',
       studentPhone: studentWhatsapp.trim(),
       studentEmail: studentEmailInput.trim(),
     });
     setEnrollSuccess(
-      `Inscrição #${created.id} registada com sucesso! O comprovativo foi submetido para validação administrativa. Assim que o pagamento for confirmado pelo Administrador, receberá uma notificação no seu WhatsApp (${studentWhatsapp}) ou E-mail (${studentEmailInput}) e o acesso ao curso será automaticamente ativado.`
+      `Inscrição #${created.id} registada com sucesso! O comprovativo foi submetido para validação administrativa. Assim que o pagamento for confirmado pelo Administrador, receberá uma notificação no seu WhatsApp (${studentWhatsapp}) ou E-mail (${studentEmailInput}) e o acesso ao curso será activado no seu Painel do Aluno.`
     );
   };
 
@@ -170,16 +169,25 @@ export const CoursesCatalogPage: React.FC = () => {
         {filteredCourses.map((course) => (
           <div
             key={course.id}
-            className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between hover:border-[#0077C8] transition-colors group"
+            className={`bg-white rounded-xl ${
+              course.featured
+                ? 'border-2 border-[#0077C8] ring-4 ring-[#0077C8]/10 shadow-md'
+                : 'border border-slate-200'
+            } overflow-hidden flex flex-col justify-between hover:border-[#0077C8] transition-colors group`}
           >
             <div>
-              <div className="relative h-48 w-full bg-[#061A2D] overflow-hidden border-b border-slate-200">
+              <div className="relative h-52 w-full bg-[#061A2D] overflow-hidden border-b border-slate-200">
                 <img
                   src={course.imageUrl}
                   alt={course.title}
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
                 />
+                {course.featured && (
+                  <div className="absolute top-3 left-3 px-3 py-1 rounded-md bg-[#061A2D]/90 border border-[#19B5FE]/50 text-[#19B5FE] text-[11px] font-extrabold shadow-md">
+                    ★ {course.featuredBadge || 'Formação em Destaque'}
+                  </div>
+                )}
               </div>
 
               <div className="p-6">
@@ -294,15 +302,27 @@ export const CoursesCatalogPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-3 pt-2">
-                    <button
-                      onClick={() => {
-                        setSelectedCourse(null);
-                        navigate('/aluno');
-                      }}
-                      className="px-4 py-2 rounded-lg bg-[#061A2D] text-white text-xs font-semibold hover:bg-[#0077C8]"
-                    >
-                      Ir para a Área do Aluno (LMS)
-                    </button>
+                    {user?.role === 'ALUNO' ? (
+                      <button
+                        onClick={() => {
+                          setSelectedCourse(null);
+                          navigate('/aluno');
+                        }}
+                        className="px-4 py-2 rounded-lg bg-[#061A2D] text-white text-xs font-semibold hover:bg-[#0077C8]"
+                      >
+                        Ir para o Meu Painel do Aluno (LMS)
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setSelectedCourse(null);
+                          navigate('/registo');
+                        }}
+                        className="px-4 py-2 rounded-lg bg-[#0077C8] text-white text-xs font-semibold hover:bg-[#008FEA]"
+                      >
+                        Cadastrar Conta de Aluno para Aceder ao Painel LMS
+                      </button>
+                    )}
                     <button
                       onClick={() => setSelectedCourse(null)}
                       className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100"
@@ -435,10 +455,23 @@ export const CoursesCatalogPage: React.FC = () => {
                   </div>
 
                   {/* Student Contact Info for Notification */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                     <div>
                       <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                        Seu WhatsApp / Telefone (para notificação de ativação) *
+                        Nome Completo do Aluno *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Seu nome completo"
+                        value={studentNameInput}
+                        onChange={(e) => setStudentNameInput(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Seu WhatsApp / Telefone *
                       </label>
                       <input
                         type="text"
@@ -451,7 +484,7 @@ export const CoursesCatalogPage: React.FC = () => {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                        Seu E-mail (para envio de confirmação) *
+                        Seu E-mail *
                       </label>
                       <input
                         type="email"
@@ -663,7 +696,7 @@ export const CoursesCatalogPage: React.FC = () => {
 export const VerifyCertificatePage: React.FC = () => {
   const { certificates } = useApp();
   const [searchParams] = useSearchParams();
-  const initialCode = searchParams.get('codigo') || 'ALHAN-DEMO-2026-001';
+  const initialCode = searchParams.get('codigo') || 'ALHAN-SGI-2026-001';
 
   // Mode tab: 'codigo' or 'presencial_bi'
   const [activeTab, setActiveTab] = useState<'codigo' | 'presencial_bi'>(
@@ -763,7 +796,7 @@ export const VerifyCertificatePage: React.FC = () => {
                   type="text"
                   value={codeQuery}
                   onChange={(e) => setCodeQuery(e.target.value)}
-                  placeholder="Introduza o código (Ex: ALHAN-DEMO-2026-001 ou ALH-PRES-2026-0042)"
+                  placeholder="Introduza o código (Ex: ALHAN-SGI-2026-001 ou ALH-PRES-2026-0042)"
                   className="w-full pl-10 pr-4 py-3 rounded-lg border border-slate-300 text-sm font-mono-tabular focus:border-[#0077C8] focus:outline-none"
                 />
               </div>
@@ -1465,16 +1498,17 @@ export const DiagnosticAndContactPage: React.FC<{ mode: 'diagnostico' | 'contact
 };
 
 export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ initialMode }) => {
-  const { loginWithGoogle, loginWithCredentials, registerAccount, panelCredentials } = useApp();
+  const { loginWithGoogle, loginWithCredentials, registerAccount } = useApp();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<'login' | 'registo' | 'recuperar'>(initialMode);
-  const [role, setRole] = useState<UserRole>('ADMIN');
+  const [role, setRole] = useState<UserRole>('ALUNO');
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('admin');
+  const [companyName, setCompanyName] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('+244 ');
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('user');
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [recoverySent, setRecoverySent] = useState(false);
@@ -1501,15 +1535,17 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
           setErrorMsg('A palavra-passe e a confirmação da palavra-passe não coincidem.');
           return;
         }
+        const regRole: UserRole = role === 'CLIENTE_EMPRESARIAL' ? 'CLIENTE_EMPRESARIAL' : 'ALUNO';
         await registerAccount({
           fullName,
           email,
           phone,
           username,
           password,
-          role,
+          role: regRole,
+          companyName: regRole === 'CLIENTE_EMPRESARIAL' ? companyName : undefined,
         });
-        redirectByRole(role);
+        redirectByRole(regRole);
       } else {
         const resolvedRole = await loginWithCredentials(email || username, password, role);
         redirectByRole(resolvedRole);
@@ -1523,7 +1559,7 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
     <div className="py-14 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left: Login / Register Form */}
-        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
+        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
             <img
               src={COMPANY_INFO.logoPath}
@@ -1532,9 +1568,13 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
               className="h-12 w-12 object-contain"
             />
             <div>
-              <p className="text-xs font-bold text-[#0077C8]">Controlo de Acesso e Sessões · Secção 11</p>
+              <p className="text-xs font-bold text-[#0077C8]">Controlo de Acesso Privado · ALHAN SGI</p>
               <h1 className="text-xl font-extrabold text-[#061A2D]">
-                {mode === 'login' ? 'Iniciar Sessão no Painel' : mode === 'registo' ? 'Criar Conta na Plataforma' : 'Recuperar Palavra-passe'}
+                {mode === 'login'
+                  ? 'Iniciar Sessão no Painel Privado'
+                  : mode === 'registo'
+                  ? 'Cadastro de Aluno ou Cliente Empresarial'
+                  : 'Recuperar Palavra-passe'}
               </h1>
             </div>
           </div>
@@ -1543,36 +1583,50 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
           <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg mb-6">
             <button
               type="button"
-              onClick={() => { setMode('login'); setErrorMsg(null); }}
+              onClick={() => {
+                setMode('login');
+                setErrorMsg(null);
+              }}
               className={`py-2 text-xs font-bold rounded-md ${
                 mode === 'login' ? 'bg-white text-[#061A2D] shadow-sm' : 'text-slate-600'
               }`}
             >
-              Login (Utilizador & Senha)
+              Iniciar Sessão (Login)
             </button>
             <button
               type="button"
-              onClick={() => { setMode('registo'); setErrorMsg(null); }}
+              onClick={() => {
+                setMode('registo');
+                if (role !== 'ALUNO' && role !== 'CLIENTE_EMPRESARIAL') {
+                  setRole('ALUNO');
+                }
+                setErrorMsg(null);
+              }}
               className={`py-2 text-xs font-bold rounded-md ${
                 mode === 'registo' ? 'bg-white text-[#061A2D] shadow-sm' : 'text-slate-600'
               }`}
             >
-              Registo Completo
+              Criar Conta / Cadastrar
             </button>
           </div>
 
           {errorMsg && (
-            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+            <div className="mb-4 p-3.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 leading-relaxed">
               {errorMsg}
             </div>
           )}
 
           {mode === 'recuperar' && recoverySent ? (
             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-3">
-              <p>Instruções de recuperação de palavra-passe registadas para <strong>{email}</strong>.</p>
+              <p>
+                Instruções de recuperação de palavra-passe registadas para <strong>{email}</strong>.
+              </p>
               <button
                 type="button"
-                onClick={() => { setMode('login'); setRecoverySent(false); }}
+                onClick={() => {
+                  setMode('login');
+                  setRecoverySent(false);
+                }}
                 className="px-4 py-2 rounded-lg bg-[#061A2D] text-white font-semibold"
               >
                 Voltar ao Login
@@ -1581,54 +1635,86 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-[#061A2D] mb-1">Painel / Perfil de Acesso (RBAC)</label>
-                <select
-                  value={role}
-                  onChange={(e) => {
-                    const newRole = e.target.value as UserRole;
-                    setRole(newRole);
-                    const cred = panelCredentials.find((c) => c.role === newRole);
-                    if (cred && mode === 'login') {
-                      setEmail(cred.username);
-                      setPassword(cred.password);
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white focus:border-[#0077C8] focus:outline-none font-semibold text-[#061A2D]"
-                >
-                  <option value="ADMIN">ADMIN (Painel Administrativo Operacional)</option>
-                  <option value="SUPER_ADMIN">SUPER ADMIN (Painel Administrativo Central)</option>
-                  <option value="PROFESSOR">PROFESSOR / FORMADOR (Painel Docente)</option>
-                  <option value="CLIENTE_EMPRESARIAL">CLIENTE EMPRESARIAL (Painel Consultoria ISO)</option>
-                  <option value="ALUNO">ALUNO (Painel Academia LMS)</option>
-                </select>
+                <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                  {mode === 'registo'
+                    ? 'Tipo de Conta a Cadastrar *'
+                    : 'Painel de Destino *'}
+                </label>
+                {mode === 'registo' ? (
+                  <select
+                    value={role === 'CLIENTE_EMPRESARIAL' ? 'CLIENTE_EMPRESARIAL' : 'ALUNO'}
+                    onChange={(e) => setRole(e.target.value as UserRole)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs bg-white focus:border-[#0077C8] focus:outline-none font-bold text-[#061A2D]"
+                  >
+                    <option value="ALUNO">ALUNO (Activar Painel do Aluno / Academia LMS)</option>
+                    <option value="CLIENTE_EMPRESARIAL">
+                      CLIENTE EMPRESARIAL (Activar Painel de Consultoria ISO da Empresa)
+                    </option>
+                  </select>
+                ) : (
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as UserRole)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs bg-white focus:border-[#0077C8] focus:outline-none font-bold text-[#061A2D]"
+                  >
+                    <option value="ALUNO">Painel do Aluno (Requer cadastro de Aluno)</option>
+                    <option value="CLIENTE_EMPRESARIAL">
+                      Painel do Cliente Empresarial (Requer cadastro Empresarial)
+                    </option>
+                    <option value="PROFESSOR">Painel do Professor / Formador (Acesso Privado)</option>
+                    <option value="ADMIN">Painel Administrativo Operacional (Acesso Privado)</option>
+                    <option value="SUPER_ADMIN">Painel Super Admin Central (Acesso Privado)</option>
+                  </select>
+                )}
               </div>
 
               {mode === 'registo' && (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-[#061A2D] mb-1">1. Nome Completo *</label>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      1. {role === 'CLIENTE_EMPRESARIAL' ? 'Nome do Responsável / Representante *' : 'Nome Completo do Aluno *'}
+                    </label>
                     <input
                       type="text"
                       required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Nome completo"
+                      placeholder="Introduza o seu nome completo"
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
                     />
                   </div>
+
+                  {role === 'CLIENTE_EMPRESARIAL' && (
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Designação Social da Empresa / Organização *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        placeholder="Ex: Empresa Industrial de Luanda, Lda"
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                      />
+                    </div>
+                  )}
+
                   <div>
-                    <label className="block text-xs font-bold text-[#061A2D] mb-1">2. Email *</label>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">2. E-mail *</label>
                     <input
                       type="email"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="utilizador@exemplo.ao"
+                      placeholder="utilizador@empresa.ao"
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-[#061A2D] mb-1">3. Telefone *</label>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      3. Telefone / WhatsApp *
+                    </label>
                     <input
                       type="text"
                       required
@@ -1642,14 +1728,20 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
 
               <div>
                 <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                  {mode === 'registo' ? '4. Nome de Utilizador (User) *' : 'Utilizador (User) ou Email *'}
+                  {mode === 'registo' ? '4. Nome de Utilizador (User) *' : 'Utilizador (User) ou E-mail *'}
                 </label>
                 <input
                   type="text"
                   required
                   value={mode === 'registo' ? username : email}
-                  onChange={(e) => (mode === 'registo' ? setUsername(e.target.value) : setEmail(e.target.value))}
-                  placeholder={mode === 'registo' ? 'Ex: manuel.mateus' : 'Ex: admin, superadmin, professor, empresa, aluno'}
+                  onChange={(e) =>
+                    mode === 'registo' ? setUsername(e.target.value) : setEmail(e.target.value)
+                  }
+                  placeholder={
+                    mode === 'registo'
+                      ? 'Ex: joao.mateus'
+                      : 'Introduza o seu utilizador ou e-mail'
+                  }
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
                 />
               </div>
@@ -1657,14 +1749,14 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
               {mode !== 'recuperar' && (
                 <div>
                   <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                    {mode === 'registo' ? '5. Senha (Palavra-passe) *' : 'Senha (Palavra-passe) *'}
+                    {mode === 'registo' ? '5. Criar Palavra-passe *' : 'Palavra-passe (Senha) *'}
                   </label>
                   <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Senha padrão: user"
+                    placeholder="Introduza a sua palavra-passe"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
                   />
                 </div>
@@ -1672,24 +1764,33 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
 
               {mode === 'registo' && (
                 <div>
-                  <label className="block text-xs font-bold text-[#061A2D] mb-1">6. Confirmação da Palavra-passe *</label>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    6. Confirmar Palavra-passe *
+                  </label>
                   <input
                     type="password"
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Repita a palavra-passe"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
                   />
                 </div>
               )}
 
               {mode === 'login' && (
-                <div className="text-right">
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setMode('registo')}
+                    className="text-[11px] font-bold text-[#0077C8] hover:underline"
+                  >
+                    Ainda não tem conta? Cadastrar Aluno / Empresa →
+                  </button>
                   <button
                     type="button"
                     onClick={() => setMode('recuperar')}
-                    className="text-[11px] font-semibold text-[#0077C8] hover:underline"
+                    className="text-[11px] font-semibold text-slate-500 hover:underline"
                   >
                     Esqueceu a palavra-passe?
                   </button>
@@ -1700,7 +1801,11 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                 type="submit"
                 className="w-full py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
               >
-                {mode === 'login' ? 'Entrar no Painel Seleccionado' : mode === 'registo' ? 'Concluir Registo' : 'Enviar Instruções'}
+                {mode === 'login'
+                  ? 'Autenticar e Entrar no Painel'
+                  : mode === 'registo'
+                  ? 'Concluir Cadastro e Activar Meu Painel'
+                  : 'Enviar Instruções'}
               </button>
             </form>
           )}
@@ -1710,7 +1815,7 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
               type="button"
               onClick={async () => {
                 await loginWithGoogle();
-                navigate('/admin');
+                navigate('/aluno');
               }}
               className="w-full py-2.5 px-4 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs font-semibold text-[#061A2D] flex items-center justify-center gap-2 transition-colors"
             >
@@ -1720,66 +1825,55 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
           </div>
         </div>
 
-        {/* Right: Credenciais de Acesso para Cada Painel (Utilizador & Senha: user) */}
-        <div className="lg:col-span-6 bg-[#061A2D] text-white rounded-2xl border border-[#0077C8]/40 p-6 sm:p-8 space-y-5">
+        {/* Right: Política de Privacidade de Painéis e Cadastro Obrigatório */}
+        <div className="lg:col-span-5 bg-[#061A2D] text-white rounded-2xl border border-[#0077C8]/40 p-6 sm:p-8 space-y-5">
           <div>
-            <p className="text-xs font-semibold text-[#19B5FE]">Acesso Directo por Perfil RBAC</p>
-            <h2 className="text-lg sm:text-xl font-extrabold text-white mt-0.5">
-              Credenciais de Acesso para Cada Painel (User & Senha)
+            <p className="text-xs font-semibold text-[#19B5FE]">Segurança e Isolamento de Dados (RBAC)</p>
+            <h2 className="text-lg sm:text-xl font-extrabold text-white mt-1">
+              Acesso Privado e Activação de Painéis
             </h2>
-            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-              Utilize o <strong>Utilizador (User)</strong> e a <strong>Senha</strong> abaixo para aceder a cada painel administrativo e operacional da plataforma ALHAN, ou clique em «Entrar Agora» para iniciar sessão imediata:
+            <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+              Todos os painéis da plataforma ALHAN – Sistema de Gestão Integrado operam em modo estritamente privado, sem contas públicas de demonstração:
             </p>
           </div>
 
-          <div className="space-y-3">
-            {panelCredentials.map((cred) => (
-              <div
-                key={cred.role}
-                className="p-4 rounded-xl bg-white/5 border border-white/10 hover:border-[#19B5FE]/50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-              >
-                <div className="space-y-1">
-                  <p className="text-xs font-extrabold text-white">{cred.panelName}</p>
-                  <p className="text-[11px] text-slate-300">{cred.description}</p>
-                  <div className="flex flex-wrap items-center gap-3 pt-1 text-xs font-mono-tabular">
-                    <span className="text-slate-300">
-                      User: <strong className="text-[#19B5FE]">{cred.username}</strong>
-                    </span>
-                    <span aria-hidden="true" className="text-white/25">·</span>
-                    <span className="text-slate-300">
-                      Senha: <strong className="text-emerald-400">{cred.password}</strong>
-                    </span>
-                  </div>
-                </div>
+          <div className="space-y-3 text-xs">
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-1">
+              <p className="font-bold text-[#19B5FE]">1. Painel do Aluno (Academia LMS)</p>
+              <p className="text-slate-300 leading-relaxed">
+                O painel do aluno só é criado e activado quando o formando efectua o seu <strong>cadastro</strong> na plataforma. Após cadastrar-se, terá acesso privado às suas inscrições, aulas protegidas e certificados.
+              </p>
+            </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('login');
-                      setRole(cred.role);
-                      setEmail(cred.username);
-                      setPassword(cred.password);
-                      setErrorMsg(null);
-                    }}
-                    className="px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/10 text-white text-[11px] font-semibold transition-colors whitespace-nowrap"
-                  >
-                    Preencher
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const r = await loginWithCredentials(cred.username, cred.password, cred.role);
-                      redirectByRole(r);
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold transition-colors whitespace-nowrap"
-                  >
-                    Entrar Agora →
-                  </button>
-                </div>
-              </div>
-            ))}
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-1">
+              <p className="font-bold text-[#19B5FE]">2. Painel do Cliente Empresarial (Consultoria ISO)</p>
+              <p className="text-slate-300 leading-relaxed">
+                Exclusivo para empresas clientes registadas. Ao cadastrar a sua empresa, é inicializado o ambiente isolado do seu projecto ISO (cronograma, gestão documental, auditorias e RNCs).
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-1">
+              <p className="font-bold text-amber-300">3. Painel do Professor & Painel Administrativo</p>
+              <p className="text-slate-300 leading-relaxed">
+                Ambientes internos de acesso estritamente privado e restrito à equipa docente e à Direcção Operacional da ALHAN mediante credenciais corporativas.
+              </p>
+            </div>
           </div>
+
+          {mode === 'login' && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('registo');
+                  setRole('ALUNO');
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors"
+              >
+                Criar Conta de Aluno ou Cliente Empresarial →
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

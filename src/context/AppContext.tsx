@@ -47,12 +47,26 @@ export interface ActiveUser {
   phone: string;
   role: UserRole;
   companyId: string;
-  isDemoSession?: boolean;
+  companyName?: string;
+}
+
+export interface RegisteredUserAccount {
+  uid: string;
+  fullName: string;
+  username: string;
+  email: string;
+  phone: string;
+  password: string;
+  role: 'ALUNO' | 'CLIENTE_EMPRESARIAL';
+  companyId: string;
+  companyName?: string;
+  createdAt: string;
 }
 
 interface AppContextValue {
   user: ActiveUser | null;
   authReady: boolean;
+  registeredUsers: RegisteredUserAccount[];
   courses: CourseItem[];
   isoStandards: IsoStandardItem[];
   enrollments: EnrollmentItem[];
@@ -80,7 +94,6 @@ interface AppContextValue {
     role: UserRole;
     companyName?: string;
   }) => Promise<void>;
-  switchRoleForDemo: (role: UserRole) => void;
   logout: () => Promise<void>;
   saveCourse: (course: CourseItem) => Promise<void>;
   deleteCourse: (courseId: string) => Promise<void>;
@@ -101,6 +114,7 @@ interface AppContextValue {
     paymentMethod: EnrollmentItem['paymentMethod'];
     paymentReference: string;
     receiptNote: string;
+    studentName?: string;
     studentPhone?: string;
     studentEmail?: string;
   }) => Promise<EnrollmentItem>;
@@ -145,24 +159,62 @@ function loadLocal<T>(key: string, fallback: T): T {
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<ActiveUser | null>(() => loadLocal<ActiveUser | null>('alhan_active_user', null));
+  const [user, setUser] = useState<ActiveUser | null>(() => {
+    const u = loadLocal<ActiveUser | null>('alhan_active_user', null);
+    if (u && (u.fullName?.includes('[DEMO]') || u.uid?.startsWith('demo-'))) {
+      return null;
+    }
+    return u;
+  });
   const [authReady, setAuthReady] = useState(false);
+
+  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUserAccount[]>(() =>
+    loadLocal<RegisteredUserAccount[]>('alhan_registered_users', [])
+  );
 
   const [courses, setCourses] = useState<CourseItem[]>(() => {
     const stored = loadLocal<CourseItem[]>('alhan_courses', INITIAL_COURSES);
-    return stored.map((c) => {
-      const initialMatch = INITIAL_COURSES.find((ic) => ic.id === c.id);
-      return {
+    const mergedMap = new Map<string, CourseItem>();
+    // Always place INITIAL_COURSES first so featured HSE course is guaranteed at the top
+    INITIAL_COURSES.forEach((ic) => mergedMap.set(ic.id, ic));
+    stored.forEach((sc) => {
+      const initialMatch = INITIAL_COURSES.find((ic) => ic.id === sc.id);
+      mergedMap.set(sc.id, {
         ...initialMatch,
-        ...c,
-        imageUrl: c.imageUrl || initialMatch?.imageUrl || '/assets/aistudio/iso_a9fe34ed.jpg',
-      };
+        ...sc,
+        featured: initialMatch?.featured ?? sc.featured,
+        featuredBadge: initialMatch?.featuredBadge ?? sc.featuredBadge,
+        imageUrl: initialMatch?.imageUrl || sc.imageUrl || '/assets/aistudio/iso_a9fe34ed.jpg',
+      });
     });
+    return Array.from(mergedMap.values()).sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
   });
+
   const [isoStandards, setIsoStandards] = useState<IsoStandardItem[]>(() => loadLocal('alhan_iso_standards', INITIAL_ISO_STANDARDS));
-  const [enrollments, setEnrollments] = useState<EnrollmentItem[]>(() => loadLocal('alhan_enrollments', INITIAL_ENROLLMENTS));
-  const [certificates, setCertificates] = useState<CertificateItem[]>(() => loadLocal('alhan_certificates', INITIAL_CERTIFICATES));
-  const [isoProjects, setIsoProjects] = useState<IsoProjectItem[]>(() => loadLocal('alhan_iso_projects', INITIAL_ISO_PROJECTS));
+  const [enrollments, setEnrollments] = useState<EnrollmentItem[]>(() => {
+    const stored = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
+    return stored.map((e) => ({
+      ...e,
+      studentName: e.studentName.replace('[DEMO] ', ''),
+    }));
+  });
+  const [certificates, setCertificates] = useState<CertificateItem[]>(() => {
+    const stored = loadLocal<CertificateItem[]>('alhan_certificates', INITIAL_CERTIFICATES);
+    return stored.map((c) => ({
+      ...c,
+      code: c.code === 'ALHAN-DEMO-2026-001' ? 'ALHAN-SGI-2026-001' : c.code,
+      studentName: c.studentName.replace('[DEMO] ', ''),
+      isDemo: false,
+    }));
+  });
+  const [isoProjects, setIsoProjects] = useState<IsoProjectItem[]>(() => {
+    const stored = loadLocal<IsoProjectItem[]>('alhan_iso_projects', INITIAL_ISO_PROJECTS);
+    return stored.map((p) => ({
+      ...p,
+      companyName: p.companyName.replace('[DEMO] ', ''),
+      isDemo: false,
+    }));
+  });
   const [isoDocuments, setIsoDocuments] = useState<IsoDocumentItem[]>(() => loadLocal('alhan_iso_documents', INITIAL_ISO_DOCUMENTS));
   const [isoAudits, setIsoAudits] = useState<IsoAuditItem[]>(() => loadLocal('alhan_iso_audits', INITIAL_ISO_AUDITS));
   const [nonConformities, setNonConformities] = useState<NonConformityItem[]>(() => loadLocal('alhan_ncs', INITIAL_NON_CONFORMITIES));
@@ -185,8 +237,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return Notification.permission;
   });
 
-  // Persist state locally for instant offline support across Angolan provinces
+  // Persist state locally
   useEffect(() => { localStorage.setItem('alhan_active_user', JSON.stringify(user)); }, [user]);
+  useEffect(() => { localStorage.setItem('alhan_registered_users', JSON.stringify(registeredUsers)); }, [registeredUsers]);
   useEffect(() => { localStorage.setItem('alhan_courses', JSON.stringify(courses)); }, [courses]);
   useEffect(() => { localStorage.setItem('alhan_iso_standards', JSON.stringify(isoStandards)); }, [isoStandards]);
   useEffect(() => { localStorage.setItem('alhan_enrollments', JSON.stringify(enrollments)); }, [enrollments]);
@@ -265,11 +318,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           phone: '+244 922 021 211',
           role,
           companyId: fbUser.uid,
-          isDemoSession: false,
         };
         setUser(active);
 
-        // Sync user profile to Firestore if verified
         if (fbUser.emailVerified) {
           const userPath = `users/${fbUser.uid}`;
           try {
@@ -287,7 +338,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               { merge: true }
             );
           } catch (err) {
-            // Non-blocking if document already exists with immutable createdAt
             console.warn('User profile sync info:', userPath, err);
           }
         }
@@ -325,9 +375,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
           setCourses((prev) => {
             const mergedMap = new Map<string, CourseItem>();
+            INITIAL_COURSES.forEach((c) => mergedMap.set(c.id, c));
             prev.forEach((c) => mergedMap.set(c.id, c));
             remoteCourses.forEach((c) => mergedMap.set(c.id, c));
-            return Array.from(mergedMap.values());
+            return Array.from(mergedMap.values()).sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
           });
         }
       },
@@ -392,60 +443,81 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loginWithCredentials = async (
     identifier: string,
     password: string,
-    selectedRole: UserRole = 'ALUNO'
+    selectedRole?: UserRole
   ): Promise<UserRole> => {
-    const cleanId = identifier.trim().toLowerCase() || 'user';
+    const cleanId = identifier.trim().toLowerCase();
     const cleanPass = password.trim();
 
-    // Match by username/email in panelCredentials if user typed a specific panel username
-    const matchedByUsername = panelCredentials.find(
-      (c) => c.username.toLowerCase() === cleanId || c.email.toLowerCase() === cleanId
+    if (!cleanId || !cleanPass) {
+      throw new Error('Por favor, introduza o seu utilizador/e-mail e a palavra-passe.');
+    }
+
+    // 1. Check Registered Accounts (Aluno or Cliente Empresarial who registered on the platform)
+    const registeredMatch = registeredUsers.find(
+      (u) =>
+        u.username.toLowerCase() === cleanId ||
+        u.email.toLowerCase() === cleanId
     );
-    const targetCred =
-      panelCredentials.find((c) => c.role === selectedRole) || matchedByUsername || panelCredentials[4];
 
-    const isSuperAdminEmail = cleanId === 'joaomuatxissombo22@gmail.com';
-    const resolvedRole: UserRole = isSuperAdminEmail
-      ? 'SUPER_ADMIN'
-      : matchedByUsername
-      ? matchedByUsername.role
-      : selectedRole;
+    if (registeredMatch) {
+      if (registeredMatch.password !== cleanPass) {
+        throw new Error('Palavra-passe incorrecta para esta conta registada.');
+      }
+      const active: ActiveUser = {
+        uid: registeredMatch.uid,
+        fullName: registeredMatch.fullName,
+        username: registeredMatch.username,
+        email: registeredMatch.email,
+        phone: registeredMatch.phone,
+        role: registeredMatch.role,
+        companyId: registeredMatch.companyId,
+        companyName: registeredMatch.companyName,
+      };
+      setUser(active);
+      logActivity(`Sessão iniciada (${active.role}): ${active.fullName}`, active.fullName);
+      return active.role;
+    }
 
-    const expectedPass = targetCred?.password || 'user';
-    const validPasswords = [expectedPass, 'user', 'demo', 'alhan2026', 'admin'];
-    if (cleanPass && !validPasswords.includes(cleanPass) && cleanPass !== expectedPass) {
+    // 2. Check Private Internal Panel Credentials (Admin, Super Admin, Professor)
+    const internalCred = panelCredentials.find(
+      (c) =>
+        (c.role === 'SUPER_ADMIN' || c.role === 'ADMIN' || c.role === 'PROFESSOR') &&
+        (c.username.toLowerCase() === cleanId || c.email.toLowerCase() === cleanId)
+    );
+
+    if (internalCred) {
+      if (cleanPass !== internalCred.password) {
+        throw new Error('Credenciais administrativas ou docentes inválidas. Acesso restrito.');
+      }
+      const active: ActiveUser = {
+        uid: `staff-${internalCred.role.toLowerCase()}`,
+        fullName:
+          internalCred.role === 'SUPER_ADMIN'
+            ? 'Super Administrador ALHAN'
+            : internalCred.role === 'ADMIN'
+            ? 'Gestor Operacional ALHAN'
+            : 'Eng.º Formador SGI (ALHAN)',
+        username: internalCred.username,
+        email: internalCred.email,
+        phone: '+244 922 021 211',
+        role: internalCred.role,
+        companyId: 'alhan-sgi',
+      };
+      setUser(active);
+      logActivity(`Acesso privado autorizado ao painel ${internalCred.role}`, active.fullName);
+      return internalCred.role;
+    }
+
+    // 3. If user tried to log in as ALUNO or CLIENTE_EMPRESARIAL without registering first
+    if (selectedRole === 'ALUNO' || selectedRole === 'CLIENTE_EMPRESARIAL') {
       throw new Error(
-        `Palavra-passe inválida para o perfil ${resolvedRole}. Utilize a senha configurada («${expectedPass}» ou «user»).`
+        selectedRole === 'ALUNO'
+          ? 'Conta de Aluno não encontrada. O Painel do Aluno só é activado após efectuar o seu cadastro em «Criar Conta / Cadastrar».'
+          : 'Conta Empresarial não encontrada. O Painel do Cliente Empresarial só é activado após efectuar o cadastro da sua empresa em «Criar Conta / Cadastrar».'
       );
     }
 
-    const newUser: ActiveUser = {
-      uid:
-        resolvedRole === 'ALUNO'
-          ? 'demo-aluno-01'
-          : resolvedRole === 'CLIENTE_EMPRESARIAL'
-          ? 'demo-empresa-01'
-          : `user-${resolvedRole.toLowerCase()}`,
-      fullName:
-        resolvedRole === 'SUPER_ADMIN'
-          ? 'Super Administrador ALHAN'
-          : resolvedRole === 'ADMIN'
-          ? 'Gestor Operacional ALHAN'
-          : resolvedRole === 'PROFESSOR'
-          ? 'Eng.º Formador SGI (ALHAN)'
-          : resolvedRole === 'CLIENTE_EMPRESARIAL'
-          ? '[DEMO] Empresa Industrial de Luanda, Lda'
-          : '[DEMO] Manuel João Mateus',
-      username: cleanId.split('@')[0],
-      email: cleanId.includes('@') ? cleanId : `${cleanId}@alhan.pro`,
-      phone: '+244 922 021 211',
-      role: resolvedRole,
-      companyId: resolvedRole === 'CLIENTE_EMPRESARIAL' ? 'demo-empresa-01' : 'alhan-sgi',
-      isDemoSession: true,
-    };
-    setUser(newUser);
-    logActivity(`Sessão iniciada no painel ${resolvedRole} (Utilizador: ${newUser.username})`, newUser.fullName);
-    return resolvedRole;
+    throw new Error('Utilizador ou palavra-passe inválidos. Verifique as suas credenciais de acesso.');
   };
 
   const registerAccount = async (payload: {
@@ -457,25 +529,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     role: UserRole;
     companyName?: string;
   }) => {
+    const allowedRegisterRole: 'ALUNO' | 'CLIENTE_EMPRESARIAL' =
+      payload.role === 'CLIENTE_EMPRESARIAL' ? 'CLIENTE_EMPRESARIAL' : 'ALUNO';
+
+    const cleanUsername = (payload.username.trim() || payload.email.split('@')[0]).toLowerCase();
+    const cleanEmail = payload.email.trim().toLowerCase();
+
+    const exists = registeredUsers.some(
+      (u) => u.username.toLowerCase() === cleanUsername || u.email.toLowerCase() === cleanEmail
+    );
+    if (exists) {
+      throw new Error('Já existe uma conta registada com este nome de utilizador ou e-mail.');
+    }
+
     const newUid = `usr-${Date.now()}`;
-    const newUser: ActiveUser = {
+    const companyId = allowedRegisterRole === 'CLIENTE_EMPRESARIAL' ? `emp-${Date.now()}` : 'alhan-aluno';
+    const companyTitle = payload.companyName?.trim() || payload.fullName.trim();
+
+    const newAccount: RegisteredUserAccount = {
       uid: newUid,
       fullName: payload.fullName.trim(),
-      username: payload.username.trim(),
-      email: payload.email.trim(),
+      username: cleanUsername,
+      email: cleanEmail,
       phone: payload.phone.trim(),
-      role: payload.role,
-      companyId: payload.role === 'CLIENTE_EMPRESARIAL' ? newUid : 'alhan-aluno',
-      isDemoSession: true,
+      password: payload.password.trim(),
+      role: allowedRegisterRole,
+      companyId,
+      companyName: allowedRegisterRole === 'CLIENTE_EMPRESARIAL' ? companyTitle : undefined,
+      createdAt: new Date().toISOString(),
     };
-    setUser(newUser);
-    triggerNotification('Novo registo', 'Conta Criada com Sucesso', `Bem-vindo(a) à plataforma ALHAN SGI, ${newUser.fullName}.`, payload.role);
-    logActivity(`Novo registo de utilizador (${payload.role}): ${newUser.fullName}`, newUser.fullName);
-  };
 
-  const switchRoleForDemo = (role: UserRole) => {
-    const cred = panelCredentials.find((c) => c.role === role);
-    loginWithCredentials(cred?.username || `${role.toLowerCase()}@alhan.pro`, cred?.password || 'user', role);
+    setRegisteredUsers((prev) => [newAccount, ...prev]);
+
+    // If registering as a Corporate Client, automatically initialize their private ISO Project in the portal
+    if (allowedRegisterRole === 'CLIENTE_EMPRESARIAL') {
+      const newCompanyProject: IsoProjectItem = {
+        id: `proj-${Date.now()}`,
+        companyId,
+        companyName: companyTitle,
+        standards: 'ISO 9001:2015 · ISO 14001:2015 · ISO 45001:2018 (SGI)',
+        status: 'Diagnóstico',
+        executionPercent: 15,
+        nextActivity: 'Levantamento de Processos e Diagnóstico Gap Analysis com Consultor ALHAN',
+        isDemo: false,
+        createdAt: new Date().toISOString(),
+        tasks: [
+          { id: `t1-${Date.now()}`, title: 'Reunião de Abertura e Diagnóstico Gap Analysis Inicial', dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0], done: true },
+          { id: `t2-${Date.now()}`, title: 'Definição do Escopo do SGI e Política Integrada', dueDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0], done: false },
+          { id: `t3-${Date.now()}`, title: 'Mapeamento de Processos e Matriz de Riscos Operacionais', dueDate: new Date(Date.now() + 28 * 86400000).toISOString().split('T')[0], done: false },
+          { id: `t4-${Date.now()}`, title: 'Formação da Equipa e Auditoria Interna ISO 19011', dueDate: new Date(Date.now() + 45 * 86400000).toISOString().split('T')[0], done: false },
+        ],
+      };
+      setIsoProjects((prev) => [newCompanyProject, ...prev]);
+    }
+
+    const newUser: ActiveUser = {
+      uid: newUid,
+      fullName: newAccount.fullName,
+      username: newAccount.username,
+      email: newAccount.email,
+      phone: newAccount.phone,
+      role: allowedRegisterRole,
+      companyId,
+      companyName: newAccount.companyName,
+    };
+
+    setUser(newUser);
+    triggerNotification(
+      'Novo registo',
+      'Cadastro Concluído com Sucesso',
+      `Bem-vindo(a) à plataforma ALHAN SGI, ${newUser.fullName}. O seu painel privado foi activado.`,
+      allowedRegisterRole
+    );
+    logActivity(`Novo cadastro de ${allowedRegisterRole}: ${newUser.fullName}`, newUser.fullName);
   };
 
   const logout = async () => {
@@ -593,11 +719,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     paymentMethod: EnrollmentItem['paymentMethod'];
     paymentReference: string;
     receiptNote: string;
+    studentName?: string;
     studentPhone?: string;
     studentEmail?: string;
   }) => {
-    const studentId = auth.currentUser?.uid || user?.uid || 'demo-aluno-01';
-    const studentName = user?.fullName || '[DEMO] Manuel João Mateus';
+    const studentId = auth.currentUser?.uid || user?.uid || `inscrito-${Date.now()}`;
+    const studentName = payload.studentName?.trim() || user?.fullName || 'Formando Inscrito';
     const enrollmentId = `enr-${Date.now()}`;
     const newEnrollment: EnrollmentItem = {
       id: enrollmentId,
@@ -690,7 +817,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       responsibleName: 'Direcção Pedagógica – ALHAN SGI',
       responsibleRole: 'Coordenação de Formação Profissional',
       status: 'valido',
-      isDemo: enrollment.studentName.includes('[DEMO]'),
+      isDemo: false,
       createdAt: new Date().toISOString(),
     };
 
@@ -750,7 +877,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     triggerNotification(
       'Certificado disponível',
       `Certificado Presencial Emitido: ${code}`,
-      `Certificado de formação presencial emitido para ${item.studentName} (BI: ${item.studentBI}). Disponível para download pelo aluno.`,
+      `Certificado de formação presencial emitido para ${item.studentName} (BI: ${item.studentBI || 'N/A'}). Disponível para download pelo aluno.`,
       'ADMIN'
     );
     logActivity(`Certificado presencial emitido (${code}) para ${item.studentName}`);
@@ -854,6 +981,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const saveNonConformity = async (nc: NonConformityItem) => {
+    setIsoProjects((prev) => prev);
     setNonConformities((prev) => {
       const exists = prev.some((n) => n.id === nc.id);
       return exists ? prev.map((n) => (n.id === nc.id ? nc : n)) : [nc, ...prev];
@@ -871,6 +999,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         user,
         authReady,
+        registeredUsers,
         courses,
         isoStandards,
         enrollments,
@@ -890,7 +1019,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         loginWithGoogle,
         loginWithCredentials,
         registerAccount,
-        switchRoleForDemo,
         logout,
         saveCourse,
         deleteCourse,

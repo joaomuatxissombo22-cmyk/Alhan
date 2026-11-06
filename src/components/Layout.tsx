@@ -6,14 +6,10 @@ import {
   X,
   ShieldCheck,
   MessageCircle,
-  UserCheck,
   LogOut,
   ChevronRight,
-  Award,
-  BookOpen,
-  Building2,
-  Sliders,
-  GraduationCap,
+  Lock,
+  UserPlus,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { COMPANY_INFO, UserRole } from '../data/initialData';
@@ -41,7 +37,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     user,
     notifications,
     markNotificationRead,
-    switchRoleForDemo,
     logout,
     pushPermission,
     requestPushPermission,
@@ -200,43 +195,18 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             </a>
           </div>
 
-          {/* Right side: Role Switcher, Portal Access, Notifications, Auth & PWA */}
+          {/* Right side: Private Portal Access, Auth, Notifications & PWA */}
           <div className="flex flex-wrap items-center gap-2.5">
             <PWAInstallButton />
 
-            {/* Interactive Role Switcher to test all 5 RBAC profiles */}
-            <div className="flex items-center gap-1.5 bg-[#061A2D] border border-white/15 rounded-lg px-2.5 py-1">
-              <UserCheck className="w-3.5 h-3.5 text-[#19B5FE] shrink-0" />
-              <span className="text-[11px] text-[#9AA6AE] whitespace-nowrap">Perfil:</span>
-              <select
-                aria-label="Seleccionar perfil de acesso"
-                value={user?.role || ''}
-                onChange={(e) => {
-                  const val = e.target.value as UserRole;
-                  if (val) {
-                    switchRoleForDemo(val);
-                    navigate(ROLE_PORTAL_PATHS[val]);
-                  }
-                }}
-                className="bg-transparent text-[#F5F9FC] font-semibold text-xs focus:outline-none cursor-pointer"
-              >
-                <option value="" className="bg-[#061A2D] text-white">Seleccionar Painel...</option>
-                <option value="ALUNO" className="bg-[#061A2D] text-white">Aluno (LMS)</option>
-                <option value="PROFESSOR" className="bg-[#061A2D] text-white">Professor / Formador</option>
-                <option value="CLIENTE_EMPRESARIAL" className="bg-[#061A2D] text-white">Cliente Empresarial ISO</option>
-                <option value="ADMIN" className="bg-[#061A2D] text-white">Admin Operacional</option>
-                <option value="SUPER_ADMIN" className="bg-[#061A2D] text-white">Super Admin</option>
-              </select>
-            </div>
-
-            {/* Direct Portal Link if logged in */}
             {user ? (
               <div className="flex items-center gap-2">
                 <Link
                   to={ROLE_PORTAL_PATHS[user.role]}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#0077C8]/30 border border-[#19B5FE]/40 text-[#F5F9FC] hover:bg-[#0077C8] transition-colors font-medium whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#0077C8] border border-[#19B5FE]/40 text-white hover:bg-[#008FEA] transition-colors font-semibold whitespace-nowrap"
                 >
-                  <span>Painel {ROLE_LABELS[user.role]}</span>
+                  <Lock className="w-3 h-3" />
+                  <span>Meu Painel ({ROLE_LABELS[user.role]})</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </Link>
                 <button
@@ -254,15 +224,17 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               <div className="flex items-center gap-2">
                 <Link
                   to="/login"
-                  className="px-2.5 py-1 rounded-md hover:bg-white/10 text-[#F5F9FC] transition-colors whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white/10 hover:bg-white/20 text-[#F5F9FC] font-semibold transition-colors whitespace-nowrap"
                 >
-                  Login
+                  <Lock className="w-3 h-3 text-[#19B5FE]" />
+                  <span>Iniciar Sessão</span>
                 </Link>
                 <Link
                   to="/registo"
-                  className="px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 text-[#F5F9FC] transition-colors whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#0077C8] hover:bg-[#008FEA] text-white font-semibold transition-colors whitespace-nowrap"
                 >
-                  Registo
+                  <UserPlus className="w-3 h-3" />
+                  <span>Cadastrar (Aluno / Empresa)</span>
                 </Link>
               </div>
             )}
@@ -276,7 +248,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               >
                 <Bell className="w-4 h-4" />
                 {unreadCount > 0 && (
-                  <span className=" -top-1 -right-1 absolute px-1 min-w-[16px] h-4 rounded-full bg-[#008FEA] text-[10px] font-mono-tabular font-bold flex items-center justify-center">
+                  <span className="-top-1 -right-1 absolute px-1 min-w-[16px] h-4 rounded-full bg-[#008FEA] text-[10px] font-mono-tabular font-bold flex items-center justify-center">
                     {unreadCount}
                   </span>
                 )}
@@ -342,41 +314,41 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <Link to="/normas-iso" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Normas ISO</Link>
             <Link to="/empresas" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Empresas e Cases</Link>
             <Link to="/parceiros" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Parceiros</Link>
-            <Link to="/certificados" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Certificados</Link>
-            <Link to="/consultar-certificado" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Consultar Certificado</Link>
+            <Link to="/politica-pagamentos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5 text-[#19B5FE] font-semibold">Política de Pagamentos</Link>
+            <Link to="/consultar-certificado" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Validar Certificado</Link>
             <Link to="/como-funciona" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Como Funciona</Link>
             <Link to="/contactos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Contactos</Link>
-            <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Login / Registo</Link>
           </div>
-          <div className="pt-2 border-t border-white/10 grid grid-cols-2 gap-2">
-            <Link
-              to="/aluno"
-              onClick={() => { switchRoleForDemo('ALUNO'); setMobileMenuOpen(false); }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0077C8]/20 text-[#19B5FE] text-xs font-semibold"
-            >
-              <GraduationCap className="w-4 h-4" /> Área do Aluno
-            </Link>
-            <Link
-              to="/professor"
-              onClick={() => { switchRoleForDemo('PROFESSOR'); setMobileMenuOpen(false); }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0077C8]/20 text-[#19B5FE] text-xs font-semibold"
-            >
-              <BookOpen className="w-4 h-4" /> Área do Professor
-            </Link>
-            <Link
-              to="/empresa"
-              onClick={() => { switchRoleForDemo('CLIENTE_EMPRESARIAL'); setMobileMenuOpen(false); }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0077C8]/20 text-[#19B5FE] text-xs font-semibold"
-            >
-              <Building2 className="w-4 h-4" /> Área da Empresa
-            </Link>
-            <Link
-              to="/admin"
-              onClick={() => { switchRoleForDemo('SUPER_ADMIN'); setMobileMenuOpen(false); }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0077C8]/20 text-[#19B5FE] text-xs font-semibold"
-            >
-              <Sliders className="w-4 h-4" /> Painel Admin
-            </Link>
+          <div className="pt-2 border-t border-white/10 flex flex-wrap gap-2">
+            {user ? (
+              <Link
+                to={ROLE_PORTAL_PATHS[user.role]}
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#0077C8] text-white text-xs font-bold"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Aceder ao Meu Painel ({ROLE_LABELS[user.role]})</span>
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-white/10 text-white text-xs font-bold"
+                >
+                  <Lock className="w-3.5 h-3.5 text-[#19B5FE]" />
+                  <span>Iniciar Sessão</span>
+                </Link>
+                <Link
+                  to="/registo"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#0077C8] text-white text-xs font-bold"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Cadastrar Conta</span>
+                </Link>
+              </>
+            )}
           </div>
           <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
             <a
@@ -425,7 +397,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </div>
       </section>
 
-      {/* Corporate Footer (Section 34) */}
+      {/* Corporate Footer */}
       <footer className="bg-[#061A2D] text-[#F5F9FC] border-t border-white/10">
         <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -471,14 +443,12 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
             {/* Col 3: Portals & Certificates */}
             <div>
-              <h3 className="text-xs font-bold text-white mb-3">Plataforma & Portais</h3>
+              <h3 className="text-xs font-bold text-white mb-3">Plataforma & Acesso Privado</h3>
               <ul className="space-y-2 text-xs text-[#9AA6AE]">
-                <li><Link to="/consultar-certificado" className="hover:text-white transition-colors">Consultar Certificado (QR)</Link></li>
+                <li><Link to="/consultar-certificado" className="hover:text-white transition-colors">Consultar Certificado (QR / B.I.)</Link></li>
                 <li><Link to="/solicitar-diagnostico" className="hover:text-white transition-colors">Solicitar Diagnóstico Empresarial</Link></li>
-                <li><Link to="/aluno" className="hover:text-white transition-colors">Área do Aluno (LMS)</Link></li>
-                <li><Link to="/professor" className="hover:text-white transition-colors">Área do Professor / Formador</Link></li>
-                <li><Link to="/empresa" className="hover:text-white transition-colors">Área de Clientes Empresariais</Link></li>
-                <li><Link to="/admin" className="hover:text-white transition-colors">Painel Administrativo Central</Link></li>
+                <li><Link to="/registo" className="hover:text-white transition-colors">Cadastro de Aluno / Cliente Empresarial</Link></li>
+                <li><Link to="/login" className="hover:text-white transition-colors">Iniciar Sessão nos Painéis Privados</Link></li>
                 <li><Link to="/contactos" className="hover:text-white transition-colors">Contactos</Link></li>
               </ul>
             </div>
@@ -528,7 +498,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </div>
       </footer>
 
-      {/* Floating WhatsApp Button on all public pages (Section 27) */}
+      {/* Floating WhatsApp Button on all public pages */}
       {!isPortalRoute && (
         <a
           href={whatsappUrl}
@@ -542,7 +512,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </a>
       )}
 
-      {/* Announcement Notification for SGI Training */}
+      {/* Official Announcement Modal for HSE Training */}
       <SgiAnnouncementModal />
 
       <OfflineIndicator />

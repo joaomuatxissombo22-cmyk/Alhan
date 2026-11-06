@@ -381,9 +381,9 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* 3. FORMAÇÕES EM DESTAQUE */}
+      {/* 3. FORMAÇÕES EM DESTAQUE (COM DESTAQUE OFICIAL: FORMAÇÃO EM HSE - TURMA DE NOVEMBRO) */}
       <section className="py-16 bg-white border-y border-slate-200">
-        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
               <p className="text-xs font-semibold text-[#0077C8]">Academia ALHAN · LMS & Formação Presencial</p>
@@ -400,11 +400,94 @@ export const HomePage: React.FC = () => {
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
+          {/* Destaque Principal: Formação em HSE – Turma de Novembro */}
+          <div className="rounded-2xl bg-[#061A2D] text-white border-2 border-[#0077C8] overflow-hidden shadow-xl grid grid-cols-1 lg:grid-cols-12">
+            <div className="lg:col-span-5 bg-[#041220] p-4 sm:p-6 flex items-center justify-center border-b lg:border-b-0 lg:border-r border-white/10">
+              <img
+                src={COMPANY_INFO.hseFlyerImage}
+                alt="Formação em Destaque: Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)"
+                referrerPolicy="no-referrer"
+                className="w-full max-w-md rounded-xl border border-white/15 object-contain shadow-lg"
+              />
+            </div>
+            <div className="lg:col-span-7 p-6 sm:p-8 lg:p-10 flex flex-col justify-between space-y-6">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-bold text-[#19B5FE] uppercase tracking-wider">
+                    ★ Formação em Destaque · Anúncio Oficial
+                  </span>
+                  <span aria-hidden="true" className="text-white/30">·</span>
+                  <span className="font-bold text-amber-300">
+                    Turma de Novembro · Online via Teams & Presencial (Vagas Limitadas)
+                  </span>
+                </div>
+
+                <h3 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight">
+                  Formação em HSE – Saúde, Segurança e Meio Ambiente
+                </h3>
+
+                <p className="text-sm text-slate-200 leading-relaxed">
+                  Invista em conhecimento, transforme o futuro da sua empresa! Promova um ambiente de trabalho seguro, saudável e sustentável com formação prática alinhada às normas internacionais <strong>ISO 45001:2018</strong> (SST) e <strong>ISO 14001:2015</strong> (Ambiente).
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs">
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                    <p className="font-bold text-[#19B5FE]">Certificado Reconhecido</p>
+                    <p className="text-[11px] text-slate-300 mt-0.5">Verificável por QR Code</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                    <p className="font-bold text-[#19B5FE]">Material Didático</p>
+                    <p className="text-[11px] text-slate-300 mt-0.5">Manuais e Matrizes HSE</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                    <p className="font-bold text-[#19B5FE]">Professores Experientes</p>
+                    <p className="text-[11px] text-slate-300 mt-0.5">Consultores SGI Activos</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                    <p className="font-bold text-[#19B5FE]">Aplicação Prática</p>
+                    <p className="text-[11px] text-slate-300 mt-0.5">Estudos de Caso Reais</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs text-slate-300">Investimento · Carga Horária: 40 Horas</p>
+                  <p className="text-2xl font-extrabold font-mono-tabular text-white mt-0.5">
+                    125.000 Kz
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Link
+                    to="/formacoes?curso=curso-hse-novembro"
+                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs sm:text-sm font-bold transition-colors shadow-lg"
+                  >
+                    <span>Inscreva-se Já na Turma de Novembro</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                  <a
+                    href={`https://wa.me/${COMPANY_INFO.whatsappNumber}?text=${encodeURIComponent(
+                      'Olá ALHAN, gostaria de me inscrever na Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro).'
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Falar no WhatsApp</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {featuredCourses.map((course) => (
               <div
                 key={course.id}
-                className="rounded-xl border border-slate-200 bg-[#F5F9FC] overflow-hidden flex flex-col justify-between hover:border-[#0077C8] transition-colors group"
+                className={`rounded-xl border ${
+                  course.featured ? 'border-2 border-[#0077C8] ring-2 ring-[#0077C8]/15' : 'border-slate-200'
+                } bg-[#F5F9FC] overflow-hidden flex flex-col justify-between hover:border-[#0077C8] transition-colors group`}
               >
                 <div>
                   <div className="relative h-48 w-full bg-[#061A2D] overflow-hidden border-b border-slate-200">
@@ -954,7 +1037,7 @@ export const CompaniesCasesPage: React.FC = () => {
           Empresas que Confiaram na Alhan e Cases de Projecto
         </h1>
         <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-          Em cumprimento rigoroso da nossa política de confidencialidade e ética corporativa (Secções 24 e 32), apenas publicamos cases, logotipos e testemunhos quando formalmente autorizados pelos respectivos clientes. Os registos identificados como <strong>[DEMO]</strong> servem exclusivamente para demonstração funcional da plataforma.
+          Em cumprimento rigoroso da nossa política de confidencialidade e ética corporativa (Secções 24 e 32), apenas publicamos cases, logotipos e testemunhos quando formalmente autorizados pelos respectivos clientes.
         </p>
       </div>
 
@@ -964,7 +1047,7 @@ export const CompaniesCasesPage: React.FC = () => {
             <div>
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="font-semibold text-[#0077C8]">
-                  {proj.isDemo ? 'Registo de Demonstração [DEMO]' : 'Projecto Verificado'}
+                  Projecto de Consultoria SGI Verificado
                 </span>
                 <span className="font-mono-tabular">Execução: {proj.executionPercent}%</span>
               </div>

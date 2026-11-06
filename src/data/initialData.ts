@@ -42,6 +42,8 @@ export interface CourseItem {
   modules: ModuleItem[];
   liveSessionLink?: string;
   livePlatform?: 'Microsoft Teams' | 'Zoom' | 'Google Meet' | 'Jitsi';
+  featured?: boolean;
+  featuredBadge?: string;
   createdAt: string;
 }
 
@@ -228,7 +230,9 @@ export const COMPANY_INFO = {
   facebookUrl: 'https://www.facebook.com/profile.php?id=61573334174565',
   logoPath: '/assets/aistudio/LOGOTIPO_ALHAN-02_b8f5e974.png',
   teamFieldImage: '/assets/aistudio/imagm_da_alha_2a7ca3f2.png',
-  sgiFlyerImage: '/assets/aistudio/iso_a9fe34ed.jpg',
+  sgiFlyerImage: '/assets/aistudio/Forma__o_HSE__Turma_de_Novembro_eeeafbbb.png',
+  hseFlyerImage: '/assets/aistudio/Forma__o_HSE__Turma_de_Novembro_eeeafbbb.png',
+  isoFlyerImage: '/assets/aistudio/iso_a9fe34ed.jpg',
   paymentChannels: {
     expressNumbers: ['927496287', '927099484'],
     iban: '0044 0000 56903729141 08',
@@ -321,6 +325,26 @@ export interface HeroSlideItem {
 }
 
 export const HERO_SLIDES: HeroSlideItem[] = [
+  {
+    id: 'slide-hse-novembro',
+    kicker: 'FORMAÇÃO EM DESTAQUE · TURMA DE NOVEMBRO · VAGAS LIMITADAS',
+    headline: 'Formação em HSE: Saúde, Segurança e Meio Ambiente.',
+    headlinePrefix: 'Formação em ',
+    headlineHighlight: 'HSE – Saúde, Segurança e Meio Ambiente',
+    headlineSuffix: ' (Turma de Novembro).',
+    description:
+      'Invista em conhecimento, transforme o futuro da sua empresa! Promova um ambiente de trabalho seguro, saudável e sustentável com Certificado Reconhecido, Material Didático, Professores Experientes e Aplicação Prática.',
+    highlights: [
+      'Modalidades: Online via Microsoft Teams & Presencial (Vagas Limitadas)',
+      'Certificado Reconhecido com validação pública por QR Code',
+      'Material Didático completo, Professores Experientes e Aplicação Prática',
+    ],
+    image: '/assets/aistudio/Forma__o_HSE__Turma_de_Novembro_eeeafbbb.png',
+    thumbnailLabel: 'Formação HSE',
+    caption: 'Formação em HSE – Saúde, Segurança e Meio Ambiente · Turma de Novembro (Online via Teams & Presencial)',
+    primaryCta: { label: 'Inscreva-se Já na Turma de Novembro', to: '/formacoes' },
+    secondaryCta: { label: 'Política e Canais de Pagamento', to: '/politica-pagamentos' },
+  },
   {
     id: 'slide-1',
     kicker: 'ALHAN – SISTEMA DE GESTÃO INTEGRADO · LUANDA, ANGOLA',
@@ -424,6 +448,15 @@ export const HERO_SLIDES: HeroSlideItem[] = [
 ];
 
 export const INSTAGRAM_FEED_POSTS = [
+  {
+    id: 'ig-hse',
+    image: '/assets/aistudio/Forma__o_HSE__Turma_de_Novembro_eeeafbbb.png',
+    tag: 'Turma de Novembro · @alhan.sgi',
+    title: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Online via Teams & Presencial)',
+    caption:
+      'Invista em conhecimento, transforme o futuro da sua empresa! Promova um ambiente de trabalho seguro, saudável e sustentável. Inscreva-se já na Turma de Novembro!',
+    date: 'Destaque Oficial · Luanda',
+  },
   {
     id: 'ig-1',
     image: '/assets/aistudio/iso_a9fe34ed.jpg',
@@ -571,6 +604,95 @@ export const ISO_IMPLEMENTATION_METHODOLOGY = [
 
 export const INITIAL_COURSES: CourseItem[] = [
   {
+    id: 'curso-hse-novembro',
+    title: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+    category: 'Saúde, Segurança e Ambiente (HSE)',
+    modality: 'Híbrida',
+    priceKz: 125000,
+    durationHours: 40,
+    lessonsCount: 10,
+    instructorName: 'Corpo Docente Sénior HSE – ALHAN SGI',
+    instructorId: 'prof-alhan-01',
+    published: true,
+    featured: true,
+    featuredBadge: 'Turma de Novembro · Online via Teams & Presencial',
+    imageUrl: '/assets/aistudio/Forma__o_HSE__Turma_de_Novembro_eeeafbbb.png',
+    description:
+      'Invista em conhecimento, transforme o futuro da sua empresa! Formação intensiva em HSE (Saúde, Segurança e Meio Ambiente) para promover um ambiente de trabalho seguro, saudável e sustentável. Disponível Online via Microsoft Teams e Presencial em Luanda (Vagas Limitadas).',
+    objectives:
+      'Capacitar profissionais, supervisores, técnicos e gestores nas melhores práticas de Saúde Ocupacional, Segurança do Trabalho e Protecção Ambiental (HSE), com Certificado Reconhecido, Material Didático, Professores Experientes e Aplicação Prática.',
+    syllabus:
+      'Módulo 1: Fundamentos de HSE, Cultura de Segurança e Quadro Legal em Angola · Módulo 2: Identificação de Perigos, Análise Preliminar de Risco (APR), PTW e Controlo Operacional (ISO 45001) · Módulo 3: Gestão Ambiental, Aspectos e Impactos (LAIA), Resíduos e Sustentabilidade (ISO 14001) · Módulo 4: Saúde Ocupacional, Resposta a Emergências, Investigação de Incidentes e Inspecções Práticas de HSE.',
+    liveSessionLink: 'https://teams.microsoft.com/l/meetup-join/alhan-hse-novembro',
+    livePlatform: 'Microsoft Teams',
+    createdAt: '2026-11-01T08:00:00Z',
+    modules: [
+      {
+        id: 'mod-hse-1',
+        title: 'Módulo 1: Fundamentos de HSE, Segurança Operacional e Prevenção de Riscos',
+        lessons: [
+          {
+            id: 'les-hse-1',
+            title: 'Aula 1.1: Introdução ao HSE, Cultura Preventiva e Liderança em Segurança',
+            durationMinutes: 50,
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+            materialTitle: 'Manual Oficial Formação em HSE – Saúde, Segurança e Meio Ambiente (PDF)',
+            materialSummary:
+              'Apresenta os pilares de HSE (Health, Safety & Environment), legislação angolana de SST e Ambiente, responsabilidades operacionais e promoção de ambientes de trabalho seguros e sustentáveis.',
+            quizQuestion: 'Qual é o objectivo central de um programa estruturado de HSE nas empresas?',
+            quizOptions: [
+              'Promover um ambiente de trabalho seguro, saudável e sustentável, prevenindo acidentes, doenças ocupacionais e impactos ambientais',
+              'Substituir os equipamentos de protecção colectiva por relatórios mensais',
+              'Aplicar medidas apenas após a ocorrência de sinistros graves',
+              'Restringir a segurança apenas ao sector administrativo',
+            ],
+            quizCorrectIndex: 0,
+          },
+          {
+            id: 'les-hse-2',
+            title: 'Aula 1.2: Análise Preliminar de Risco (APR), Permissão de Trabalho (PTW) e Hierarquia de Controlos',
+            durationMinutes: 55,
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+            materialTitle: 'Matrizes Práticas de APR, PTW e Inspecção de Campo HSE',
+            materialSummary:
+              'Aplicação prática de identificação de perigos, avaliação de riscos, emissão de Permissões de Trabalho (trabalhos em altura, espaço confinado, trabalho a quente) e gestão de EPI/EPC.',
+            quizQuestion: 'Na hierarquia de controlo de riscos de HSE, qual medida deve ter prioridade máxima?',
+            quizOptions: [
+              'Distribuição isolada de EPIs sem análise do perigo',
+              'Eliminação do perigo na fonte ou substituição por processo mais seguro',
+              'Apenas afixação de cartazes informativos',
+              'Registo estatístico no final do ano',
+            ],
+            quizCorrectIndex: 1,
+          },
+        ],
+      },
+      {
+        id: 'mod-hse-2',
+        title: 'Módulo 2: Gestão Ambiental, Saúde Ocupacional e Resposta a Emergências',
+        lessons: [
+          {
+            id: 'les-hse-3',
+            title: 'Aula 2.1: Controlo de Aspectos Ambientais, Gestão de Resíduos e Emergências',
+            durationMinutes: 50,
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+            materialTitle: 'Guia Prático de Gestão Ambiental e Planos de Emergência HSE',
+            materialSummary:
+              'Aborda a Matriz LAIA, segregação e acondicionamento de resíduos industriais, contenção de derrames, ergonomia, higiene ocupacional e simulacros de emergência.',
+            quizQuestion: 'Como deve ser validada a eficácia de um Plano de Resposta a Emergências em HSE?',
+            quizOptions: [
+              'Através de simulacros periódicos planeados, avaliação prática de desempenho e melhoria contínua dos procedimentos',
+              'Guardando o documento trancado sem conhecimento das equipas',
+              'Sem realização de exercícios práticos',
+              'Apenas por revisão verbal anual',
+            ],
+            quizCorrectIndex: 0,
+          },
+        ],
+      },
+    ],
+  },
+  {
     id: 'curso-sgi-01',
     title: 'Sistema de Gestão Integrado – SGI',
     category: 'Sistemas Integrados',
@@ -581,6 +703,8 @@ export const INITIAL_COURSES: CourseItem[] = [
     instructorName: 'Eng.º Consultor Sénior SGI (Equipa Alhan)',
     instructorId: 'prof-alhan-01',
     published: true,
+    featured: true,
+    featuredBadge: 'Certificação Integrada ISO 9001 · 14001 · 45001',
     imageUrl: '/assets/aistudio/iso_a9fe34ed.jpg',
     description: 'Formação completa na estrutura de alto nível (Anexo SL) para integração eficaz das normas ISO 9001, ISO 14001 e ISO 45001 em empresas angolanas.',
     objectives: 'Capacitar gestores, técnicos e auditores para estruturar, implementar e manter um Sistema de Gestão Integrado de Qualidade, Ambiente e SST.',
@@ -1149,10 +1273,10 @@ export const INITIAL_ISO_STANDARDS: IsoStandardItem[] = [
 
 export const INITIAL_CERTIFICATES: CertificateItem[] = [
   {
-    id: 'cert-demo-001',
-    code: 'ALHAN-DEMO-2026-001',
-    studentId: 'demo-aluno-01',
-    studentName: '[DEMO] Manuel João Mateus (Exemplo de Demonstração)',
+    id: 'cert-sgi-001',
+    code: 'ALHAN-SGI-2026-001',
+    studentId: 'aluno-01',
+    studentName: 'Manuel João Mateus',
     studentBI: '005432198LA031',
     courseId: 'curso-sgi-01',
     courseTitle: 'Sistema de Gestão Integrado – SGI (ISO 9001, 14001 e 45001)',
@@ -1162,11 +1286,11 @@ export const INITIAL_CERTIFICATES: CertificateItem[] = [
     responsibleName: 'Direcção Pedagógica – ALHAN SGI',
     responsibleRole: 'Coordenação de Formação Profissional',
     status: 'valido',
-    isDemo: true,
+    isDemo: false,
     createdAt: '2026-02-15T12:00:00Z',
   },
   {
-    id: 'cert-pres-demo-01',
+    id: 'cert-pres-01',
     code: 'ALH-PRES-2026-0042',
     studentId: 'aluno-presencial-01',
     studentName: 'Eng.º António Francisco da Costa',
@@ -1184,21 +1308,21 @@ export const INITIAL_CERTIFICATES: CertificateItem[] = [
     status: 'valido',
     certificateFileName: 'Certificado_Oficial_Presencial_SGI_Antonio_Costa.pdf',
     certificateFileUrl: '',
-    isDemo: true,
+    isDemo: false,
     createdAt: '2026-02-28T14:30:00Z',
   },
 ];
 
 export const INITIAL_ISO_PROJECTS: IsoProjectItem[] = [
   {
-    id: 'proj-demo-001',
-    companyId: 'demo-empresa-01',
-    companyName: '[DEMO] Empresa Industrial de Luanda, Lda (Projecto de Demonstração)',
+    id: 'proj-alhan-001',
+    companyId: 'empresa-01',
+    companyName: 'Empresa Industrial de Luanda, Lda',
     standards: 'ISO 9001:2015 · ISO 14001:2015 · ISO 45001:2018 (SGI)',
     status: 'Implementação',
     executionPercent: 68,
     nextActivity: 'Auditoria Interna Integrada aos Processos Operacionais e Logísticos (Etapa 09)',
-    isDemo: true,
+    isDemo: false,
     createdAt: '2026-01-10T09:00:00Z',
     tasks: [
       { id: 't-1', title: '01. Diagnóstico Inicial e Relatório de Gap Analysis', dueDate: '2026-01-25', done: true },
@@ -1212,47 +1336,47 @@ export const INITIAL_ISO_PROJECTS: IsoProjectItem[] = [
 
 export const INITIAL_ISO_DOCUMENTS: IsoDocumentItem[] = [
   {
-    id: 'doc-demo-01',
+    id: 'doc-01',
     code: 'POL-SGI-001',
-    title: '[DEMO] Política Integrada da Qualidade, Ambiente e Segurança',
+    title: 'Política Integrada da Qualidade, Ambiente e Segurança',
     category: 'Políticas',
     standard: 'ISO 9001 / 14001 / 45001',
     processName: 'Gestão Estratégica e Liderança',
     version: 'v2.0',
-    responsibleName: 'Gestor do SGI (DEMO)',
-    approverName: 'Direcção Geral (DEMO)',
+    responsibleName: 'Gestor do SGI',
+    approverName: 'Direcção Geral',
     status: 'Aprovado',
-    companyId: 'demo-empresa-01',
+    companyId: 'empresa-01',
     changeHistory: ['v1.0 – Emissão inicial para revisão', 'v2.0 – Inclusão do compromisso de consulta e participação dos trabalhadores (ISO 45001)'],
     createdAt: '2026-01-20T10:00:00Z',
   },
   {
-    id: 'doc-demo-02',
+    id: 'doc-02',
     code: 'PRO-SGI-004',
-    title: '[DEMO] Procedimento de Tratamento de Não Conformidades e Acções Correctivas',
+    title: 'Procedimento de Tratamento de Não Conformidades e Acções Correctivas',
     category: 'Procedimentos',
     standard: 'ISO 9001 / 14001 / 45001',
     processName: 'Melhoria Contínua',
     version: 'v1.2',
-    responsibleName: 'Coordenador da Qualidade (DEMO)',
-    approverName: 'Direcção Técnica (DEMO)',
+    responsibleName: 'Coordenador da Qualidade',
+    approverName: 'Direcção Técnica',
     status: 'Aprovado',
-    companyId: 'demo-empresa-01',
+    companyId: 'empresa-01',
     changeHistory: ['v1.0 – Elaboração inicial', 'v1.2 – Ajustes na matriz de análise de causa raiz (5 Porquês)'],
     createdAt: '2026-02-02T10:00:00Z',
   },
   {
-    id: 'doc-demo-03',
+    id: 'doc-03',
     code: 'MAT-AMB-002',
-    title: '[DEMO] Matriz de Levantamento de Aspectos e Impactos Ambientais (LAIA)',
+    title: 'Matriz de Levantamento de Aspectos e Impactos Ambientais (LAIA)',
     category: 'Matrizes',
     standard: 'ISO 14001',
     processName: 'Operações e Manutenção',
     version: 'v1.0',
-    responsibleName: 'Técnico Ambiental (DEMO)',
-    approverName: 'Gestor do SGI (DEMO)',
+    responsibleName: 'Técnico Ambiental',
+    approverName: 'Gestor do SGI',
     status: 'Em revisão',
-    companyId: 'demo-empresa-01',
+    companyId: 'empresa-01',
     changeHistory: ['v1.0 – Submetido para validação técnica dos controlos operacionais'],
     createdAt: '2026-02-12T10:00:00Z',
   },
@@ -1260,32 +1384,32 @@ export const INITIAL_ISO_DOCUMENTS: IsoDocumentItem[] = [
 
 export const INITIAL_ISO_AUDITS: IsoAuditItem[] = [
   {
-    id: 'aud-demo-01',
-    companyId: 'demo-empresa-01',
-    companyName: '[DEMO] Empresa Industrial de Luanda, Lda',
+    id: 'aud-01',
+    companyId: 'empresa-01',
+    companyName: 'Empresa Industrial de Luanda, Lda',
     standard: 'ISO 9001:2015',
     processName: 'Compras e Avaliação de Fornecedores',
-    auditorName: 'Auditor Interno SGI (DEMO)',
+    auditorName: 'Auditor Interno SGI – ALHAN',
     auditDate: '2026-02-18',
-    location: 'Instalações de Luanda – Viana (DEMO)',
+    location: 'Instalações de Luanda – Viana',
     criteria: 'Cláusula 8.4 – Controlo de processos, produtos e serviços providos externamente',
     classification: 'Não conformidade',
-    findings: '[DEMO] Verificou-se que 2 fornecedores críticos de calibração não possuíam registo de avaliação periódica atualizado no exercício corrente.',
+    findings: 'Verificou-se que 2 fornecedores críticos de calibração não possuíam registo de avaliação periódica atualizado no exercício corrente.',
     evidenceNote: 'Amostra verificada: Dossier de Fornecedores #DF-2026-04 e #DF-2026-09.',
     createdAt: '2026-02-18T14:00:00Z',
   },
   {
-    id: 'aud-demo-02',
-    companyId: 'demo-empresa-01',
-    companyName: '[DEMO] Empresa Industrial de Luanda, Lda',
+    id: 'aud-02',
+    companyId: 'empresa-01',
+    companyName: 'Empresa Industrial de Luanda, Lda',
     standard: 'ISO 45001:2018',
     processName: 'Armazenagem e Movimentação de Cargas',
-    auditorName: 'Auditor Interno SGI (DEMO)',
+    auditorName: 'Auditor Interno SGI – ALHAN',
     auditDate: '2026-02-20',
-    location: 'Armazém Central (DEMO)',
+    location: 'Armazém Central',
     criteria: 'Cláusula 8.1.2 – Eliminar perigos e reduzir riscos de SST',
     classification: 'Conformidade',
-    findings: '[DEMO] As Análises Preliminares de Risco (APR) e os registos de inspecção de empilhadores encontram-se devidamente preenchidos e assinados.',
+    findings: 'As Análises Preliminares de Risco (APR) e os registos de inspecção de empilhadores encontram-se devidamente preenchidos e assinados.',
     evidenceNote: 'Verificados registos APR-012 a APR-019 e fichas de manutenção preventiva.',
     createdAt: '2026-02-20T11:00:00Z',
   },
@@ -1293,18 +1417,18 @@ export const INITIAL_ISO_AUDITS: IsoAuditItem[] = [
 
 export const INITIAL_NON_CONFORMITIES: NonConformityItem[] = [
   {
-    id: 'nc-demo-01',
+    id: 'nc-01',
     code: 'RNC-2026-001',
-    companyId: 'demo-empresa-01',
-    companyName: '[DEMO] Empresa Industrial de Luanda, Lda',
+    companyId: 'empresa-01',
+    companyName: 'Empresa Industrial de Luanda, Lda',
     processName: 'Compras e Avaliação de Fornecedores',
     standard: 'ISO 9001:2015 (Cláusula 8.4.1)',
-    problemDescription: '[DEMO] Ausência de registo de reavaliação anual para 2 fornecedores críticos de serviços de calibração.',
-    evidence: 'Auditoria Interna #aud-demo-01 – Dossiers #DF-2026-04 e #DF-2026-09.',
+    problemDescription: 'Ausência de registo de reavaliação anual para 2 fornecedores críticos de serviços de calibração.',
+    evidence: 'Auditoria Interna #aud-01 – Dossiers #DF-2026-04 e #DF-2026-09.',
     immediateAction: 'Realização imediata da avaliação de desempenho dos 2 fornecedores e verificação dos certificados de calibração vigentes.',
     rootCause: 'A planilha de controlo de fornecedores não possuía alerta automático para vencimento do ciclo anual de homologação.',
     correctiveAction: 'Implementar controlo de vencimento com alerta de 30 dias de antecedência e bloqueio de emissão de requisição para fornecedor com homologação expirada.',
-    responsibleName: 'Responsável de Compras (DEMO)',
+    responsibleName: 'Responsável de Compras',
     deadline: '2026-03-30',
     executionEvidence: 'Matriz de Homologação v2.1 implementada e formadores/compradores treinados.',
     effectivenessCheck: 'Aguardando verificação no próximo ciclo trimestral.',
@@ -1315,16 +1439,18 @@ export const INITIAL_NON_CONFORMITIES: NonConformityItem[] = [
 
 export const INITIAL_ENROLLMENTS: EnrollmentItem[] = [
   {
-    id: 'enr-demo-01',
-    studentId: 'demo-aluno-01',
-    studentName: '[DEMO] Manuel João Mateus',
+    id: 'enr-01',
+    studentId: 'aluno-01',
+    studentName: 'Manuel João Mateus',
+    studentPhone: '+244 923 456 789',
+    studentEmail: 'manuel.mateus@empresa.ao',
     courseId: 'curso-sgi-01',
     courseTitle: 'Sistema de Gestão Integrado – SGI',
     modality: 'Híbrida',
     amountKz: 145000,
     paymentMethod: 'Express Angola',
-    paymentReference: 'DEMO-EXP-992817',
-    receiptNote: '[DEMO] Comprovativo Multicaixa Express validado pela administração.',
+    paymentReference: 'EXP-992817',
+    receiptNote: 'Comprovativo Multicaixa Express validado pela administração.',
     paymentStatus: 'Pago',
     progressPercent: 100,
     completedLessons: ['les-sgi-1', 'les-sgi-2', 'les-sgi-3'],
@@ -1332,51 +1458,25 @@ export const INITIAL_ENROLLMENTS: EnrollmentItem[] = [
     completed: true,
     createdAt: '2026-02-01T10:00:00Z',
   },
-  {
-    id: 'enr-demo-02',
-    studentId: 'demo-aluno-01',
-    studentName: '[DEMO] Manuel João Mateus',
-    courseId: 'curso-iso9001-03',
-    courseTitle: 'ISO 9001 – Gestão da Qualidade',
-    modality: 'Online',
-    amountKz: 95000,
-    paymentMethod: 'Unitel Money',
-    paymentReference: 'DEMO-UM-441820',
-    receiptNote: '[DEMO] Aguardando validação manual do comprovativo enviado.',
-    paymentStatus: 'Pendente',
-    progressPercent: 0,
-    completedLessons: [],
-    completed: false,
-    createdAt: '2026-02-22T15:30:00Z',
-  },
 ];
 
 export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
   {
+    id: 'notif-hse',
+    category: 'Nova aula',
+    title: 'Turma de Novembro: Formação em HSE Aberta',
+    message: 'Inscrições abertas para a Formação em HSE – Saúde, Segurança e Meio Ambiente (Online via Teams & Presencial).',
+    targetRole: 'ALL',
+    read: false,
+    createdAt: '2026-11-01T08:30:00Z',
+  },
+  {
     id: 'notif-1',
     category: 'Certificado disponível',
-    title: 'Certificado Emitido [DEMO]',
-    message: 'O certificado ALHAN-DEMO-2026-001 do curso Sistema de Gestão Integrado – SGI está disponível para consulta e validação QR.',
+    title: 'Validação Pública de Certificados Activa',
+    message: 'Consulte a autenticidade de certificados de formação e baixe certificados presenciais pelo número de B.I.',
     targetRole: 'ALL',
     read: false,
     createdAt: '2026-02-25T08:30:00Z',
-  },
-  {
-    id: 'notif-2',
-    category: 'Pagamento pendente',
-    title: 'Validação Manual de Pagamento [DEMO]',
-    message: 'Inscrição DEMO-UM-441820 (ISO 9001 – 95.000 Kz via Unitel Money) aguarda validação do comprovativo pelo Administrador.',
-    targetRole: 'ADMIN',
-    read: false,
-    createdAt: '2026-02-25T09:15:00Z',
-  },
-  {
-    id: 'notif-3',
-    category: 'Não conformidade',
-    title: 'Registo RNC-2026-001 em Tratamento [DEMO]',
-    message: 'A acção correctiva referente à reavaliação de fornecedores (ISO 9001) tem prazo de conclusão em 30/03/2026.',
-    targetRole: 'CLIENTE_EMPRESARIAL',
-    read: false,
-    createdAt: '2026-02-25T10:00:00Z',
   },
 ];
