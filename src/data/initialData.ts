@@ -224,14 +224,39 @@ export const COMPANY_INFO = {
     'A Alhan Consultoria actua como empresa de consultoria, formação e implementação de Sistemas de Gestão. Não somos organismo de certificação nem organismo de acreditação. A certificação é realizada por organismo de certificação independente, de acordo com o respectivo processo de auditoria e decisão.',
 };
 
-export const HERO_SLIDES = [
+export interface HeroSlideItem {
+  id: string;
+  kicker: string;
+  headline: string;
+  headlinePrefix: string;
+  headlineHighlight: string;
+  headlineSuffix: string;
+  description: string;
+  highlights: string[];
+  image: string;
+  thumbnailLabel: string;
+  caption: string;
+  primaryCta: { label: string; to: string };
+  secondaryCta: { label: string; to: string };
+}
+
+export const HERO_SLIDES: HeroSlideItem[] = [
   {
     id: 'slide-1',
     kicker: 'ALHAN – SISTEMA DE GESTÃO INTEGRADO · LUANDA, ANGOLA',
     headline: 'Transformamos requisitos em Sistemas de Gestão que geram resultados.',
+    headlinePrefix: 'Transformamos requisitos em ',
+    headlineHighlight: 'Sistemas de Gestão',
+    headlineSuffix: ' que geram resultados.',
     description:
       'Apoiamos organizações na implementação de Sistemas de Gestão alinhados às normas ISO, através de consultoria, formação profissional, auditoria interna, organização de processos e preparação para certificação.',
+    highlights: [
+      'Implementação SGI em 14 etapas metodológicas',
+      'Acompanhamento técnico presencial e online em Angola',
+      'Portal exclusivo para gestão documental e RNCs',
+    ],
     image: '/assets/aistudio/imagm_da_alha_2a7ca3f2.png',
+    thumbnailLabel: 'Consultoria SGI',
     caption: 'Equipa Técnica ALHAN · Consultoria e Acompanhamento no Terreno em Angola',
     primaryCta: { label: 'Solicitar Diagnóstico', to: '/solicitar-diagnostico' },
     secondaryCta: { label: 'Conhecer as Formações', to: '/formacoes' },
@@ -240,9 +265,18 @@ export const HERO_SLIDES = [
     id: 'slide-2',
     kicker: 'ACADEMIA ALHAN · FORMAÇÃO PROFISSIONAL CERTIFICADA',
     headline: 'Formação em Sistema de Gestão Integrado: ISO 9001, ISO 14001 e ISO 45001.',
+    headlinePrefix: 'Formação Especializada em ',
+    headlineHighlight: 'ISO 9001, 14001 e 45001',
+    headlineSuffix: ' com Certificado QR.',
     description:
       'Capacite a sua equipa nos referenciais internacionais de Qualidade, Ambiente e Segurança e Saúde no Trabalho nas modalidades Online, Presencial e Híbrida com certificado validável por QR Code.',
+    highlights: [
+      '10 cursos técnicos com vídeo-aulas e materiais protegidos',
+      'Modalidades Online, Presencial em Luanda e Híbrida',
+      'Certificados com código único e validação pública QR',
+    ],
     image: '/assets/aistudio/iso_a9fe34ed.jpg',
+    thumbnailLabel: 'Formação ISO',
     caption: 'Formação Especializada SGI · Qualidade, Ambiente e Segurança (ISO 9001 | 14001 | 45001)',
     primaryCta: { label: 'Inscrever-se nas Formações', to: '/formacoes' },
     secondaryCta: { label: 'Consultar Certificado QR', to: '/consultar-certificado' },
@@ -251,23 +285,61 @@ export const HERO_SLIDES = [
     id: 'slide-3',
     kicker: 'AUDITORIAS INTERNAS · DIRETRIZES ISO 19011',
     headline: 'Auditorias Internas, Diagnóstico de Lacunas e Preparação para Certificação.',
+    headlinePrefix: 'Auditorias Internas, ',
+    headlineHighlight: 'Diagnóstico Gap Analysis',
+    headlineSuffix: ' e Pré-Certificação.',
     description:
-      'Realizamos diagnósticos técnicos, mapeamento de processos, tratamento de não conformidades e auditorias internas nas 14 etapas metodológicas da ALHAN.',
+      'Realizamos diagnósticos técnicos, mapeamento de processos, tratamento de não conformidades e auditorias internas segundo a norma ISO 19011 nas 14 etapas metodológicas da ALHAN.',
+    highlights: [
+      'Auditorias internas independentes segundo a ISO 19011',
+      'Análise de causa raiz e planos de acção correctiva',
+      'Simulação técnica de pré-auditoria para Fase 1 e Fase 2',
+    ],
     image: courseAuditorLiderImg,
+    thumbnailLabel: 'Auditoria 19011',
     caption: 'Auditoria Interna e Formação de Auditores Líderes segundo a ISO 19011',
     primaryCta: { label: 'Solicitar Diagnóstico Empresarial', to: '/solicitar-diagnostico' },
     secondaryCta: { label: 'Metodologia em 14 Etapas', to: '/consultoria-iso' },
   },
   {
     id: 'slide-4',
-    kicker: 'AMBIENTE, SST E COMPLIANCE · OPERAÇÕES EM ANGOLA',
-    headline: 'Gestão Ambiental, Segurança no Trabalho e Governação Corporativa.',
+    kicker: 'AMBIENTE E SEGURANÇA · OPERAÇÕES INDUSTRIAIS EM ANGOLA',
+    headline: 'Gestão Ambiental, Segurança no Trabalho e Controlo Operacional.',
+    headlinePrefix: 'Gestão Ambiental ',
+    headlineHighlight: 'ISO 14001 e SST ISO 45001',
+    headlineSuffix: ' para Operações Seguras.',
     description:
-      'Implementamos matrizes de aspectos e impactos ambientais (LAIA), análises preliminares de risco (APR) e programas de Compliance e Antissuborno.',
+      'Implementamos matrizes de levantamento de aspectos e impactos ambientais (LAIA), planos de gestão de resíduos e análises preliminares de risco (APR) no terreno.',
+    highlights: [
+      'Matrizes LAIA e Planos de Gestão Ambiental (PGA)',
+      'Identificação de perigos e hierarquia de controlos SST',
+      'Redução de sinistralidade e conformidade operacional',
+    ],
     image: courseIso14001Img,
+    thumbnailLabel: 'Ambiente & SST',
     caption: 'Consultoria Ambiental, Ecoeficiência e Segurança Operacional',
     primaryCta: { label: 'Ver Normas ISO Aplicáveis', to: '/normas-iso' },
     secondaryCta: { label: 'Portal de Clientes Empresariais', to: '/empresa' },
+  },
+  {
+    id: 'slide-5',
+    kicker: 'GOVERNANÇA, RISCO E CONFORMIDADE · ISO 37001 & 37301',
+    headline: 'Programas de Compliance, Gestão de Riscos e Integridade Corporativa.',
+    headlinePrefix: 'Programas de ',
+    headlineHighlight: 'Compliance e Gestão de Riscos',
+    headlineSuffix: ' para Empresas Sólidas.',
+    description:
+      'Estruturamos políticas anticorrupção, due diligence de fornecedores, mapeamento SIPOC e controlos internos alinhados aos padrões internacionais de governação.',
+    highlights: [
+      'Prevenção ao suborno (ISO 37001) e Compliance',
+      'Mapeamento de processos SIPOC e indicadores KPI',
+      'Qualificação de fornecedores para grandes contratos',
+    ],
+    image: courseComplianceImg,
+    thumbnailLabel: 'Compliance & Risco',
+    caption: 'Governança Corporativa, Gestão de Riscos e Mapeamento de Processos',
+    primaryCta: { label: 'Agendar Reunião Técnica', to: '/solicitar-diagnostico' },
+    secondaryCta: { label: 'Conhecer a Alhan', to: '/quem-somos' },
   },
 ];
 

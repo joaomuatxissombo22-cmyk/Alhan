@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -7,15 +7,12 @@ import {
   BookOpen,
   Building2,
   Search,
-  MessageCircle,
-  ChevronLeft,
-  ChevronRight,
   ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { Hero } from '../components/Hero';
 import {
   COMPANY_INFO,
-  HERO_SLIDES,
   INSTAGRAM_FEED_POSTS,
   ISO_IMPLEMENTATION_METHODOLOGY,
 } from '../data/initialData';
@@ -285,215 +282,10 @@ export const HomePage: React.FC = () => {
   const featuredCourses = courses.filter((c) => c.published).slice(0, 6);
   const featuredStandards = isoStandards.slice(0, 6);
 
-  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveSlideIndex((prev) => (prev + 1) % HERO_SLIDES.length);
-    }, 6500);
-    return () => clearInterval(timer);
-  }, []);
-
-  const currentSlide = HERO_SLIDES[activeSlideIndex] || HERO_SLIDES[0];
-
-  const whatsappUrl = `https://wa.me/${COMPANY_INFO.whatsappNumber}?text=${encodeURIComponent(
-    COMPANY_INFO.whatsappDefaultMessage
-  )}`;
-
   return (
     <div>
-      {/* 1. DYNAMIC HERO SECTION (Responsive Desktop & Mobile) */}
-      <section className="bg-gradient-to-b from-[#061A2D] to-[#071B2F] text-[#F5F9FC] py-10 sm:py-16 lg:py-20 border-b border-white/10">
-        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
-            {/* Left Column: Dynamic Slide Copy & Actions */}
-            <div className="lg:col-span-7 flex flex-col justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#19B5FE] tracking-wide">
-                  <span>{currentSlide.kicker}</span>
-                  <span aria-hidden="true" className="text-white/30">·</span>
-                  <span className="font-mono-tabular text-[#9AA6AE]">
-                    Slide 0{activeSlideIndex + 1} / 0{HERO_SLIDES.length}
-                  </span>
-                </div>
-
-                <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white mt-3 leading-[1.12]">
-                  {currentSlide.headline}
-                </h1>
-
-                <p className="text-sm sm:text-base lg:text-lg text-[#F5F9FC]/85 mt-4 sm:mt-5 leading-relaxed max-w-2xl">
-                  {currentSlide.description}
-                </p>
-
-                <div className="flex flex-wrap items-center gap-3 mt-6 sm:mt-8">
-                  <Link
-                    to={currentSlide.primaryCta.to}
-                    className="inline-flex items-center gap-2 px-5 sm:px-6 py-3 sm:py-3.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white font-semibold text-xs sm:text-sm transition-colors whitespace-nowrap"
-                  >
-                    <span>{currentSlide.primaryCta.label}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
-                  <Link
-                    to={currentSlide.secondaryCta.to}
-                    className="inline-flex items-center gap-2 px-4 sm:px-5 py-3 sm:py-3.5 rounded-lg border border-white/25 hover:bg-white/10 text-white font-semibold text-xs sm:text-sm transition-colors whitespace-nowrap"
-                  >
-                    <span>{currentSlide.secondaryCta.label}</span>
-                  </Link>
-                  <a
-                    href={whatsappUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 sm:px-5 py-3 sm:py-3.5 rounded-lg border border-[#19B5FE]/40 text-[#19B5FE] hover:bg-[#19B5FE]/10 font-semibold text-xs sm:text-sm transition-colors whitespace-nowrap"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                    <span>Falar com um Consultor</span>
-                  </a>
-                </div>
-              </div>
-
-              {/* Dynamic Slide Selector Controls */}
-              <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  {HERO_SLIDES.map((s, idx) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setActiveSlideIndex(idx)}
-                      aria-label={`Ver slide ${idx + 1}`}
-                      className={`h-2.5 rounded-full transition-all ${
-                        activeSlideIndex === idx
-                          ? 'w-10 bg-[#19B5FE]'
-                          : 'w-2.5 bg-white/25 hover:bg-white/50'
-                      }`}
-                    />
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setActiveSlideIndex(
-                        (prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length
-                      )
-                    }
-                    aria-label="Slide anterior"
-                    className="p-2 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 text-white transition-colors"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setActiveSlideIndex((prev) => (prev + 1) % HERO_SLIDES.length)
-                    }
-                    aria-label="Próximo slide"
-                    className="p-2 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 text-white transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column: Dynamic Visual Showcase + Official ALHAN Identity */}
-            <div className="lg:col-span-5 flex flex-col justify-between gap-4">
-              <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-[#061A2D] aspect-[4/3] sm:aspect-[16/11] lg:aspect-[4/3] shadow-xl">
-                <img
-                  key={currentSlide.image}
-                  src={currentSlide.image}
-                  alt={currentSlide.caption}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover object-top transition-all duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#061A2D] via-[#061A2D]/20 to-transparent" />
-
-                {/* Floating Brand Identity Badge inside Hero Frame */}
-                <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
-                  <div className="inline-flex items-center gap-2 bg-white/95 text-[#061A2D] px-3 py-1.5 rounded-lg shadow-md">
-                    <img
-                      src={COMPANY_INFO.logoPath}
-                      alt="Logotipo ALHAN"
-                      referrerPolicy="no-referrer"
-                      className="h-6 w-6 object-contain"
-                    />
-                    <span className="text-[11px] font-extrabold tracking-tight">ALHAN – SGI</span>
-                  </div>
-                  <span className="px-2.5 py-1 rounded bg-[#061A2D]/85 border border-white/15 text-[11px] font-mono-tabular text-[#19B5FE]">
-                    NIF {COMPANY_INFO.nif}
-                  </span>
-                </div>
-
-                {/* Bottom Caption Bar */}
-                <div className="absolute bottom-0 inset-x-0 p-4 sm:p-5">
-                  <p className="text-xs font-bold text-white leading-snug">
-                    {currentSlide.caption}
-                  </p>
-                  <p className="text-[11px] text-[#F5F9FC]/80 mt-0.5">
-                    {COMPANY_INFO.address}
-                  </p>
-                </div>
-              </div>
-
-              {/* Quick Portal & Social Bar */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-                <Link
-                  to="/consultoria-iso"
-                  className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
-                >
-                  <p className="font-bold text-white">Consultoria ISO</p>
-                  <p className="text-[11px] text-[#9AA6AE] mt-0.5">14 Etapas SGI</p>
-                </Link>
-                <Link
-                  to="/formacoes"
-                  className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
-                >
-                  <p className="font-bold text-white">10 Formações</p>
-                  <p className="text-[11px] text-[#9AA6AE] mt-0.5">Online e Presencial</p>
-                </Link>
-                <a
-                  href={COMPANY_INFO.facebookUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
-                >
-                  <p className="font-bold text-[#19B5FE]">Facebook Oficial</p>
-                  <p className="text-[11px] text-[#9AA6AE] mt-0.5">Página Alhan →</p>
-                </a>
-                <a
-                  href={COMPANY_INFO.instagramUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
-                >
-                  <p className="font-bold text-[#19B5FE]">@{COMPANY_INFO.instagram}</p>
-                  <p className="text-[11px] text-[#9AA6AE] mt-0.5">Feed Instagram →</p>
-                </a>
-              </div>
-            </div>
-          </div>
-
-          {/* Full-width KPI Strip below Hero split */}
-          <div className="mt-10 pt-8 border-t border-white/10 grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div>
-              <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-[#19B5FE]">10</p>
-              <p className="text-xs text-[#9AA6AE] mt-1">Programas de Formação Especializada</p>
-            </div>
-            <div>
-              <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-[#19B5FE]">12</p>
-              <p className="text-xs text-[#9AA6AE] mt-1">Normas ISO no Catálogo Técnico</p>
-            </div>
-            <div>
-              <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-[#19B5FE]">14 Etapas</p>
-              <p className="text-xs text-[#9AA6AE] mt-1">Metodologia de Implementação SGI</p>
-            </div>
-            <div>
-              <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-[#19B5FE]">5 Perfis</p>
-              <p className="text-xs text-[#9AA6AE] mt-1">Plataforma Integrada Desktop & Mobile</p>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* 1. DYNAMIC HERO COMPONENT (Corporate Image Gallery + Highlighted Text + CTAs) */}
+      <Hero />
 
       {/* 2. APRESENTAÇÃO E SERVIÇOS (Asymmetric Bento Grid) */}
       <section className="py-16 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
