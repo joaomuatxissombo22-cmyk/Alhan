@@ -28,7 +28,7 @@ import { useApp } from '../context/AppContext';
 import { COMPANY_INFO, CourseItem, EnrollmentItem, UserRole } from '../data/initialData';
 
 export const CoursesCatalogPage: React.FC = () => {
-  const { courses, createEnrollment, submitDiagnosticOrContact, user } = useApp();
+  const { courses, createEnrollment, submitStudentPaymentProof, submitDiagnosticOrContact, user } = useApp();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -43,15 +43,64 @@ export const CoursesCatalogPage: React.FC = () => {
     return null;
   });
 
-  const [enrollTab, setEnrollTab] = useState<'online_pagamento' | 'inscricao_presencial'>('online_pagamento');
-  const [paymentMethod, setPaymentMethod] = useState<EnrollmentItem['paymentMethod']>('Express Angola');
-  const [paymentRef, setPaymentRef] = useState('');
-  const [receiptNote, setReceiptNote] = useState('');
+  // 2-Step Flow: 1) 'inscricao_directa' (Direct Enrollment first) -> 2) 'pagamento' (Pay after enrolling)
+  const [enrollStep, setEnrollStep] = useState<'inscricao_directa' | 'pagamento'>('inscricao_directa');
+  const [createdEnrollment, setCreatedEnrollment] = useState<EnrollmentItem | null>(null);
+
+  // Direct Enrollment Form State (Step 1)
   const [studentNameInput, setStudentNameInput] = useState(user?.fullName || '');
   const [studentWhatsapp, setStudentWhatsapp] = useState(user?.phone || '+244 ');
   const [studentEmailInput, setStudentEmailInput] = useState(user?.email || '');
+  const [chosenModality, setChosenModality] = useState<'Online' | 'Presencial' | 'Híbrida'>('Online');
+  const [presCompany, setPresCompany] = useState('');
+  const [presProvince, setPresProvince] = useState('Luanda');
+  const [presShift, setPresShift] = useState('Manhã (08h30 – 12h30)');
+  const [presNotes, setPresNotes] = useState('');
+
+  // Payment Form State (Step 2 - after direct enrollment)
+  const [paymentMethod, setPaymentMethod] = useState<EnrollmentItem['paymentMethod']>('Express Angola');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [receiptNote, setReceiptNote] = useState('');
+  const [receiptFileUrl, setReceiptFileUrl] = useState('');
+  const [receiptFileName, setReceiptFileName] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [enrollSuccess, setEnrollSuccess] = useState<string | null>(null);
+  const [paymentCompletedMsg, setPaymentCompletedMsg] = useState<string | null>(null);
+
+  // Sync selectedCourse if URL query ?curso=... changes
+  React.useEffect(() => {
+    const cid = searchParams.get('curso');
+    if (cid) {
+      const found = courses.find((c) => c.id === cid);
+      if (found) {
+        setSelectedCourse(found);
+        setChosenModality(found.modality);
+        setEnrollStep('inscricao_directa');
+        setCreatedEnrollment(null);
+        setPaymentCompletedMsg(null);
+      }
+    }
+  }, [searchParams, courses]);
+
+  // Keep user details pre-filled when user logs in
+  React.useEffect(() => {
+    if (user) {
+      setStudentNameInput((prev) => prev || user.fullName);
+      setStudentWhatsapp((prev) => (prev === '+244 ' || !prev ? user.phone : prev));
+      setStudentEmailInput((prev) => prev || user.email);
+    }
+  }, [user]);
+
+  const openDirectEnrollment = (course: CourseItem) => {
+    setSelectedCourse(course);
+    setChosenModality(course.modality);
+    setEnrollStep('inscricao_directa');
+    setCreatedEnrollment(null);
+    setPaymentCompletedMsg(null);
+    setPaymentRef('');
+    setReceiptNote('');
+    setReceiptFileUrl('');
+    setReceiptFileName('');
+  };
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -59,14 +108,18 @@ export const CoursesCatalogPage: React.FC = () => {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  // Presential Registration Form state
-  const [presName, setPresName] = useState(user?.fullName || '');
-  const [presEmail, setPresEmail] = useState(user?.email || '');
-  const [presPhone, setPresPhone] = useState(user?.phone || '+244 ');
-  const [presCompany, setPresCompany] = useState('');
-  const [presProvince, setPresProvince] = useState('Luanda');
-  const [presShift, setPresShift] = useState('Manhã (08h30 – 12h30)');
-  const [presNotes, setPresNotes] = useState('');
+  const handleReceiptUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setReceiptFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setReceiptFileUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const publishedCourses = courses.filter((c) => c.published);
   const filteredCourses = publishedCourses.filter((c) => {
@@ -78,44 +131,71 @@ export const CoursesCatalogPage: React.FC = () => {
     return matchesModality && matchesSearch;
   });
 
-  const handleOnlineEnroll = async (e: React.FormEvent) => {
+  // STEP 1: Direct Enrollment without requiring payment first
+  const handleDirectEnrollmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCourse) return;
+
+    const cleanName = studentNameInput.trim() || user?.fullName || 'Formando Inscrito';
+    const cleanPhone = studentWhatsapp.trim() || user?.phone || '+244 922 021 211';
+    const cleanEmail = studentEmailInput.trim() || user?.email || 'aluno@alhan.pro';
+
     const created = await createEnrollment({
       course: selectedCourse,
-      modality: selectedCourse.modality,
+      modality: chosenModality,
+      paymentMethod: 'Express Angola',
+      paymentReference: 'INSCRICAO-DIRECTA',
+      receiptNote: `Inscrição directa realizada (${chosenModality} · Turno: ${presShift}). Aguardando pagamento pelo formando.`,
+      studentName: cleanName,
+      studentPhone: cleanPhone,
+      studentEmail: cleanEmail,
+    });
+
+    if (chosenModality === 'Presencial' || chosenModality === 'Híbrida') {
+      await submitDiagnosticOrContact({
+        type: 'inscricao_presencial',
+        companyName: presCompany || 'Inscrição Individual Directa',
+        contactName: cleanName,
+        role: `Modalidade: ${chosenModality} · Turno: ${presShift}`,
+        phone: cleanPhone,
+        whatsapp: cleanPhone,
+        email: cleanEmail,
+        province: presProvince,
+        sector: 'Formação Profissional',
+        employeesCount: '1',
+        targetStandard: selectedCourse.title,
+        objective: `Inscrição Directa (${selectedCourse.durationHours}h - ${selectedCourse.priceKz.toLocaleString('pt-AO')} Kz)`,
+        message: presNotes || `Inscrição directa na formação ${selectedCourse.title} (${chosenModality}, ${presShift}).`,
+      });
+    }
+
+    setCreatedEnrollment(created);
+    setEnrollStep('pagamento');
+  };
+
+  // STEP 2: Submit Payment Proof after enrolling
+  const handlePaymentAfterEnrollmentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCourse) return;
+
+    const updated = await submitStudentPaymentProof({
+      enrollmentId: createdEnrollment?.id,
+      course: selectedCourse,
+      modality: chosenModality,
       paymentMethod,
-      paymentReference: paymentRef || `REF-${Date.now().toString().slice(-6)}`,
-      receiptNote: receiptNote || `Comprovativo via ${paymentMethod} enviado pelo formando.`,
-      studentName: studentNameInput.trim() || user?.fullName || 'Formando Inscrito',
+      paymentReference: paymentRef.trim() || `REF-${Date.now().toString().slice(-6)}`,
+      receiptNote:
+        receiptNote.trim() ||
+        `Comprovativo via ${paymentMethod} enviado pelo formando após inscrição directa.`,
+      receiptFileUrl: receiptFileUrl || undefined,
+      receiptFileName: receiptFileName || undefined,
       studentPhone: studentWhatsapp.trim(),
       studentEmail: studentEmailInput.trim(),
     });
-    setEnrollSuccess(
-      `Inscrição #${created.id} registada com sucesso! O comprovativo foi submetido para validação administrativa. Assim que o pagamento for confirmado pelo Administrador, receberá uma notificação no seu WhatsApp (${studentWhatsapp}) ou E-mail (${studentEmailInput}) e o acesso ao curso será activado no seu Painel do Aluno.`
-    );
-  };
 
-  const handlePresentialEnroll = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCourse) return;
-    await submitDiagnosticOrContact({
-      type: 'inscricao_presencial',
-      companyName: presCompany || 'Inscrição Individual Presencial',
-      contactName: presName,
-      role: `Turno: ${presShift}`,
-      phone: presPhone,
-      whatsapp: presPhone,
-      email: presEmail,
-      province: presProvince,
-      sector: 'Formação Presencial',
-      employeesCount: '1',
-      targetStandard: selectedCourse.title,
-      objective: `Inscrição para Formação Presencial (${selectedCourse.durationHours}h - ${selectedCourse.priceKz.toLocaleString('pt-AO')} Kz)`,
-      message: presNotes || `Pedido de inscrição presencial na turma de ${selectedCourse.title}, turno ${presShift}.`,
-    });
-    setEnrollSuccess(
-      `Ficha de Inscrição Presencial para «${selectedCourse.title}» registada com sucesso! A equipa pedagógica da ALHAN entrará em contacto pelo número ${presPhone}.`
+    setCreatedEnrollment(updated);
+    setPaymentCompletedMsg(
+      `Comprovativo da inscrição #${updated.id} submetido com sucesso! Assim que o pagamento for validado pelo Painel Administrativo (no mesmo dia para BANCO SOL / Express ou em 24h para outros bancos), receberá notificação no seu WhatsApp (${studentWhatsapp}) ou E-mail (${studentEmailInput}) e a formação será liberada no seu Painel do Aluno.`
     );
   };
 
@@ -124,16 +204,16 @@ export const CoursesCatalogPage: React.FC = () => {
       {/* Header & Filter Controls */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
         <div className="max-w-3xl">
-          <p className="text-xs font-semibold text-[#0077C8]">Catálogo de Cursos Administrável · Secção 6 e 7</p>
+          <p className="text-xs font-semibold text-[#0077C8]">Catálogo de Cursos Administrável · Inscrição Directa</p>
           <h1 className="text-3xl sm:text-4xl font-extrabold text-[#061A2D] mt-2">
             Nossas Formações Profissionais (Online, Presencial e Híbrida)
           </h1>
           <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-            Cursos estruturados com módulos, vídeo-aulas protegidas, materiais técnicos, exercícios, avaliações e emissão de certificado validável por QR Code.
+            <strong>Clique em qualquer curso</strong> para realizar logo a sua <strong>inscrição directa</strong> e, em seguida, efectuar o pagamento da formação pelos canais oficiais (Multicaixa Express ou BANCO SOL).
           </p>
         </div>
 
-        {/* Interactive Filter Tabs (allowed per frontend-design) */}
+        {/* Interactive Filter Tabs */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1 p-1 bg-slate-200/80 rounded-lg">
             {(['Todas', 'Online', 'Presencial', 'Híbrida'] as const).map((mod) => (
@@ -164,16 +244,25 @@ export const CoursesCatalogPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Course Grid */}
+      {/* Course Grid — Clicking ANY course card opens Direct Enrollment immediately */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredCourses.map((course) => (
           <div
             key={course.id}
-            className={`bg-white rounded-xl ${
+            role="button"
+            tabIndex={0}
+            onClick={() => openDirectEnrollment(course)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openDirectEnrollment(course);
+              }
+            }}
+            className={`bg-white rounded-xl cursor-pointer ${
               course.featured
                 ? 'border-2 border-[#0077C8] ring-4 ring-[#0077C8]/10 shadow-md'
                 : 'border border-slate-200'
-            } overflow-hidden flex flex-col justify-between hover:border-[#0077C8] transition-colors group`}
+            } overflow-hidden flex flex-col justify-between hover:border-[#0077C8] hover:shadow-lg transition-all group`}
           >
             <div>
               <div className="relative h-52 w-full bg-[#061A2D] overflow-hidden border-b border-slate-200">
@@ -188,10 +277,12 @@ export const CoursesCatalogPage: React.FC = () => {
                     ★ {course.featuredBadge || 'Formação em Destaque'}
                   </div>
                 )}
+                <div className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded bg-[#061A2D]/85 text-[#19B5FE] text-[10px] font-bold border border-white/15">
+                  Clique para Inscrição Directa →
+                </div>
               </div>
 
               <div className="p-6">
-                {/* Zero-pill metadata */}
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <span className="font-semibold text-[#0077C8]">{course.category}</span>
                   <span aria-hidden="true">·</span>
@@ -200,7 +291,9 @@ export const CoursesCatalogPage: React.FC = () => {
                   <span className="font-mono-tabular">{course.durationHours}h ({course.lessonsCount} aulas)</span>
                 </div>
 
-                <h2 className="text-xl font-bold text-[#061A2D] mt-2">{course.title}</h2>
+                <h2 className="text-xl font-bold text-[#061A2D] group-hover:text-[#0077C8] transition-colors mt-2">
+                  {course.title}
+                </h2>
                 <p className="text-xs text-slate-600 mt-2 leading-relaxed">{course.description}</p>
 
                 <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5 text-xs text-slate-600">
@@ -213,21 +306,21 @@ export const CoursesCatalogPage: React.FC = () => {
 
             <div className="px-6 pb-6 pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] text-slate-500">Valor da Inscrição</p>
+                <p className="text-[11px] text-slate-500">1.º Inscreva-se · 2.º Pague a formação</p>
                 <p className="text-lg font-extrabold font-mono-tabular text-[#061A2D]">
                   {course.priceKz.toLocaleString('pt-AO')} Kz
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    setSelectedCourse(course);
-                    setEnrollTab(course.modality === 'Presencial' ? 'inscricao_presencial' : 'online_pagamento');
-                    setEnrollSuccess(null);
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDirectEnrollment(course);
                   }}
-                  className="px-4 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-semibold transition-colors whitespace-nowrap"
+                  className="px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors whitespace-nowrap shadow-sm"
                 >
-                  Inscrever-se
+                  Inscrever-se Directo
                 </button>
               </div>
             </div>
@@ -235,7 +328,7 @@ export const CoursesCatalogPage: React.FC = () => {
         ))}
       </div>
 
-      {/* Enrollment & Payment Modal (Online + Presential Form) */}
+      {/* 2-STEP MODAL: PASSO 1 (INSCRIÇÃO DIRECTA) -> PASSO 2 (PAGAMENTO DA FORMAÇÃO) */}
       {selectedCourse && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#061A2D]/75 p-4 overflow-y-auto">
           <div className="w-full max-w-2xl rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden my-8">
@@ -249,15 +342,18 @@ export const CoursesCatalogPage: React.FC = () => {
                 />
                 <div>
                   <p className="text-xs font-semibold text-[#19B5FE]">
-                    Inscrição na Formação · {selectedCourse.modality} · {selectedCourse.durationHours} Horas
+                    {enrollStep === 'inscricao_directa'
+                      ? 'Passo 1 de 2 · Inscrição Directa Imediata na Formação'
+                      : 'Passo 2 de 2 · Pagamento da Formação para Liberar Acesso'}
                   </p>
                   <h2 className="text-lg sm:text-xl font-bold mt-0.5">{selectedCourse.title}</h2>
                   <p className="text-xs font-mono-tabular text-[#9AA6AE] mt-1">
-                    Valor: {selectedCourse.priceKz.toLocaleString('pt-AO')} Kz · Formador: {selectedCourse.instructorName}
+                    Valor: {selectedCourse.priceKz.toLocaleString('pt-AO')} Kz · Carga Horária: {selectedCourse.durationHours}h · Formador: {selectedCourse.instructorName}
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedCourse(null)}
                 className="text-slate-400 hover:text-white p-1"
               >
@@ -265,197 +361,51 @@ export const CoursesCatalogPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Mode Selector Tabs */}
+            {/* Step Indicator Tabs */}
             <div className="px-6 pt-4 bg-[#F5F9FC] border-b border-slate-200 flex gap-2">
               <button
                 type="button"
-                onClick={() => { setEnrollTab('online_pagamento'); setEnrollSuccess(null); }}
-                className={`px-4 py-2.5 text-xs font-bold rounded-t-lg border-t border-x transition-colors ${
-                  enrollTab === 'online_pagamento'
+                onClick={() => setEnrollStep('inscricao_directa')}
+                className={`px-4 py-2.5 text-xs font-bold rounded-t-lg border-t border-x transition-colors flex items-center gap-1.5 ${
+                  enrollStep === 'inscricao_directa'
                     ? 'bg-white text-[#061A2D] border-slate-200'
-                    : 'bg-transparent text-slate-600 border-transparent hover:text-[#061A2D]'
+                    : 'bg-transparent text-emerald-700 border-transparent hover:text-[#061A2D]'
                 }`}
               >
-                1. Inscrição LMS & Pagamentos Angola
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>1.º Passo: Inscrição Directa {createdEnrollment ? '✓' : ''}</span>
               </button>
               <button
                 type="button"
-                onClick={() => { setEnrollTab('inscricao_presencial'); setEnrollSuccess(null); }}
-                className={`px-4 py-2.5 text-xs font-bold rounded-t-lg border-t border-x transition-colors ${
-                  enrollTab === 'inscricao_presencial'
+                onClick={() => setEnrollStep('pagamento')}
+                className={`px-4 py-2.5 text-xs font-bold rounded-t-lg border-t border-x transition-colors flex items-center gap-1.5 ${
+                  enrollStep === 'pagamento'
                     ? 'bg-white text-[#061A2D] border-slate-200'
                     : 'bg-transparent text-slate-600 border-transparent hover:text-[#061A2D]'
                 }`}
               >
-                2. Formulário de Formação Presencial
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>2.º Passo: Pagar a Formação</span>
               </button>
             </div>
 
             <div className="p-6">
-              {enrollSuccess ? (
-                <div className="p-5 rounded-xl bg-emerald-50 border border-emerald-200 space-y-4">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <h3 className="text-sm font-bold text-emerald-950">Registo Concluído com Sucesso</h3>
-                      <p className="text-xs text-emerald-800 mt-1 leading-relaxed">{enrollSuccess}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-3 pt-2">
-                    {user?.role === 'ALUNO' ? (
-                      <button
-                        onClick={() => {
-                          setSelectedCourse(null);
-                          navigate('/aluno');
-                        }}
-                        className="px-4 py-2 rounded-lg bg-[#061A2D] text-white text-xs font-semibold hover:bg-[#0077C8]"
-                      >
-                        Ir para o Meu Painel do Aluno (LMS)
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setSelectedCourse(null);
-                          navigate('/registo');
-                        }}
-                        className="px-4 py-2 rounded-lg bg-[#0077C8] text-white text-xs font-semibold hover:bg-[#008FEA]"
-                      >
-                        Cadastrar Conta de Aluno para Aceder ao Painel LMS
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setSelectedCourse(null)}
-                      className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100"
-                    >
-                      Fechar
-                    </button>
-                  </div>
-                </div>
-              ) : enrollTab === 'online_pagamento' ? (
-                <form onSubmit={handleOnlineEnroll} className="space-y-4">
-                  {/* Official Payment Channels Box */}
-                  <div className="p-4 rounded-xl bg-[#061A2D] text-white space-y-3.5 border border-[#0077C8]/40 shadow-sm">
-                    <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-                      <div className="flex items-center gap-2">
-                        <CreditCard className="w-4 h-4 text-[#19B5FE]" />
-                        <span className="text-xs font-bold text-white uppercase tracking-wider">
-                          Canais de Pagamento Oficiais da ALHAN
-                        </span>
-                      </div>
-                      <span className="text-[11px] font-mono-tabular font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
-                        Moeda: Kwanzas (Kz)
-                      </span>
-                    </div>
-
-                    {/* Express Numbers */}
-                    <div className="bg-white/5 rounded-lg p-3 border border-white/10 space-y-2">
-                      <p className="text-xs font-bold text-[#19B5FE]">
-                        1. Multicaixa Express (Transferência / Pagamento por Telemóvel):
+              {enrollStep === 'inscricao_directa' ? (
+                /* PASSO 1: INSCRIÇÃO DIRECTA (Sem exigir pagamento prévio) */
+                <form onSubmit={handleDirectEnrollmentSubmit} className="space-y-4">
+                  <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-[#0077C8] shrink-0 mt-0.5" />
+                    <div className="space-y-1 text-xs">
+                      <p className="font-bold text-[#061A2D]">
+                        Inscrição Directa Rápida — Inscreva-se já e pague no passo seguinte!
                       </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                        <div className="flex items-center justify-between bg-black/30 p-2 rounded-lg border border-white/10">
-                          <span className="font-mono-tabular font-bold text-white">927 496 287</span>
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard('927496287', 'exp1')}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#0077C8] hover:bg-[#008FEA] text-[10px] font-bold text-white"
-                          >
-                            {copiedField === 'exp1' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                            <span>{copiedField === 'exp1' ? 'Copiado!' : 'Copiar'}</span>
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-between bg-black/30 p-2 rounded-lg border border-white/10">
-                          <span className="font-mono-tabular font-bold text-white">927 099 484</span>
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard('927099484', 'exp2')}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#0077C8] hover:bg-[#008FEA] text-[10px] font-bold text-white"
-                          >
-                            {copiedField === 'exp2' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                            <span>{copiedField === 'exp2' ? 'Copiado!' : 'Copiar'}</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* IBAN BANCO SOL */}
-                    <div className="bg-white/5 rounded-lg p-3 border border-white/10 space-y-1.5">
-                      <p className="text-xs font-bold text-[#19B5FE]">
-                        2. Transferência Bancária — BANCO SOL (IBAN):
+                      <p className="text-slate-600 leading-relaxed">
+                        Confirme abaixo os seus dados de aluno para garantir imediatamente a sua inscrição na formação. Logo a seguir à confirmação, serão apresentados os canais de pagamento (Express ou BANCO SOL) ou poderá pagar directamente no seu <strong>Painel do Aluno</strong>.
                       </p>
-                      <div className="flex items-center justify-between bg-black/30 p-2 rounded-lg border border-white/10">
-                        <div className="min-w-0 pr-2">
-                          <p className="font-mono-tabular text-xs font-bold text-white tracking-wide truncate">
-                            0044 0000 56903729141 08
-                          </p>
-                          <p className="text-[11px] text-slate-200 mt-0.5">
-                            Banco: <strong>BANCO SOL</strong> · Titular: <strong>Graciete Garcia</strong>
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard('004400005690372914108', 'iban')}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-[10px] font-bold text-white shrink-0"
-                        >
-                          {copiedField === 'iban' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                          <span>{copiedField === 'iban' ? 'Copiado!' : 'Copiar IBAN'}</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Validation & Prior Enrollment Rules */}
-                    <div className="p-2.5 rounded-lg bg-amber-500/15 border border-amber-400/30 text-[11px] text-amber-200 space-y-1">
-                      <p>
-                        <strong>1. Inscrição Obrigatória:</strong> No acto de pagamento, o aluno deve <strong>primeiro inscrever-se</strong> preenchendo os dados abaixo antes de enviar o comprovativo.
-                      </p>
-                      <p>
-                        <strong>2. Prazos de Validação:</strong> Pagamentos pelo mesmo banco (<strong>BANCO SOL</strong> ou <strong>Express</strong>) são validados <strong>no mesmo dia</strong>. Caso seja de banco diferente, leva <strong>24h</strong> para ser validado.{' '}
-                        <Link to="/politica-pagamentos" className="underline text-[#19B5FE] font-bold">
-                          Ver Política de Pagamentos
-                        </Link>
-                      </p>
-                    </div>
-
-                    {/* Send Proof CTA */}
-                    <div className="pt-1 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
-                      <span className="text-slate-300 text-[11px]">Envie o comprovativo para confirmação:</span>
-                      <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <a
-                          href={`https://wa.me/${COMPANY_INFO.whatsappNumber}?text=${encodeURIComponent(
-                            `Olá ALHAN, já me inscrevi e efectuei o pagamento da formação "${selectedCourse.title}" no valor de ${selectedCourse.priceKz.toLocaleString(
-                              'pt-AO'
-                            )} Kz via ${paymentMethod}. Segue o comprovativo para validação. Nome: ${
-                              user?.fullName || 'Formando'
-                            }.`
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px]"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          <span>Enviar no WhatsApp</span>
-                        </a>
-                        <a
-                          href={`mailto:${COMPANY_INFO.email}?subject=${encodeURIComponent(
-                            `Comprovativo de Pagamento - ${selectedCourse.title}`
-                          )}&body=${encodeURIComponent(
-                            `Olá ALHAN,\n\nEfectuei o pagamento da formação "${selectedCourse.title}" no valor de ${selectedCourse.priceKz.toLocaleString(
-                              'pt-AO'
-                            )} Kz via ${paymentMethod}.\n\nNome: ${user?.fullName || ''}\nWhatsApp: ${
-                              studentWhatsapp
-                            }\nReferência: ${paymentRef}\n\nSegue comprovativo em anexo.`
-                          )}`}
-                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-[11px]"
-                        >
-                          <Mail className="w-3.5 h-3.5" />
-                          <span>Email</span>
-                        </a>
-                      </div>
                     </div>
                   </div>
 
-                  {/* Student Contact Info for Notification */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-[#061A2D] mb-1">
                         Nome Completo do Aluno *
@@ -471,7 +421,7 @@ export const CoursesCatalogPage: React.FC = () => {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                        Seu WhatsApp / Telefone *
+                        WhatsApp / Telefone *
                       </label>
                       <input
                         type="text"
@@ -497,136 +447,44 @@ export const CoursesCatalogPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-[#061A2D] mb-1.5">
-                      Método Utilizado para Pagamento
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      {(['Express Angola', 'Unitel Money', 'Africell Money', 'KWiK'] as const).map((method) => (
-                        <button
-                          key={method}
-                          type="button"
-                          onClick={() => setPaymentMethod(method)}
-                          className={`p-3 rounded-lg border text-xs font-semibold text-left transition-colors ${
-                            paymentMethod === method
-                              ? 'border-[#0077C8] bg-[#0077C8]/10 text-[#061A2D]'
-                              : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                          }`}
-                        >
-                          <p>{method}</p>
-                          <p className="text-[10px] text-slate-500 mt-0.5 font-normal">
-                            {method === 'Express Angola' ? '927496287 / 927099484' : 'Validação manual'}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                        Código de Transacção / Referência do Comprovativo
+                        Modalidade de Frequência *
                       </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ex: EXP-2026-88412"
-                        value={paymentRef}
-                        onChange={(e) => setPaymentRef(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
-                      />
+                      <select
+                        value={chosenModality}
+                        onChange={(e) =>
+                          setChosenModality(e.target.value as 'Online' | 'Presencial' | 'Híbrida')
+                        }
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white focus:border-[#0077C8] focus:outline-none"
+                      >
+                        <option value="Online">Online (LMS + Microsoft Teams)</option>
+                        <option value="Presencial">Presencial (Luanda · Vagas Limitadas)</option>
+                        <option value="Híbrida">Híbrida (Online + Sessões Presenciais)</option>
+                      </select>
                     </div>
+
                     <div>
                       <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                        Valor a Validar (Kz)
+                        Turno Preferencial
                       </label>
-                      <input
-                        type="text"
-                        disabled
-                        value={`${selectedCourse.priceKz.toLocaleString('pt-AO')} Kz`}
-                        className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-mono-tabular font-bold text-[#061A2D]"
-                      />
+                      <select
+                        value={presShift}
+                        onChange={(e) => setPresShift(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white focus:border-[#0077C8] focus:outline-none"
+                      >
+                        <option>Manhã (08h30 – 12h30)</option>
+                        <option>Tarde (13h30 – 17h30)</option>
+                        <option>Pós-Laboral (18h00 – 21h00)</option>
+                        <option>Sábados Intensivo (08h30 – 16h30)</option>
+                      </select>
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                      Dados do Comprovativo / Observações de Pagamento
-                    </label>
-                    <textarea
-                      rows={2}
-                      placeholder="Indique o titular da conta que transferiu, data/hora ou nota do comprovativo..."
-                      value={receiptNote}
-                      onChange={(e) => setReceiptNote(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCourse(null)}
-                      className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold"
-                    >
-                      Submeter Inscrição e Comprovativo
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <form onSubmit={handlePresentialEnroll} className="space-y-4">
-                  <div className="p-3.5 rounded-lg bg-[#F5F9FC] border border-slate-200 text-xs text-slate-600 leading-relaxed">
-                    <strong>Formulário de Inscrição para Formação Presencial:</strong> Preencha os seus dados para reservar vaga na turma presencial em Luanda (ou formação in-company na sua província). O seu pedido fica registado no Painel Administrativo da ALHAN.
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-[#061A2D] mb-1">Nome Completo do Formando *</label>
-                      <input
-                        type="text"
-                        required
-                        value={presName}
-                        onChange={(e) => setPresName(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-[#061A2D] mb-1">Email *</label>
-                      <input
-                        type="email"
-                        required
-                        value={presEmail}
-                        onChange={(e) => setPresEmail(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-[#061A2D] mb-1">Telefone / WhatsApp *</label>
-                      <input
-                        type="text"
-                        required
-                        value={presPhone}
-                        onChange={(e) => setPresPhone(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-[#061A2D] mb-1">Empresa / Instituição (Opcional)</label>
-                      <input
-                        type="text"
-                        placeholder="Individual ou Nome da Empresa"
-                        value={presCompany}
-                        onChange={(e) => setPresCompany(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-[#061A2D] mb-1">Província</label>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Província
+                      </label>
                       <select
                         value={presProvince}
                         onChange={(e) => setPresProvince(e.target.value)}
@@ -642,48 +500,321 @@ export const CoursesCatalogPage: React.FC = () => {
                         <option>Outra Província</option>
                       </select>
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-[#061A2D] mb-1">Turno Preferencial</label>
-                      <select
-                        value={presShift}
-                        onChange={(e) => setPresShift(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white focus:border-[#0077C8] focus:outline-none"
-                      >
-                        <option>Manhã (08h30 – 12h30)</option>
-                        <option>Tarde (13h30 – 17h30)</option>
-                        <option>Pós-Laboral (18h00 – 21h00)</option>
-                        <option>Sábados Intensivo (08h30 – 16h30)</option>
-                      </select>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Empresa / Instituição (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Individual ou Nome da Empresa"
+                        value={presCompany}
+                        onChange={(e) => setPresCompany(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Observações (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Solicito factura pró-forma..."
+                        value={presNotes}
+                        onChange={(e) => setPresNotes(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                      />
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-[#061A2D] mb-1">Observações ou Necessidades Específicas</label>
-                    <textarea
-                      rows={2}
-                      value={presNotes}
-                      onChange={(e) => setPresNotes(e.target.value)}
-                      placeholder="Ex: Inscrição para equipa de 4 colaboradores, necessidade de factura pró-forma..."
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCourse(null)}
-                      className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2.5 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold"
-                    >
-                      Confirmar Inscrição Presencial
-                    </button>
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200">
+                    <p className="text-xs text-slate-500">
+                      Valor da formação:{' '}
+                      <strong className="font-mono-tabular text-[#061A2D]">
+                        {selectedCourse.priceKz.toLocaleString('pt-AO')} Kz
+                      </strong>{' '}
+                      (pagamento no passo seguinte)
+                    </p>
+                    <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCourse(null)}
+                        className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-6 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shadow-md transition-colors"
+                      >
+                        Confirmar Inscrição Directa → Seguir para Pagamento
+                      </button>
+                    </div>
                   </div>
                 </form>
+              ) : (
+                /* PASSO 2: PAGAMENTO DA FORMAÇÃO (Logo após a Inscrição Directa) */
+                <div className="space-y-4">
+                  {createdEnrollment && !paymentCompletedMsg && (
+                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                        <div>
+                          <h3 className="text-xs sm:text-sm font-bold text-emerald-950">
+                            ✓ Inscrição Directa Confirmada (#{createdEnrollment.id})!
+                          </h3>
+                          <p className="text-xs text-emerald-800 mt-0.5 leading-relaxed">
+                            O aluno <strong>{createdEnrollment.studentName}</strong> já está inscrito em{' '}
+                            <strong>{selectedCourse.title}</strong>. Realize o pagamento agora abaixo ou aceda ao seu{' '}
+                            <strong>Painel do Aluno</strong> para pagar e liberar a formação.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCourse(null);
+                          navigate('/aluno');
+                        }}
+                        className="px-3.5 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold shrink-0"
+                      >
+                        Ir para o Painel do Aluno →
+                      </button>
+                    </div>
+                  )}
+
+                  {paymentCompletedMsg ? (
+                    <div className="p-5 rounded-xl bg-emerald-50 border border-emerald-200 space-y-4">
+                      <div className="flex items-start gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                        <div>
+                          <h3 className="text-sm font-bold text-emerald-950">
+                            Inscrição e Comprovativo Submetidos com Sucesso!
+                          </h3>
+                          <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
+                            {paymentCompletedMsg}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCourse(null);
+                            navigate('/aluno');
+                          }}
+                          className="px-4 py-2 rounded-lg bg-[#061A2D] text-white text-xs font-semibold hover:bg-[#0077C8]"
+                        >
+                          Abrir Painel do Aluno (LMS & Pagamentos)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCourse(null)}
+                          className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100"
+                        >
+                          Fechar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <form onSubmit={handlePaymentAfterEnrollmentSubmit} className="space-y-4">
+                      {/* Official Payment Channels Box */}
+                      <div className="p-4 rounded-xl bg-[#061A2D] text-white space-y-3.5 border border-[#0077C8]/40 shadow-sm">
+                        <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-[#19B5FE]" />
+                            <span className="text-xs font-bold text-white uppercase tracking-wider">
+                              Canais de Pagamento Oficiais para Liberar a Formação
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-mono-tabular font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
+                            Valor: {selectedCourse.priceKz.toLocaleString('pt-AO')} Kz
+                          </span>
+                        </div>
+
+                        {/* Express Numbers */}
+                        <div className="bg-white/5 rounded-lg p-3 border border-white/10 space-y-2">
+                          <p className="text-xs font-bold text-[#19B5FE]">
+                            1. Multicaixa Express (Validação no mesmo dia):
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <div className="flex items-center justify-between bg-black/30 p-2 rounded-lg border border-white/10">
+                              <span className="font-mono-tabular font-bold text-white">927 496 287</span>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard('927496287', 'exp1')}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#0077C8] hover:bg-[#008FEA] text-[10px] font-bold text-white"
+                              >
+                                {copiedField === 'exp1' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                <span>{copiedField === 'exp1' ? 'Copiado!' : 'Copiar'}</span>
+                              </button>
+                            </div>
+                            <div className="flex items-center justify-between bg-black/30 p-2 rounded-lg border border-white/10">
+                              <span className="font-mono-tabular font-bold text-white">927 099 484</span>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard('927099484', 'exp2')}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#0077C8] hover:bg-[#008FEA] text-[10px] font-bold text-white"
+                              >
+                                {copiedField === 'exp2' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                <span>{copiedField === 'exp2' ? 'Copiado!' : 'Copiar'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* IBAN BANCO SOL */}
+                        <div className="bg-white/5 rounded-lg p-3 border border-white/10 space-y-1.5">
+                          <p className="text-xs font-bold text-[#19B5FE]">
+                            2. Transferência Bancária — BANCO SOL (IBAN):
+                          </p>
+                          <div className="flex items-center justify-between bg-black/30 p-2 rounded-lg border border-white/10">
+                            <div className="min-w-0 pr-2">
+                              <p className="font-mono-tabular text-xs font-bold text-white tracking-wide truncate">
+                                0044 0000 56903729141 08
+                              </p>
+                              <p className="text-[11px] text-slate-200 mt-0.5">
+                                Banco: <strong>BANCO SOL</strong> · Titular: <strong>Graciete Garcia</strong>
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard('004400005690372914108', 'iban')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-[10px] font-bold text-white shrink-0"
+                            >
+                              {copiedField === 'iban' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                              <span>{copiedField === 'iban' ? 'Copiado!' : 'Copiar IBAN'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Validation Timing Note */}
+                        <div className="p-2.5 rounded-lg bg-amber-500/15 border border-amber-400/30 text-[11px] text-amber-200">
+                          <strong>Prazos de Validação:</strong> Pagamentos pelo mesmo banco (<strong>BANCO SOL</strong> ou <strong>Express</strong>) são validados <strong>no mesmo dia</strong>. Caso seja de banco diferente, leva <strong>24h</strong> para ser validado.
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1.5">
+                          Canal Utilizado para Pagamento
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                          {(
+                            [
+                              'Express Angola',
+                              'BANCO SOL (IBAN)',
+                              'Transferência / Comprovativo',
+                              'Unitel Money',
+                              'Africell Money',
+                              'KWiK',
+                            ] as const
+                          ).map((method) => (
+                            <button
+                              key={method}
+                              type="button"
+                              onClick={() => setPaymentMethod(method)}
+                              className={`p-2.5 rounded-lg border text-xs font-semibold text-left transition-colors ${
+                                paymentMethod === method
+                                  ? 'border-[#0077C8] bg-[#0077C8]/10 text-[#061A2D]'
+                                  : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                              }`}
+                            >
+                              <p>{method}</p>
+                              <p className="text-[10px] text-slate-500 mt-0.5 font-normal">
+                                {method === 'Express Angola'
+                                  ? '927496287 / 927099484'
+                                  : method === 'BANCO SOL (IBAN)'
+                                  ? 'Graciete Garcia'
+                                  : 'Validação administrativa'}
+                              </p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                            Referência / Nº do Talão de Pagamento
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ex: EXP-2026-88412 ou Nº de Operação"
+                            value={paymentRef}
+                            onChange={(e) => setPaymentRef(e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                            Anexar Comprovativo (PDF ou Imagem — Opcional)
+                          </label>
+                          <input
+                            type="file"
+                            accept=".pdf,image/*"
+                            onChange={handleReceiptUpload}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-bold file:bg-[#061A2D] file:text-white"
+                          />
+                          {receiptFileName && (
+                            <p className="text-[11px] text-emerald-700 font-semibold mt-1">
+                              ✓ Ficheiro anexado: {receiptFileName}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          Observações do Pagamento (Opcional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Indique o titular da conta ordenante ou nota adicional..."
+                          value={receiptNote}
+                          onChange={(e) => setReceiptNote(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <a
+                            href={`https://wa.me/${COMPANY_INFO.whatsappNumber}?text=${encodeURIComponent(
+                              `Olá ALHAN, já realizei a minha inscrição directa na formação "${selectedCourse.title}" (${selectedCourse.priceKz.toLocaleString(
+                                'pt-AO'
+                              )} Kz) e envio o comprovativo de pagamento via ${paymentMethod} para liberar a formação. Aluno: ${studentNameInput}.`
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>Enviar no WhatsApp</span>
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCourse(null);
+                              navigate('/aluno');
+                            }}
+                            className="px-3.5 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            Pagar Depois no Painel do Aluno
+                          </button>
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="px-5 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shadow-sm"
+                        >
+                          Enviar Comprovativo e Liberar Formação
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
               )}
             </div>
           </div>

@@ -483,11 +483,12 @@ export const HomePage: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {featuredCourses.map((course) => (
-              <div
+              <Link
                 key={course.id}
+                to={`/formacoes?curso=${course.id}`}
                 className={`rounded-xl border ${
                   course.featured ? 'border-2 border-[#0077C8] ring-2 ring-[#0077C8]/15' : 'border-slate-200'
-                } bg-[#F5F9FC] overflow-hidden flex flex-col justify-between hover:border-[#0077C8] transition-colors group`}
+                } bg-[#F5F9FC] overflow-hidden flex flex-col justify-between hover:border-[#0077C8] hover:shadow-md transition-all group cursor-pointer`}
               >
                 <div>
                   <div className="relative h-48 w-full bg-[#061A2D] overflow-hidden border-b border-slate-200">
@@ -497,6 +498,9 @@ export const HomePage: React.FC = () => {
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
                     />
+                    <div className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded bg-[#061A2D]/85 text-[#19B5FE] text-[10px] font-bold border border-white/15">
+                      Clique para Inscrição Directa →
+                    </div>
                   </div>
 
                   <div className="p-6">
@@ -509,7 +513,9 @@ export const HomePage: React.FC = () => {
                       <span className="font-mono-tabular">{course.durationHours}h</span>
                     </div>
 
-                    <h3 className="text-lg font-bold text-[#061A2D] mt-2">{course.title}</h3>
+                    <h3 className="text-lg font-bold text-[#061A2D] group-hover:text-[#0077C8] transition-colors mt-2">
+                      {course.title}
+                    </h3>
                     <p className="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
                       {course.description}
                     </p>
@@ -518,19 +524,16 @@ export const HomePage: React.FC = () => {
 
                 <div className="px-6 pb-6 pt-4 border-t border-slate-200/80 flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] text-slate-500">Investimento</p>
+                    <p className="text-[11px] text-slate-500">Investimento (Pague após inscrição)</p>
                     <p className="text-base font-extrabold font-mono-tabular text-[#061A2D]">
                       {course.priceKz.toLocaleString('pt-AO')} Kz
                     </p>
                   </div>
-                  <Link
-                    to={`/formacoes?curso=${course.id}`}
-                    className="px-4 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-semibold transition-colors whitespace-nowrap"
-                  >
-                    Inscrever-se
-                  </Link>
+                  <span className="px-4 py-2 rounded-lg bg-[#0077C8] group-hover:bg-[#008FEA] text-white text-xs font-bold transition-colors whitespace-nowrap">
+                    Inscrever-se Directo
+                  </span>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>

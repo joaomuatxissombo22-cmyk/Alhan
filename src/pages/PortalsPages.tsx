@@ -375,6 +375,7 @@ export const StudentPortal: React.FC = () => {
     enrollments,
     certificates,
     notifications,
+    createEnrollment,
     submitStudentPaymentProof,
     completeLesson,
     issueCertificate,
@@ -478,6 +479,44 @@ export const StudentPortal: React.FC = () => {
         'pt-AO'
       )} Kz via ${payMethod}) registado com sucesso! Assim que a Direcção Operacional confirmar o comprovativo (no mesmo dia para BANCO SOL / Express ou em 24h para outros bancos), a sua formação será imediatamente liberada e receberá notificação no WhatsApp (${payStudentPhone}) e E-mail (${payStudentEmail}).`
     );
+  };
+
+  // Direct 1-click enrollment when clicking any course in Student Portal, then proceeding to payment
+  const handleDirectCourseClickInPortal = async (course: CourseItem) => {
+    const existingEnr = myEnrollments.find((e) => e.courseId === course.id);
+    if (existingEnr) {
+      setSelectedEnrollmentId(existingEnr.id);
+      setPayCourseId(course.id);
+      if (existingEnr.paymentStatus === 'Pago') {
+        setActiveTab('Aulas');
+      } else {
+        setPaymentSubmittedMsg(
+          `A sua inscrição em «${course.title}» (#${existingEnr.id}) já está activa! Realize agora o pagamento pelos canais abaixo e submeta o comprovativo para liberar a formação.`
+        );
+        setActiveTab('Pagamentos');
+      }
+      return;
+    }
+
+    const created = await createEnrollment({
+      course,
+      modality: course.modality,
+      paymentMethod: 'Express Angola',
+      paymentReference: 'INSCRICAO-DIRECTA',
+      receiptNote: 'Inscrição directa realizada pelo aluno no Painel do Aluno. Aguardando pagamento.',
+      studentName: user?.fullName || 'Aluno Registado',
+      studentPhone: user?.phone || '+244 922 021 211',
+      studentEmail: user?.email || 'aluno@alhan.pro',
+    });
+
+    setSelectedEnrollmentId(created.id);
+    setPayCourseId(course.id);
+    setPayReference('');
+    setPayReceiptNote('');
+    setPaymentSubmittedMsg(
+      `✓ Inscrição Directa Confirmada (#${created.id}) na formação «${course.title}»! Agora realize o pagamento pelos canais oficiais abaixo (Multicaixa Express ou BANCO SOL) e envie o comprovativo para liberar as aulas.`
+    );
+    setActiveTab('Pagamentos');
   };
 
   const allLessons = activeCourse?.modules.flatMap((m) => m.lessons) || [];
@@ -789,6 +828,93 @@ export const StudentPortal: React.FC = () => {
                 })}
               </div>
             )}
+
+            {/* Direct Enrollment Course Catalog inside Student Portal */}
+            <div className="pt-6 border-t border-slate-200 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold text-[#0077C8] uppercase tracking-wider">
+                    Inscrição Directa em 1 Clique · Catálogo ALHAN
+                  </p>
+                  <h3 className="text-base font-extrabold text-[#061A2D] mt-0.5">
+                    Clique em Qualquer Curso para se Inscrever Directo (e Pagar a Seguir)
+                  </h3>
+                </div>
+                <span className="text-xs text-slate-500">
+                  1.º Inscrição Imediata → 2.º Pagamento da Formação
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {courses
+                  .filter((c) => c.published)
+                  .map((course) => {
+                    const alreadyEnrolled = myEnrollments.find((e) => e.courseId === course.id);
+                    return (
+                      <div
+                        key={course.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => handleDirectCourseClickInPortal(course)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleDirectCourseClickInPortal(course);
+                          }
+                        }}
+                        className={`rounded-xl border p-4 flex flex-col justify-between cursor-pointer transition-all hover:border-[#0077C8] hover:shadow-md group ${
+                          course.featured
+                            ? 'border-2 border-[#0077C8] bg-[#F5F9FC]'
+                            : 'border-slate-200 bg-white'
+                        }`}
+                      >
+                        <div>
+                          <div className="relative h-32 w-full rounded-lg overflow-hidden mb-3 bg-[#061A2D] border border-slate-200">
+                            <img
+                              src={course.imageUrl}
+                              alt={course.title}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                            />
+                            {alreadyEnrolled && (
+                              <span
+                                className={`absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  alreadyEnrolled.paymentStatus === 'Pago'
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-amber-500 text-[#061A2D]'
+                                }`}
+                              >
+                                {alreadyEnrolled.paymentStatus === 'Pago'
+                                  ? '✓ Formação Liberada'
+                                  : 'Inscrito · Falta Pagar'}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] font-semibold text-[#0077C8]">
+                            {course.category} · {course.modality} · {course.durationHours}h
+                          </p>
+                          <h4 className="text-sm font-bold text-[#061A2D] group-hover:text-[#0077C8] mt-1 line-clamp-2">
+                            {course.title}
+                          </h4>
+                        </div>
+
+                        <div className="mt-3 pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                          <span className="text-xs font-extrabold font-mono-tabular text-[#061A2D]">
+                            {course.priceKz.toLocaleString('pt-AO')} Kz
+                          </span>
+                          <span className="px-3 py-1.5 rounded-lg bg-[#0077C8] group-hover:bg-[#008FEA] text-white text-[11px] font-bold">
+                            {alreadyEnrolled
+                              ? alreadyEnrolled.paymentStatus === 'Pago'
+                                ? 'Abrir Aulas →'
+                                : 'Pagar Formação →'
+                              : 'Inscrever Directo →'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
           </div>
         )}
 
