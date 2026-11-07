@@ -1,6 +1,14 @@
+# Configuração Oficial Hostinger (Apache / LiteSpeed) — Domínio: alhan.pro & Sublinks Administrativos
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+
+  # Forçar HTTPS seguro no domínio alhan.pro e subdomínios (admin.alhan.pro / www.alhan.pro)
+  RewriteCond %{HTTPS} off
+  RewriteCond %{HTTP_HOST} ^(?:www\.|admin\.|gestao\.)?alhan\.pro$ [NC]
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # Suporte directo aos sublinks do Painel Administrativo (/gestao-alhan-sgi e /painel-admin) e rotas SPA
   RewriteRule ^index\.html$ - [L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d

@@ -4172,10 +4172,10 @@ export const AdminPortal: React.FC = () => {
                 </div>
                 <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
                   <div>
-                    <p className="font-bold text-[#061A2D]">Hospedagem Hostinger (`public_html` + `.htaccess` SPA)</p>
-                    <p className="text-slate-500 mt-0.5">Compatível com Apache/LiteSpeed, Desktop e Dispositivos Móveis (Android/iOS)</p>
+                    <p className="font-bold text-[#061A2D]">Domínio alhan.pro & Hospedagem Hostinger (`public_html` + `.htaccess`)</p>
+                    <p className="text-slate-500 mt-0.5">Domínio principal `alhan.pro` e sublinks administrativos (`/gestao-alhan-sgi`, `/painel-admin`, `admin.alhan.pro`)</p>
                   </div>
-                  <span className="font-bold text-emerald-700">Pronto para Hospedar</span>
+                  <span className="font-bold text-emerald-700">Configurado & Activo</span>
                 </div>
                 <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
                   <div>
@@ -4186,15 +4186,15 @@ export const AdminPortal: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-5 rounded-xl bg-[#061A2D] text-[#F5F9FC] space-y-2 text-xs">
+              <div className="p-5 rounded-xl bg-[#061A2D] text-[#F5F9FC] space-y-2.5 text-xs">
                 <p className="font-bold text-[#19B5FE]">
-                  Guia Rápido de Publicação na Hostinger (www.alhan.pro) — Desktop & Mobile:
+                  Configuração Oficial do Domínio <code>alhan.pro</code> e Sublinks do Painel Administrativo na Hostinger:
                 </p>
-                <ol className="list-decimal list-inside space-y-1 text-[#F5F9FC]/85 leading-relaxed">
-                  <li>Execute <code>npm run build</code> para gerar a pasta de produção optimizada <code>dist/</code>.</li>
-                  <li>No painel hPanel da <strong>Hostinger</strong>, aceda ao <strong>Gestor de Ficheiros</strong> → pasta <code>public_html</code> do domínio <code>alhan.pro</code>.</li>
-                  <li>Carregue todo o conteúdo da pasta <code>dist/</code> (incluindo o ficheiro <code>.htaccess</code> já configurado na raiz) para <code>public_html</code>.</li>
-                  <li>O ficheiro <code>.htaccess</code> garante que todas as rotas (<code>/formacoes</code>, <code>/consultoria-iso</code>, <code>/aluno</code>, <code>/admin</code>) abrem directamente sem erro 404 tanto em computadores (Desktop) como em telemóveis Android e iPhone.</li>
+                <ol className="list-decimal list-inside space-y-1.5 text-[#F5F9FC]/85 leading-relaxed">
+                  <li><strong>Domínio Público Oficial:</strong> <code>https://alhan.pro</code> (e <code>https://www.alhan.pro</code>) com certificado SSL/HTTPS forçado automaticamente via <code>.htaccess</code>.</li>
+                  <li><strong>Sublinks Privados do Painel Administrativo (Ocultos do Site Público):</strong> <code>https://alhan.pro/gestao-alhan-sgi</code> e <code>https://alhan.pro/painel-admin</code>.</li>
+                  <li><strong>Subdomínio Administrativo Hostinger (Opcional):</strong> Se criar o subdomínio <code>admin.alhan.pro</code> no hPanel da Hostinger apontando para a mesma pasta <code>public_html</code>, ao abrir <code>https://admin.alhan.pro</code> o sistema carrega directamente este Painel Administrativo separado!</li>
+                  <li><strong>Publicação no hPanel Hostinger:</strong> Execute <code>npm run build</code> e envie o conteúdo da pasta <code>dist/</code> (incluindo o ficheiro <code>.htaccess</code>) para <code>public_html</code> do domínio <code>alhan.pro</code>.</li>
                 </ol>
               </div>
             </div>

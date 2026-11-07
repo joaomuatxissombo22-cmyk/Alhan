@@ -39,13 +39,21 @@ const ScrollToTop: React.FC = () => {
 };
 
 export default function App() {
+  const isHostingerAdminSubdomain =
+    typeof window !== 'undefined' &&
+    (window.location.hostname.startsWith('admin.') ||
+      window.location.hostname.startsWith('gestao.'));
+
   return (
     <AppProvider>
       <BrowserRouter>
         <ScrollToTop />
         <Layout>
           <Routes>
-            <Route path="/" element={<HomePage />} />
+            <Route
+              path="/"
+              element={isHostingerAdminSubdomain ? <AdminPortal /> : <HomePage />}
+            />
             <Route path="/quem-somos" element={<AboutPage />} />
             <Route path="/formacoes" element={<CoursesCatalogPage />} />
             <Route path="/consultoria-iso" element={<ConsultoriaIsoPage />} />
@@ -64,13 +72,17 @@ export default function App() {
             <Route path="/professor" element={<ProfessorPortal />} />
             <Route path="/empresa" element={<CompanyPortal />} />
             <Route path="/gestao-alhan-sgi" element={<AdminPortal />} />
+            <Route path="/painel-admin" element={<AdminPortal />} />
             <Route path="/admin" element={<AdminPortal />} />
             <Route path="/termos" element={<LegalPage section="termos" />} />
             <Route path="/privacidade" element={<LegalPage section="privacidade" />} />
             <Route path="/politica-pagamentos" element={<LegalPage section="pagamentos" />} />
             <Route path="/politica-formacao" element={<LegalPage section="formacao" />} />
             <Route path="/aviso-certificacao" element={<LegalPage section="certificacao" />} />
-            <Route path="*" element={<HomePage />} />
+            <Route
+              path="*"
+              element={isHostingerAdminSubdomain ? <AdminPortal /> : <HomePage />}
+            />
           </Routes>
         </Layout>
       </BrowserRouter>

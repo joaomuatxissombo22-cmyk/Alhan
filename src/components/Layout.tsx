@@ -49,8 +49,15 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  const isHostingerAdminSubdomain =
+    typeof window !== 'undefined' &&
+    (window.location.hostname.startsWith('admin.') ||
+      window.location.hostname.startsWith('gestao.'));
+
   const isSeparateAdminRoute =
+    isHostingerAdminSubdomain ||
     location.pathname.startsWith('/gestao-alhan-sgi') ||
+    location.pathname.startsWith('/painel-admin') ||
     location.pathname.startsWith('/admin');
 
   const isPortalRoute =
