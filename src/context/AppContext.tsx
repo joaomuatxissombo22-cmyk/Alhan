@@ -11,7 +11,17 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../firebase';
+import {
+  auth,
+  db,
+  googleProvider,
+  handleFirestoreError,
+  OperationType,
+  saveEnrollmentToFirestore,
+  updateEnrollmentPaymentInFirestore,
+  updateEnrollmentStatusInFirestore,
+  updateEnrollmentProgressInFirestore,
+} from '../firebase';
 import {
   CourseItem,
   IsoStandardItem,
@@ -353,6 +363,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             );
           } catch (err) {
             console.warn('User profile sync info:', userPath, err);
+          }
+
+          if (isSuperAdminEmail) {
+            for (const c of INITIAL_COURSES) {
+              try {
+                await setDoc(
+                  doc(db, 'courses', c.id),
+                  {
+                    id: c.id,
+                    title: c.title.slice(0, 160),
+                    category: c.category.slice(0, 80),
+                    modality: c.modality,
+                    priceKz: Number(c.priceKz),
+                    durationHours: Number(c.durationHours),
+                    lessonsCount: Number(c.lessonsCount),
+                    instructorName: c.instructorName.slice(0, 120),
+                    instructorId: c.instructorId.slice(0, 128),
+                    published: Boolean(c.published),
+                    description: c.description.slice(0, 1500),
+                    objectives: c.objectives.slice(0, 1500),
+                    syllabus: c.syllabus.slice(0, 2000),
+                    createdAt: serverTimestamp(),
+                  },
+                  { merge: true }
+                );
+              } catch {
+                // Ignore if already exists
+              }
+            }
           }
         }
       }
@@ -765,6 +804,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setEnrollments((prev) => [newEnrollment, ...prev]);
+
+    if (auth.currentUser && auth.currentUser.emailVerified) {
+      await saveEnrollmentToFirestore(newEnrollment);
+    }
+
     triggerNotification(
       'Nova inscrição',
       `Nova Inscrição: ${payload.course.title}`,
@@ -812,6 +856,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         receiptFileName: payload.receiptFileName || existing.receiptFileName,
       };
       setEnrollments((prev) => prev.map((e) => (e.id === existing.id ? updated : e)));
+
+      if (auth.currentUser && auth.currentUser.emailVerified) {
+        await updateEnrollmentPaymentInFirestore(existing.id, {
+          paymentMethod: updated.paymentMethod,
+          paymentReference: updated.paymentReference,
+          receiptNote: updated.receiptNote,
+        });
+      }
+
       triggerNotification(
         'Nova inscrição',
         `Comprovativo Enviado pelo Aluno: ${payload.course.title}`,
@@ -840,6 +893,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setEnrollments((prev) =>
       prev.map((item) => (item.id === enrollmentId ? { ...item, paymentStatus: status } : item))
     );
+
+    if (auth.currentUser && auth.currentUser.emailVerified) {
+      await updateEnrollmentStatusInFirestore(enrollmentId, status);
+    }
+
     const target = enrollments.find((e) => e.id === enrollmentId);
     if (status === 'Pago' && target) {
       triggerNotification(
@@ -853,6 +911,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const completeLesson = async (enrollmentId: string, lessonId: string, totalLessons: number, quizScore?: number) => {
+    let computedPct = 0;
+    let computedCompleted = false;
+
     setEnrollments((prev) =>
       prev.map((item) => {
         if (item.id !== enrollmentId) return item;
@@ -861,6 +922,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : [...item.completedLessons, lessonId];
         const pct = Math.min(100, Math.round((updatedLessons.length / Math.max(1, totalLessons)) * 100));
         const isCompleted = pct >= 100;
+        computedPct = pct;
+        computedCompleted = isCompleted;
         return {
           ...item,
           completedLessons: updatedLessons,
@@ -870,6 +933,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       })
     );
+
+    if (auth.currentUser && auth.currentUser.emailVerified) {
+      await updateEnrollmentProgressInFirestore(enrollmentId, computedPct, computedCompleted);
+    }
+
     logActivity(`Progresso de aula registado (${lessonId})`);
   };
 

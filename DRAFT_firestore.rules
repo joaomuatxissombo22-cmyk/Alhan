@@ -83,7 +83,7 @@ service cloud.firestore {
         data.courseTitle is string && data.courseTitle.size() >= 2 && data.courseTitle.size() <= 160 &&
         data.modality in ['Online', 'Presencial', 'Híbrida'] &&
         data.amountKz is number && data.amountKz >= 0 &&
-        data.paymentMethod in ['Express Angola', 'Unitel Money', 'Africell Money', 'KWiK', 'Transferência / Comprovativo'] &&
+        data.paymentMethod in ['Express Angola', 'BANCO SOL (IBAN)', 'Unitel Money', 'Africell Money', 'KWiK', 'Transferência / Comprovativo'] &&
         data.paymentReference is string && data.paymentReference.size() <= 120 &&
         data.receiptNote is string && data.receiptNote.size() <= 500 &&
         data.paymentStatus in ['Pendente', 'Pago', 'Falhado', 'Cancelado', 'Reembolsado'] &&
@@ -278,7 +278,7 @@ service cloud.firestore {
           isAdmin() ||
           (existing().studentId == request.auth.uid &&
            !(existing().paymentStatus in ['Cancelado', 'Reembolsado']) &&
-           incoming().diff(existing()).affectedKeys().hasOnly(['progressPercent', 'completed', 'paymentReference', 'receiptNote']))
+           incoming().diff(existing()).affectedKeys().hasOnly(['progressPercent', 'completed', 'paymentMethod', 'paymentReference', 'receiptNote']))
         );
       allow delete: if isValidId(enrollmentId) && isAdmin();
     }

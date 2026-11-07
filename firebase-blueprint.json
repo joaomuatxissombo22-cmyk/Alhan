@@ -61,7 +61,7 @@
         "courseTitle": { "type": "string", "maxLength": 160 },
         "modality": { "type": "string", "enum": ["Online", "Presencial", "Híbrida"] },
         "amountKz": { "type": "number" },
-        "paymentMethod": { "type": "string", "enum": ["Express Angola", "Unitel Money", "Africell Money", "KWiK", "Transferência / Comprovativo"] },
+        "paymentMethod": { "type": "string", "enum": ["Express Angola", "BANCO SOL (IBAN)", "Unitel Money", "Africell Money", "KWiK", "Transferência / Comprovativo"] },
         "paymentReference": { "type": "string", "maxLength": 120 },
         "receiptNote": { "type": "string", "maxLength": 500 },
         "paymentStatus": { "type": "string", "enum": ["Pendente", "Pago", "Falhado", "Cancelado", "Reembolsado"] },

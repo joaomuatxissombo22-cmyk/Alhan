@@ -17,7 +17,7 @@
 5. **PII Cross-User Read**: Authenticated user `u2` attempts `get` on `/users/u1/private/info` -> Rejected by `isOwner(userId) || isAdmin()`.
 6. **Unbounded ID Poisoning**: Document ID exceeding 128 chars or containing `/` or `$` -> Rejected by `isValidId(id)`.
 7. **Value Poisoning on Update**: Updating `fullName` on `/users/{userId}` with a number `12345` or 5000-char string -> Rejected because `isValidUserProfile(incoming())` wraps the update block.
-8. **Student Self-Marking Payment as Paid**: Student attempts to create or update `Enrollment` with `paymentStatus: "Pago"` -> Rejected because student create enforces `paymentStatus == 'Pendente'` and student update only permits `['progressPercent', 'receiptNote', 'paymentReference']`.
+8. **Student Self-Marking Payment as Paid**: Student attempts to create or update `Enrollment` with `paymentStatus: "Pago"` -> Rejected because student create enforces `paymentStatus == 'Pendente'` and student update only permits `['progressPercent', 'completed', 'paymentMethod', 'paymentReference', 'receiptNote']`.
 9. **Terminal State Reversal**: Student attempts to update an `Enrollment` where `existing().paymentStatus == 'Cancelado'` -> Rejected by terminal state lock.
 10. **Cross-Tenant ISO Project Read**: Corporate user from `compA` attempts `list` or `get` on `/isoProjects` belonging to `compB` -> Rejected by `resource.data.companyId` check.
 11. **Fake Client Timestamp**: Client supplies past/future timestamp for `createdAt` instead of `request.time` -> Rejected by `incoming().createdAt == request.time`.
