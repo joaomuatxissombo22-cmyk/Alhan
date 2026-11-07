@@ -192,6 +192,9 @@ interface AppContextValue {
     customCode?: string;
   }) => Promise<CertificateItem>;
   updateCertificateStatus: (certId: string, status: CertificateItem['status']) => Promise<void>;
+  deleteCertificate: (certId: string) => Promise<void>;
+  clearAllCertificates: () => Promise<void>;
+  cancelCertificateRequest: (enrollmentId: string) => Promise<void>;
   submitDiagnosticOrContact: (item: Omit<DiagnosticRequestItem, 'id' | 'userId' | 'status' | 'createdAt'>) => Promise<void>;
   updateDiagnosticStatus: (id: string, status: DiagnosticRequestItem['status']) => Promise<void>;
   saveIsoProject: (project: IsoProjectItem) => Promise<void>;
@@ -334,23 +337,92 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return Notification.permission;
   });
 
-  // Persist state locally
+  const isRemoteSyncRef = React.useRef(false);
+  const broadcastChannelRef = React.useRef<BroadcastChannel | null>(null);
+
+  const persistAndBroadcast = React.useCallback((key: string, data: unknown) => {
+    try {
+      const serialized = JSON.stringify(data);
+      const current = localStorage.getItem(key);
+      if (current !== serialized) {
+        localStorage.setItem(key, serialized);
+        if (!isRemoteSyncRef.current && broadcastChannelRef.current) {
+          broadcastChannelRef.current.postMessage({ key, serialized });
+        }
+      }
+    } catch {
+      // Ignore quota errors
+    }
+  }, []);
+
+  // Instantaneous cross-tab & cross-panel real-time synchronization (BroadcastChannel + storage event)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const applyRemoteKey = (key: string, raw: string | null) => {
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        isRemoteSyncRef.current = true;
+        if (key === 'alhan_enrollments') setEnrollments(parsed);
+        else if (key === 'alhan_certificates') setCertificates(parsed);
+        else if (key === 'alhan_notifications') setNotifications(parsed);
+        else if (key === 'alhan_email_notifications') setEmailNotifications(parsed);
+        else if (key === 'alhan_registered_users') setRegisteredUsers(parsed);
+        else if (key === 'alhan_courses') setCourses(parsed);
+        else if (key === 'alhan_diagnostics') setDiagnosticRequests(parsed);
+        else if (key === 'alhan_activity_logs') setActivityLogs(parsed);
+      } catch {
+        // Ignore parse error
+      } finally {
+        setTimeout(() => {
+          isRemoteSyncRef.current = false;
+        }, 20);
+      }
+    };
+
+    let bc: BroadcastChannel | null = null;
+    if ('BroadcastChannel' in window) {
+      bc = new BroadcastChannel('alhan_realtime_sync');
+      broadcastChannelRef.current = bc;
+      bc.onmessage = (ev) => {
+        if (ev.data?.key && ev.data?.serialized) {
+          applyRemoteKey(ev.data.key, ev.data.serialized);
+        }
+      };
+    }
+
+    const handleStorage = (ev: StorageEvent) => {
+      if (ev.key && ev.newValue) {
+        applyRemoteKey(ev.key, ev.newValue);
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      if (bc) bc.close();
+      broadcastChannelRef.current = null;
+    };
+  }, []);
+
+  // Persist state locally & broadcast instantaneously across open panels
   useEffect(() => { localStorage.setItem('alhan_active_user', JSON.stringify(user)); }, [user]);
-  useEffect(() => { localStorage.setItem('alhan_registered_users', JSON.stringify(registeredUsers)); }, [registeredUsers]);
-  useEffect(() => { localStorage.setItem('alhan_courses', JSON.stringify(courses)); }, [courses]);
-  useEffect(() => { localStorage.setItem('alhan_iso_standards', JSON.stringify(isoStandards)); }, [isoStandards]);
-  useEffect(() => { localStorage.setItem('alhan_enrollments', JSON.stringify(enrollments)); }, [enrollments]);
-  useEffect(() => { localStorage.setItem('alhan_certificates', JSON.stringify(certificates)); }, [certificates]);
-  useEffect(() => { localStorage.setItem('alhan_testimonials', JSON.stringify(testimonials)); }, [testimonials]);
-  useEffect(() => { localStorage.setItem('alhan_panel_credentials', JSON.stringify(panelCredentials)); }, [panelCredentials]);
-  useEffect(() => { localStorage.setItem('alhan_iso_projects', JSON.stringify(isoProjects)); }, [isoProjects]);
-  useEffect(() => { localStorage.setItem('alhan_iso_documents', JSON.stringify(isoDocuments)); }, [isoDocuments]);
-  useEffect(() => { localStorage.setItem('alhan_iso_audits', JSON.stringify(isoAudits)); }, [isoAudits]);
-  useEffect(() => { localStorage.setItem('alhan_ncs', JSON.stringify(nonConformities)); }, [nonConformities]);
-  useEffect(() => { localStorage.setItem('alhan_diagnostics', JSON.stringify(diagnosticRequests)); }, [diagnosticRequests]);
-  useEffect(() => { localStorage.setItem('alhan_notifications', JSON.stringify(notifications)); }, [notifications]);
-  useEffect(() => { localStorage.setItem('alhan_email_notifications', JSON.stringify(emailNotifications)); }, [emailNotifications]);
-  useEffect(() => { localStorage.setItem('alhan_activity_logs', JSON.stringify(activityLogs)); }, [activityLogs]);
+  useEffect(() => { persistAndBroadcast('alhan_registered_users', registeredUsers); }, [registeredUsers, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_courses', courses); }, [courses, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_iso_standards', isoStandards); }, [isoStandards, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_enrollments', enrollments); }, [enrollments, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_certificates', certificates); }, [certificates, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_testimonials', testimonials); }, [testimonials, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_panel_credentials', panelCredentials); }, [panelCredentials, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_iso_projects', isoProjects); }, [isoProjects, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_iso_documents', isoDocuments); }, [isoDocuments, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_iso_audits', isoAudits); }, [isoAudits, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_ncs', nonConformities); }, [nonConformities, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_diagnostics', diagnosticRequests); }, [diagnosticRequests, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_notifications', notifications); }, [notifications, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_email_notifications', emailNotifications); }, [emailNotifications, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_activity_logs', activityLogs); }, [activityLogs, persistAndBroadcast]);
 
   const logActivity = (action: string, actorName?: string) => {
     setActivityLogs((prev) => [
@@ -755,11 +827,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           e.id === target!.id
             ? {
                 ...e,
+                studentId: user?.uid || e.studentId,
                 studentName: reqName,
                 studentEmail: reqEmail || e.studentEmail,
                 studentPhone: reqPhone || e.studentPhone,
                 certificateRequested: true,
                 certificateRequestedAt: nowIso,
+                certificateSentAt: undefined,
                 certificateRequestName: reqName,
                 certificateRequestBI: reqBI,
                 certificateRequestEmail: reqEmail,
@@ -1624,6 +1698,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logActivity(`Estado do certificado ${certId} alterado para ${status}`);
   };
 
+  const deleteCertificate = async (certId: string) => {
+    const target = certificates.find((c) => c.id === certId);
+    setCertificates((prev) => prev.filter((c) => c.id !== certId));
+    setEnrollments((prev) =>
+      prev.map((e) =>
+        e.certificateId === certId ||
+        (target && e.courseId === target.courseId && e.studentId === target.studentId)
+          ? {
+              ...e,
+              certificateId: undefined,
+              certificateSentAt: undefined,
+            }
+          : e
+      )
+    );
+    if (target) {
+      logActivity(
+        `Certificado eliminado pelo Administrador na Secção 13: ${target.code} (${target.studentName} - ${target.courseTitle})`
+      );
+    }
+    if (auth.currentUser && auth.currentUser.email === 'joaomuatxissombo22@gmail.com') {
+      const path = `certificates/${certId}`;
+      try {
+        await deleteDoc(doc(db, 'certificates', certId));
+      } catch (err) {
+        console.warn('Firestore delete certificate info:', path, err);
+      }
+    }
+  };
+
+  const clearAllCertificates = async () => {
+    setCertificates([]);
+    setEnrollments((prev) =>
+      prev.map((e) => ({
+        ...e,
+        certificateId: undefined,
+        certificateSentAt: undefined,
+        certificateRequested: false,
+      }))
+    );
+    logActivity(
+      'Todos os certificados emitidos na Secção 13 (Controlo de Certificados Emitidos, Anexo Presencial e Validação QR) foram eliminados pelo Administrador'
+    );
+  };
+
+  const cancelCertificateRequest = async (enrollmentId: string) => {
+    const target = enrollments.find((e) => e.id === enrollmentId);
+    setEnrollments((prev) =>
+      prev.map((e) =>
+        e.id === enrollmentId
+          ? {
+              ...e,
+              certificateRequested: false,
+              certificateRequestedAt: undefined,
+            }
+          : e
+      )
+    );
+    if (target) {
+      logActivity(
+        `Solicitação de certificado eliminada/arquivada pelo Administrador: ${target.studentName} (${target.courseTitle})`
+      );
+    }
+  };
+
   const submitDiagnosticOrContact = async (
     item: Omit<DiagnosticRequestItem, 'id' | 'userId' | 'status' | 'createdAt'>
   ) => {
@@ -1780,6 +1919,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         issueCertificate,
         addPresencialCertificate,
         updateCertificateStatus,
+        deleteCertificate,
+        clearAllCertificates,
+        cancelCertificateRequest,
         submitDiagnosticOrContact,
         updateDiagnosticStatus,
         saveIsoProject,

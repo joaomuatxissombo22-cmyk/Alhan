@@ -635,16 +635,28 @@ export const StudentPortal: React.FC = () => {
   const currentStudentId = user?.uid || '';
   const currentStudentName = user?.fullName || 'Aluno Registado';
 
-  // Data isolation: student sees their own enrollments & certificates (matched by uid or registered email)
+  // Data isolation + instantaneous sync: student sees their own enrollments & returned PDF certificates
   const myEnrollments = enrollments.filter(
     (e) =>
       e.studentId === currentStudentId ||
-      (user?.email && e.studentEmail?.toLowerCase() === user.email.toLowerCase())
+      (user?.email &&
+        (e.studentEmail?.toLowerCase() === user.email.toLowerCase() ||
+          e.certificateRequestEmail?.toLowerCase() === user.email.toLowerCase())) ||
+      (currentStudentName &&
+        (e.studentName?.trim().toLowerCase() === currentStudentName.trim().toLowerCase() ||
+          e.certificateRequestName?.trim().toLowerCase() === currentStudentName.trim().toLowerCase()))
   );
   const myCertificates = certificates.filter(
     (c) =>
       c.studentId === currentStudentId ||
-      (user?.email && c.studentEmail?.toLowerCase() === user.email.toLowerCase())
+      myEnrollments.some(
+        (e) =>
+          (e.certificateId && e.certificateId === c.id) ||
+          (e.courseId === c.courseId && e.studentId === c.studentId)
+      ) ||
+      (user?.email && c.studentEmail?.toLowerCase() === user.email.toLowerCase()) ||
+      (currentStudentName &&
+        c.studentName?.trim().toLowerCase() === currentStudentName.trim().toLowerCase())
   );
 
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string>(
@@ -916,6 +928,55 @@ export const StudentPortal: React.FC = () => {
             </Link>
           </div>
         </div>
+
+        {/* Instantaneous Returned Certificate Alert Banner in Student Panel */}
+        {myCertificates.length > 0 && (
+          <div className="p-5 rounded-xl border-2 border-emerald-500 bg-emerald-50/90 space-y-3 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-start gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="inline-block px-2 py-0.5 rounded bg-emerald-200 text-emerald-950 text-[10px] font-extrabold uppercase tracking-wider">
+                    Retorno Instantâneo do Painel Administrativo
+                  </span>
+                  <h2 className="text-sm font-extrabold text-[#061A2D] mt-0.5">
+                    O Painel Administrativo retornou o seu Certificado em PDF! ({myCertificates.length}{' '}
+                    disponível)
+                  </h2>
+                  <p className="text-xs text-slate-700">
+                    Clique no botão verde abaixo para descarregar imediatamente o seu Certificado em formato PDF enviado pelo Administrador.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+              {myCertificates.map((cert) => (
+                <div
+                  key={cert.id}
+                  className="p-3.5 rounded-lg bg-white border border-emerald-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div>
+                    <p className="text-xs font-extrabold text-[#061A2D]">
+                      {cert.studentName} · <span className="text-[#0077C8] font-mono-tabular">{cert.code}</span>
+                    </p>
+                    <p className="text-xs font-semibold text-slate-700 mt-0.5">{cert.courseTitle}</p>
+                    <p className="text-[11px] text-slate-500">
+                      Carga Horária: {cert.workloadHours}h · Emitido em: {cert.issuedDate}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => downloadCertificatePdf(cert)}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shrink-0 shadow-sm transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Baixar Certificado em PDF</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2812,6 +2873,9 @@ export const AdminPortal: React.FC = () => {
     updateEnrollmentStatus,
     issueCertificate,
     updateCertificateStatus,
+    deleteCertificate,
+    clearAllCertificates,
+    cancelCertificateRequest,
     updateDiagnosticStatus,
     saveIsoDocument,
     saveIsoAudit,
@@ -2821,6 +2885,41 @@ export const AdminPortal: React.FC = () => {
     panelCredentials,
     updatePanelCredential,
   } = useApp();
+
+  const [hideSec13Panel, setHideSec13Panel] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('alhan_hide_sec13_panel') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSec13Visibility = (hide: boolean) => {
+    setHideSec13Panel(hide);
+    try {
+      localStorage.setItem('alhan_hide_sec13_panel', hide ? 'true' : 'false');
+    } catch {
+      // Ignore
+    }
+    if (hide && activeModule === 'Certificados QR') {
+      setActiveModule('Dashboard & Indicadores');
+    }
+  };
+
+  const [instantReturnMsg, setInstantReturnMsg] = useState<string | null>(null);
+
+  const handleInstantReturnCertificateToStudent = async (enr: EnrollmentItem) => {
+    const cert = await issueCertificate(enr, {
+      studentBI: enr.certificateRequestBI || undefined,
+      grade: 'Aprovado com Distinção',
+    });
+    setInstantReturnMsg(
+      `✓ Certificado em PDF (${cert.code}) retornado instantaneamente para o Painel do Aluno «${
+        enr.certificateRequestName || enr.studentName
+      }»! O aluno já recebeu o documento em PDF na sua conta.`
+    );
+    setTimeout(() => setInstantReturnMsg(null), 6000);
+  };
 
   const registeredProfessors = registeredUsers.filter((u) => u.role === 'PROFESSOR');
   const registeredStudents = registeredUsers.filter((u) => u.role === 'ALUNO');
@@ -3201,18 +3300,20 @@ export const AdminPortal: React.FC = () => {
     setEditingCourse(null);
   };
 
-  const adminModules = [
-    'Dashboard & Indicadores',
-    'Cursos & Academia LMS',
-    'Inscrições & Pagamentos Angola',
-    'Certificados QR',
-    'Pedidos de Diagnóstico & Presenciais',
-    'Projectos & Gestão Documental ISO',
-    'Auditorias & Não Conformidades',
-    'Normas ISO',
-    'Utilizadores, Parceiros & Configurações',
-    'Registos de Actividade',
-  ] as const;
+  const adminModules = (
+    [
+      'Dashboard & Indicadores',
+      'Cursos & Academia LMS',
+      'Inscrições & Pagamentos Angola',
+      !hideSec13Panel ? 'Certificados QR' : null,
+      'Pedidos de Diagnóstico & Presenciais',
+      'Projectos & Gestão Documental ISO',
+      'Auditorias & Não Conformidades',
+      'Normas ISO',
+      'Utilizadores, Parceiros & Configurações',
+      'Registos de Actividade',
+    ] as const
+  ).filter((m): m is Exclude<typeof m, null> => m !== null);
 
   return (
     <PanelAccessGate
@@ -3262,17 +3363,146 @@ export const AdminPortal: React.FC = () => {
             <p className="text-xs font-semibold text-[#0077C8]">Administração Central ALHAN SGI</p>
             <h1 className="text-2xl font-extrabold text-[#061A2D] mt-0.5">{activeModule}</h1>
           </div>
-          <button
-            onClick={() => {
-              setActiveModule('Cursos & Academia LMS');
-              startEditCourse();
-            }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Novo Curso</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {hideSec13Panel && (
+              <button
+                type="button"
+                onClick={() => toggleSec13Visibility(false)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 text-xs font-bold"
+              >
+                <Award className="w-4 h-4" />
+                <span>Restaurar Secção 13 (Certificados QR)</span>
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setActiveModule('Cursos & Academia LMS');
+                startEditCourse();
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Novo Curso</span>
+            </button>
+          </div>
         </div>
+
+        {/* GLOBAL INSTANTANEOUS STUDENT CERTIFICATE REQUEST BANNER (Receives Request & Returns PDF Instantaneously) */}
+        {enrollments.filter((e) => e.certificateRequested).length > 0 && (
+          <div className="p-5 rounded-xl border-2 border-amber-400 bg-amber-50/95 space-y-4 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-start gap-2.5">
+                <Bell className="w-5 h-5 text-amber-700 shrink-0 mt-0.5 animate-bounce" />
+                <div>
+                  <span className="inline-block px-2 py-0.5 rounded bg-amber-200 text-amber-950 text-[10px] font-extrabold uppercase tracking-wider">
+                    Recepção Instantânea do Painel do Aluno
+                  </span>
+                  <h2 className="text-sm font-extrabold text-[#061A2D] mt-0.5">
+                    Solicitações de Certificado em PDF Recebidas em Tempo Real ({enrollments.filter((e) => e.certificateRequested).length})
+                  </h2>
+                  <p className="text-xs text-slate-700">
+                    Clique em <strong>«Retornar Certificado em PDF Agora»</strong> para enviar instantaneamente o Certificado em PDF de volta para o painel do mesmo aluno que solicitou (ou anexe um PDF personalizado até 2MB).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {instantReturnMsg && (
+              <div className="p-3.5 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-2 shadow-sm">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{instantReturnMsg}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {enrollments
+                .filter((e) => e.certificateRequested)
+                .map((enr) => {
+                  const alreadySentCert = certificates.find(
+                    (c) =>
+                      (enr.certificateId && c.id === enr.certificateId) ||
+                      (c.courseId === enr.courseId && c.studentId === enr.studentId)
+                  );
+                  const studentDisplayName = enr.certificateRequestName || enr.studentName;
+                  return (
+                    <div
+                      key={enr.id}
+                      className="p-4 rounded-xl bg-white border border-amber-300 flex flex-col justify-between gap-3 text-xs shadow-xs"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-extrabold text-sm text-[#061A2D]">
+                            Aluno: {studentDisplayName}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                              alreadySentCert
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : 'bg-amber-100 text-amber-900 border border-amber-300'
+                            }`}
+                          >
+                            {alreadySentCert
+                              ? `✓ Retornado ao Aluno (${alreadySentCert.code})`
+                              : 'Aguarda Retorno do PDF'}
+                          </span>
+                        </div>
+                        <p className="font-bold text-[#0077C8] mt-1">{enr.courseTitle}</p>
+                        <p className="text-[11px] text-slate-600 mt-1">
+                          B.I./NIF: <strong>{enr.certificateRequestBI || 'Não informado'}</strong> · E-mail:{' '}
+                          <strong>{enr.certificateRequestEmail || enr.studentEmail || '—'}</strong> · Tel:{' '}
+                          <strong>{enr.certificateRequestPhone || enr.studentPhone || '—'}</strong>
+                        </p>
+                        {enr.certificateRequestNotes && (
+                          <p className="text-[11px] text-slate-500 italic mt-0.5">
+                            Pedido: «{enr.certificateRequestNotes}»
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => handleInstantReturnCertificateToStudent(enr)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-colors"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>
+                            {alreadySentCert
+                              ? `Retornar Novamente Certificado PDF para ${studentDisplayName}`
+                              : `Retornar Certificado em PDF Agora para ${studentDisplayName}`}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCertTargetEnrollment(enr);
+                            setEnrCertBI(enr.certificateRequestBI || '');
+                            setEnrCertFileUrl('');
+                            setEnrCertFileName('');
+                            setEnrCertError(null);
+                            setEnrCertSuccess(null);
+                            setActiveModule('Inscrições & Pagamentos Angola');
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Anexar PDF Personalizado (≤2MB) & Retornar</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => cancelCertificateRequest(enr.id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-[11px] font-bold"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Eliminar Pedido</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
 
         {/* 1. DASHBOARD & INDICADORES (Section 21 & 25) */}
         {activeModule === 'Dashboard & Indicadores' && (
@@ -3552,6 +3782,18 @@ export const AdminPortal: React.FC = () => {
                             <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
                               <button
                                 type="button"
+                                onClick={() => handleInstantReturnCertificateToStudent(enr)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold shadow-sm"
+                              >
+                                <Send className="w-3 h-3" />
+                                <span>
+                                  {alreadySentCert
+                                    ? `Retornar Novamente PDF para ${enr.certificateRequestName || enr.studentName}`
+                                    : `Retornar Certificado em PDF Agora para ${enr.certificateRequestName || enr.studentName}`}
+                                </span>
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => {
                                   setCertTargetEnrollment(enr);
                                   setEnrCertBI(enr.certificateRequestBI || '');
@@ -3563,12 +3805,16 @@ export const AdminPortal: React.FC = () => {
                                 }}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold shadow-sm"
                               >
-                                <Send className="w-3 h-3" />
-                                <span>
-                                  {alreadySentCert
-                                    ? 'Reenviar / Actualizar Certificado PDF no Painel do Aluno'
-                                    : 'Enviar Certificado em PDF para o Painel do Aluno'}
-                                </span>
+                                <Upload className="w-3 h-3" />
+                                <span>Anexar PDF (≤2MB) & Retornar</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => cancelCertificateRequest(enr.id)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-[11px] font-bold"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Eliminar</span>
                               </button>
                             </div>
                           </div>
@@ -4432,28 +4678,48 @@ export const AdminPortal: React.FC = () => {
         )}
 
         {/* 4. CERTIFICADOS QR & ANEXO DE FORMAÇÃO PRESENCIAL (Section 13) */}
-        {activeModule === 'Certificados QR' && (
+        {activeModule === 'Certificados QR' && !hideSec13Panel && (
           <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
                 <h2 className="text-base font-bold text-[#061A2D]">
                   Controlo de Certificados Emitidos, Anexo Presencial e Validação QR (Secção 13)
                 </h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  Emita e anexe certificados oficiais para formandos presenciais (com upload de PDF/imagem e registo do B.I. para download público directo), ou certifique formandos do LMS.
+                  Emita, retorne certificados em PDF para os alunos solicitantes, anexe certificados presenciais ou elimine certificados emitidos e o controlo da Secção 13.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setPresSuccessMsg(null);
-                  setShowPresencialModal(true);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shrink-0 shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Anexar / Emitir Certificado Presencial</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPresSuccessMsg(null);
+                    setShowPresencialModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shrink-0 shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Anexar / Emitir Certificado Presencial</span>
+                </button>
+                {certificates.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => clearAllCertificates()}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold shrink-0 shadow-sm"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Eliminar Todos os Certificados Emitidos ({certificates.length})</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => toggleSec13Visibility(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold shrink-0"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Eliminar Controlo Secção 13</span>
+                </button>
+              </div>
             </div>
 
             {/* Modal para Anexar Certificado Presencial */}
@@ -4698,108 +4964,123 @@ export const AdminPortal: React.FC = () => {
               </div>
             )}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-500">
-                    <th className="py-2.5 px-3">Código Único</th>
-                    <th className="py-2.5 px-3">Formando & Identificação (B.I.)</th>
-                    <th className="py-2.5 px-3">Formação & Modalidade</th>
-                    <th className="py-2.5 px-3 text-right">Carga Horária</th>
-                    <th className="py-2.5 px-3">Data</th>
-                    <th className="py-2.5 px-3">Ficheiro Anexado</th>
-                    <th className="py-2.5 px-3">Estado</th>
-                    <th className="py-2.5 px-3">Acções & Notificação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {certificates.map((cert) => (
-                    <tr key={cert.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-3 font-mono-tabular font-bold text-[#0077C8] whitespace-nowrap">
-                        {cert.code}
-                      </td>
-                      <td className="py-3 px-3">
-                        <p className="font-semibold text-[#061A2D]">{cert.studentName}</p>
-                        {cert.studentBI && (
-                          <p className="text-[11px] text-slate-500 font-mono-tabular mt-0.5">
-                            B.I.: <span className="font-semibold text-[#061A2D]">{cert.studentBI}</span>
-                          </p>
-                        )}
-                        {cert.studentPhone && (
-                          <p className="text-[10px] text-slate-500 font-mono-tabular flex items-center gap-1 mt-0.5">
-                            <Phone className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
-                            <span>{cert.studentPhone}</span>
-                          </p>
-                        )}
-                      </td>
-                      <td className="py-3 px-3">
-                        <p className="font-medium text-[#061A2D]">{cert.courseTitle}</p>
-                        <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                          cert.modality === 'Presencial' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-[#0077C8]'
-                        }`}>
-                          {cert.modality || 'Online'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono-tabular">{cert.workloadHours}h</td>
-                      <td className="py-3 px-3 font-mono-tabular whitespace-nowrap">{cert.issuedDate}</td>
-                      <td className="py-3 px-3">
-                        {cert.certificateFileUrl ? (
-                          <a
-                            href={cert.certificateFileUrl}
-                            download={cert.certificateFileName || `Certificado-${cert.code}.pdf`}
+            {certificates.length === 0 ? (
+              <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
+                Não existem certificados emitidos neste momento na Secção 13.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500">
+                      <th className="py-2.5 px-3">Código Único</th>
+                      <th className="py-2.5 px-3">Formando & Identificação (B.I.)</th>
+                      <th className="py-2.5 px-3">Formação & Modalidade</th>
+                      <th className="py-2.5 px-3 text-right">Carga Horária</th>
+                      <th className="py-2.5 px-3">Data</th>
+                      <th className="py-2.5 px-3">Documento PDF</th>
+                      <th className="py-2.5 px-3">Estado</th>
+                      <th className="py-2.5 px-3">Acções, Notificação & Eliminar</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {certificates.map((cert) => (
+                      <tr key={cert.id} className="hover:bg-slate-50">
+                        <td className="py-3 px-3 font-mono-tabular font-bold text-[#0077C8] whitespace-nowrap">
+                          {cert.code}
+                        </td>
+                        <td className="py-3 px-3">
+                          <p className="font-semibold text-[#061A2D]">{cert.studentName}</p>
+                          {cert.studentBI && (
+                            <p className="text-[11px] text-slate-500 font-mono-tabular mt-0.5">
+                              B.I.: <span className="font-semibold text-[#061A2D]">{cert.studentBI}</span>
+                            </p>
+                          )}
+                          {cert.studentPhone && (
+                            <p className="text-[10px] text-slate-500 font-mono-tabular flex items-center gap-1 mt-0.5">
+                              <Phone className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                              <span>{cert.studentPhone}</span>
+                            </p>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          <p className="font-medium text-[#061A2D]">{cert.courseTitle}</p>
+                          <span
+                            className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                              cert.modality === 'Presencial'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-blue-100 text-[#0077C8]'
+                            }`}
+                          >
+                            {cert.modality || 'Online'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono-tabular">{cert.workloadHours}h</td>
+                        <td className="py-3 px-3 font-mono-tabular whitespace-nowrap">{cert.issuedDate}</td>
+                        <td className="py-3 px-3">
+                          <button
+                            type="button"
+                            onClick={() => downloadCertificatePdf(cert)}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#061A2D] hover:bg-[#0077C8] text-white text-[11px] font-bold"
-                            title="Baixar ficheiro anexado"
+                            title="Baixar certificado em PDF"
                           >
                             <Download className="w-3 h-3" />
-                            <span>Baixar ({cert.certificateFileName ? 'Anexo' : 'Doc'})</span>
-                          </a>
-                        ) : (
-                          <span className="text-slate-400 text-[11px] italic">Sem anexo</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3">
-                        <select
-                          value={cert.status}
-                          onChange={(e) =>
-                            updateCertificateStatus(
-                              cert.id,
-                              e.target.value as 'valido' | 'cancelado' | 'expirado'
-                            )
-                          }
-                          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-bold"
-                        >
-                          <option value="valido">Válido</option>
-                          <option value="cancelado">Cancelado</option>
-                          <option value="expirado">Expirado</option>
-                        </select>
-                      </td>
-                      <td className="py-3 px-3">
-                        <div className="flex flex-col gap-1.5">
-                          <Link
-                            to={`/consultar-certificado?codigo=${encodeURIComponent(cert.code)}`}
-                            className="text-[#0077C8] font-semibold hover:underline text-[11px]"
+                            <span>Baixar PDF</span>
+                          </button>
+                        </td>
+                        <td className="py-3 px-3">
+                          <select
+                            value={cert.status}
+                            onChange={(e) =>
+                              updateCertificateStatus(
+                                cert.id,
+                                e.target.value as 'valido' | 'cancelado' | 'expirado'
+                              )
+                            }
+                            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-bold"
                           >
-                            Abrir Validador →
-                          </Link>
-                          {cert.studentPhone && (
-                            <a
-                              href={buildCertWhatsAppUrl(cert)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold"
-                              title="Notificar formando no WhatsApp"
+                            <option value="valido">Válido</option>
+                            <option value="cancelado">Cancelado</option>
+                            <option value="expirado">Expirado</option>
+                          </select>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Link
+                              to={`/consultar-certificado?codigo=${encodeURIComponent(cert.code)}`}
+                              className="text-[#0077C8] font-semibold hover:underline text-[11px]"
                             >
-                              <Phone className="w-2.5 h-2.5" />
-                              <span>WhatsApp</span>
-                            </a>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                              Validador →
+                            </Link>
+                            {cert.studentPhone && (
+                              <a
+                                href={buildCertWhatsAppUrl(cert)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold"
+                                title="Notificar formando no WhatsApp"
+                              >
+                                <Phone className="w-2.5 h-2.5" />
+                                <span>WhatsApp</span>
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => deleteCertificate(cert.id)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold"
+                              title="Eliminar este certificado"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Eliminar</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
