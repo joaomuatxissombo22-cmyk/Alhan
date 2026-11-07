@@ -1644,8 +1644,10 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [recoverySent, setRecoverySent] = useState(false);
 
+  const [specialty, setSpecialty] = useState('Sistemas de Gestão Integrado (ISO 9001, ISO 14001, ISO 45001) & HSE');
+
   const redirectByRole = (r: UserRole) => {
-    if (r === 'SUPER_ADMIN' || r === 'ADMIN') navigate('/admin');
+    if (r === 'SUPER_ADMIN' || r === 'ADMIN') navigate('/gestao-alhan-sgi');
     else if (r === 'PROFESSOR') navigate('/professor');
     else if (r === 'CLIENTE_EMPRESARIAL') navigate('/empresa');
     else navigate('/aluno');
@@ -1666,7 +1668,12 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
           setErrorMsg('A palavra-passe e a confirmação da palavra-passe não coincidem.');
           return;
         }
-        const regRole: UserRole = role === 'CLIENTE_EMPRESARIAL' ? 'CLIENTE_EMPRESARIAL' : 'ALUNO';
+        const regRole: UserRole =
+          role === 'CLIENTE_EMPRESARIAL'
+            ? 'CLIENTE_EMPRESARIAL'
+            : role === 'PROFESSOR'
+            ? 'PROFESSOR'
+            : 'ALUNO';
         await registerAccount({
           fullName,
           email,
@@ -1675,6 +1682,7 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
           password,
           role: regRole,
           companyName: regRole === 'CLIENTE_EMPRESARIAL' ? companyName : undefined,
+          specialty: regRole === 'PROFESSOR' ? specialty : undefined,
         });
         redirectByRole(regRole);
       } else {
@@ -1699,12 +1707,12 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
               className="h-12 w-12 object-contain"
             />
             <div>
-              <p className="text-xs font-bold text-[#0077C8]">Controlo de Acesso Privado · ALHAN SGI</p>
+              <p className="text-xs font-bold text-[#0077C8]">Controlo de Acesso · ALHAN SGI</p>
               <h1 className="text-xl font-extrabold text-[#061A2D]">
                 {mode === 'login'
-                  ? 'Iniciar Sessão no Painel Privado'
+                  ? 'Iniciar Sessão no Seu Painel'
                   : mode === 'registo'
-                  ? 'Cadastro de Aluno ou Cliente Empresarial'
+                  ? 'Cadastro de Aluno, Professor ou Cliente Empresarial'
                   : 'Recuperar Palavra-passe'}
               </h1>
             </div>
@@ -1728,7 +1736,7 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
               type="button"
               onClick={() => {
                 setMode('registo');
-                if (role !== 'ALUNO' && role !== 'CLIENTE_EMPRESARIAL') {
+                if (role !== 'ALUNO' && role !== 'CLIENTE_EMPRESARIAL' && role !== 'PROFESSOR') {
                   setRole('ALUNO');
                 }
                 setErrorMsg(null);
@@ -1773,37 +1781,55 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                 </label>
                 {mode === 'registo' ? (
                   <select
-                    value={role === 'CLIENTE_EMPRESARIAL' ? 'CLIENTE_EMPRESARIAL' : 'ALUNO'}
+                    value={
+                      role === 'CLIENTE_EMPRESARIAL'
+                        ? 'CLIENTE_EMPRESARIAL'
+                        : role === 'PROFESSOR'
+                        ? 'PROFESSOR'
+                        : 'ALUNO'
+                    }
                     onChange={(e) => setRole(e.target.value as UserRole)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs bg-white focus:border-[#0077C8] focus:outline-none font-bold text-[#061A2D]"
                   >
                     <option value="ALUNO">ALUNO (Activar Painel do Aluno / Academia LMS)</option>
+                    <option value="PROFESSOR">
+                      PROFESSOR / FORMADOR (Inscrever-se e Aguardar Autorização Administrativa)
+                    </option>
                     <option value="CLIENTE_EMPRESARIAL">
                       CLIENTE EMPRESARIAL (Activar Painel de Consultoria ISO da Empresa)
                     </option>
                   </select>
                 ) : (
                   <select
-                    value={role}
+                    value={role === 'ADMIN' || role === 'SUPER_ADMIN' ? 'ALUNO' : role}
                     onChange={(e) => setRole(e.target.value as UserRole)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs bg-white focus:border-[#0077C8] focus:outline-none font-bold text-[#061A2D]"
                   >
-                    <option value="ALUNO">Painel do Aluno (Requer cadastro de Aluno)</option>
+                    <option value="ALUNO">Painel do Aluno (Academia LMS)</option>
+                    <option value="PROFESSOR">Painel do Professor / Formador</option>
                     <option value="CLIENTE_EMPRESARIAL">
-                      Painel do Cliente Empresarial (Requer cadastro Empresarial)
+                      Painel do Cliente Empresarial (Consultoria ISO)
                     </option>
-                    <option value="PROFESSOR">Painel do Professor / Formador (Acesso Privado)</option>
-                    <option value="ADMIN">Painel Administrativo Operacional (Acesso Privado)</option>
-                    <option value="SUPER_ADMIN">Painel Super Admin Central (Acesso Privado)</option>
                   </select>
                 )}
               </div>
+
+              {mode === 'registo' && role === 'PROFESSOR' && (
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
+                  <strong>Nota para Professores e Formadores:</strong> O Painel do Professor é aberto para inscrição pública. Contudo, após concluir a sua inscrição abaixo, a sua conta ficará em estado <strong>«Aguardando Autorização»</strong> até que a Direcção valide o seu registo no Painel Administrativo.
+                </div>
+              )}
 
               {mode === 'registo' && (
                 <>
                   <div>
                     <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                      1. {role === 'CLIENTE_EMPRESARIAL' ? 'Nome do Responsável / Representante *' : 'Nome Completo do Aluno *'}
+                      1.{' '}
+                      {role === 'CLIENTE_EMPRESARIAL'
+                        ? 'Nome do Responsável / Representante *'
+                        : role === 'PROFESSOR'
+                        ? 'Nome Completo do Professor / Formador *'
+                        : 'Nome Completo do Aluno *'}
                     </label>
                     <input
                       type="text"
@@ -1826,6 +1852,22 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                         value={companyName}
                         onChange={(e) => setCompanyName(e.target.value)}
                         placeholder="Ex: Empresa Industrial de Luanda, Lda"
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  {role === 'PROFESSOR' && (
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Especialidade Técnica / Normas e Áreas que Leciona *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={specialty}
+                        onChange={(e) => setSpecialty(e.target.value)}
+                        placeholder="Ex: Auditor Líder ISO 9001, HSE, Segurança no Trabalho, ISO 14001..."
                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
                       />
                     </div>
@@ -1916,7 +1958,7 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                     onClick={() => setMode('registo')}
                     className="text-[11px] font-bold text-[#0077C8] hover:underline"
                   >
-                    Ainda não tem conta? Cadastrar Aluno / Empresa →
+                    Ainda não tem conta? Cadastrar Aluno / Professor / Empresa →
                   </button>
                   <button
                     type="button"
@@ -1935,7 +1977,9 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                 {mode === 'login'
                   ? 'Autenticar e Entrar no Painel'
                   : mode === 'registo'
-                  ? 'Concluir Cadastro e Activar Meu Painel'
+                  ? role === 'PROFESSOR'
+                    ? 'Submeter Inscrição de Professor para Autorização'
+                    : 'Concluir Cadastro e Activar Meu Painel'
                   : 'Enviar Instruções'}
               </button>
             </form>
@@ -1956,15 +2000,15 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
           </div>
         </div>
 
-        {/* Right: Política de Privacidade de Painéis e Cadastro Obrigatório */}
+        {/* Right: Política de Painéis e Inscrição */}
         <div className="lg:col-span-5 bg-[#061A2D] text-white rounded-2xl border border-[#0077C8]/40 p-6 sm:p-8 space-y-5">
           <div>
-            <p className="text-xs font-semibold text-[#19B5FE]">Segurança e Isolamento de Dados (RBAC)</p>
+            <p className="text-xs font-semibold text-[#19B5FE]">Acesso e Inscrição nos Painéis</p>
             <h2 className="text-lg sm:text-xl font-extrabold text-white mt-1">
-              Acesso Privado e Activação de Painéis
+              Como Funciona o Acesso a Cada Painel
             </h2>
             <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-              Todos os painéis da plataforma ALHAN – Sistema de Gestão Integrado operam em modo estritamente privado, sem contas públicas de demonstração:
+              Seleccione o seu perfil para aceder ou efectuar o seu registo na plataforma ALHAN – Sistema de Gestão Integrado:
             </p>
           </div>
 
@@ -1972,21 +2016,21 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
             <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-1">
               <p className="font-bold text-[#19B5FE]">1. Painel do Aluno (Academia LMS)</p>
               <p className="text-slate-300 leading-relaxed">
-                O painel do aluno só é criado e activado quando o formando efectua o seu <strong>cadastro</strong> na plataforma. Após cadastrar-se, terá acesso privado às suas inscrições, aulas protegidas e certificados.
+                Activado mediante o seu <strong>cadastro de aluno</strong>. Permite inscrever-se directamente em qualquer curso, enviar o comprovativo de pagamento, assistir às aulas e baixar certificados.
               </p>
             </div>
 
             <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-1">
-              <p className="font-bold text-[#19B5FE]">2. Painel do Cliente Empresarial (Consultoria ISO)</p>
+              <p className="font-bold text-amber-300">2. Painel do Professor / Formador (Sujeito a Autorização)</p>
+              <p className="text-slate-300 leading-relaxed">
+                Qualquer professor ou formador pode <strong>inscrever-se publicamente</strong> na plataforma. Após a inscrição, o acesso fica a aguardar até que o <strong>Painel Administrativo autorize</strong> a sua inscrição docente.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-1">
+              <p className="font-bold text-[#19B5FE]">3. Painel do Cliente Empresarial (Consultoria ISO)</p>
               <p className="text-slate-300 leading-relaxed">
                 Exclusivo para empresas clientes registadas. Ao cadastrar a sua empresa, é inicializado o ambiente isolado do seu projecto ISO (cronograma, gestão documental, auditorias e RNCs).
-              </p>
-            </div>
-
-            <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-1">
-              <p className="font-bold text-amber-300">3. Painel do Professor & Painel Administrativo</p>
-              <p className="text-slate-300 leading-relaxed">
-                Ambientes internos de acesso estritamente privado e restrito à equipa docente e à Direcção Operacional da ALHAN mediante credenciais corporativas.
               </p>
             </div>
           </div>
@@ -2001,7 +2045,7 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                 }}
                 className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors"
               >
-                Criar Conta de Aluno ou Cliente Empresarial →
+                Criar Conta (Aluno, Professor ou Empresa) →
               </button>
             </div>
           )}

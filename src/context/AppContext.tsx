@@ -58,6 +58,8 @@ export interface ActiveUser {
   role: UserRole;
   companyId: string;
   companyName?: string;
+  specialty?: string;
+  approvalStatus?: 'pendente' | 'aprovado' | 'rejeitado';
 }
 
 export interface RegisteredUserAccount {
@@ -67,9 +69,11 @@ export interface RegisteredUserAccount {
   email: string;
   phone: string;
   password: string;
-  role: 'ALUNO' | 'CLIENTE_EMPRESARIAL';
+  role: 'ALUNO' | 'CLIENTE_EMPRESARIAL' | 'PROFESSOR';
   companyId: string;
   companyName?: string;
+  specialty?: string;
+  approvalStatus?: 'pendente' | 'aprovado' | 'rejeitado';
   createdAt: string;
 }
 
@@ -90,6 +94,7 @@ interface AppContextValue {
   testimonials: TestimonialItem[];
   panelCredentials: PanelCredentialItem[];
   updatePanelCredential: (role: UserRole, username: string, email: string, password: string) => void;
+  updateUserApprovalStatus: (uid: string, status: 'pendente' | 'aprovado' | 'rejeitado') => void;
   activityLogs: { id: string; action: string; actor: string; timestamp: string }[];
   pushPermission: NotificationPermission | 'unsupported';
   requestPushPermission: () => Promise<void>;
@@ -103,6 +108,7 @@ interface AppContextValue {
     password: string;
     role: UserRole;
     companyName?: string;
+    specialty?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
   saveCourse: (course: CourseItem) => Promise<void>;
@@ -247,9 +253,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [testimonials, setTestimonials] = useState<TestimonialItem[]>(() =>
     loadLocal('alhan_testimonials', INITIAL_TESTIMONIALS)
   );
-  const [panelCredentials, setPanelCredentials] = useState<PanelCredentialItem[]>(() =>
-    loadLocal('alhan_panel_credentials', INITIAL_PANEL_CREDENTIALS)
-  );
+  const [panelCredentials, setPanelCredentials] = useState<PanelCredentialItem[]>(() => {
+    const stored = loadLocal<PanelCredentialItem[]>('alhan_panel_credentials', INITIAL_PANEL_CREDENTIALS);
+    return INITIAL_PANEL_CREDENTIALS.map((initCred) => {
+      const existing = stored.find((s) => s.role === initCred.role);
+      if (!existing) return initCred;
+      // Ensure the separate admin route (/gestao-alhan-sgi) and updated default admin credentials are synced
+      if (initCred.role === 'SUPER_ADMIN' || initCred.role === 'ADMIN') {
+        const isOldDefault =
+          existing.username === 'superadmin' ||
+          existing.username === 'admin' ||
+          existing.password === 'user';
+        return {
+          ...existing,
+          panelName: initCred.panelName,
+          route: '/gestao-alhan-sgi',
+          username: isOldDefault ? initCred.username : existing.username,
+          email: isOldDefault ? initCred.email : existing.email,
+          password: isOldDefault ? initCred.password : existing.password,
+          description: initCred.description,
+        };
+      }
+      return {
+        ...existing,
+        panelName: initCred.panelName,
+        description: initCred.description,
+      };
+    });
+  });
   const [activityLogs, setActivityLogs] = useState<{ id: string; action: string; actor: string; timestamp: string }[]>(() =>
     loadLocal('alhan_activity_logs', [
       { id: 'log-1', action: 'Inicialização da Plataforma ALHAN – SGI', actor: 'Sistema', timestamp: new Date().toISOString() },
@@ -493,6 +524,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logActivity(`Credenciais de acesso actualizadas para o painel ${role}`);
   };
 
+  const updateUserApprovalStatus = (uid: string, status: 'pendente' | 'aprovado' | 'rejeitado') => {
+    let targetUser: RegisteredUserAccount | undefined;
+    setRegisteredUsers((prev) =>
+      prev.map((u) => {
+        if (u.uid === uid) {
+          targetUser = { ...u, approvalStatus: status };
+          return targetUser;
+        }
+        return u;
+      })
+    );
+
+    setUser((prev) => (prev && prev.uid === uid ? { ...prev, approvalStatus: status } : prev));
+
+    if (targetUser) {
+      const statusLabel =
+        status === 'aprovado'
+          ? 'AUTORIZADO / APROVADO'
+          : status === 'rejeitado'
+          ? 'NÃO AUTORIZADO / SUSPENSO'
+          : 'PENDENTE DE AUTORIZAÇÃO';
+      triggerNotification(
+        'Novo registo',
+        `Inscrição de Professor ${status === 'aprovado' ? 'Autorizada' : 'Actualizada'}`,
+        `O acesso do Professor / Formador ${targetUser.fullName} ao Painel do Professor foi marcado como ${statusLabel} pela Administração.`,
+        'PROFESSOR'
+      );
+      logActivity(`Estado de autorização do professor ${targetUser.fullName} alterado para ${statusLabel}`);
+    }
+  };
+
   const loginWithCredentials = async (
     identifier: string,
     password: string,
@@ -505,7 +567,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('Por favor, introduza o seu utilizador/e-mail e a palavra-passe.');
     }
 
-    // 1. Check Registered Accounts (Aluno or Cliente Empresarial who registered on the platform)
+    // 1. Check Registered Accounts (Aluno, Professor/Formador, or Cliente Empresarial who registered on the platform)
     const registeredMatch = registeredUsers.find(
       (u) =>
         u.username.toLowerCase() === cleanId ||
@@ -516,6 +578,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (registeredMatch.password !== cleanPass) {
         throw new Error('Palavra-passe incorrecta para esta conta registada.');
       }
+      const approvalStatus =
+        registeredMatch.approvalStatus ||
+        (registeredMatch.role === 'PROFESSOR' ? 'pendente' : 'aprovado');
       const active: ActiveUser = {
         uid: registeredMatch.uid,
         fullName: registeredMatch.fullName,
@@ -525,13 +590,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role: registeredMatch.role,
         companyId: registeredMatch.companyId,
         companyName: registeredMatch.companyName,
+        specialty: registeredMatch.specialty,
+        approvalStatus,
       };
       setUser(active);
       logActivity(`Sessão iniciada (${active.role}): ${active.fullName}`, active.fullName);
       return active.role;
     }
 
-    // 2. Check Private Internal Panel Credentials (Admin, Super Admin, Professor)
+    // 2. Check Dedicated Separate Administrative Credentials (alhan.admin / gestao.alhan / Alhan@2026) & Internal Panel Credentials
+    if (
+      (cleanId === 'alhan.admin' || cleanId === 'admin@alhan.pro' || cleanId === 'superadmin') &&
+      (cleanPass === 'Alhan@2026' || cleanPass === 'Alhan@SGI2026')
+    ) {
+      const active: ActiveUser = {
+        uid: 'staff-super_admin',
+        fullName: 'Super Administrador ALHAN',
+        username: 'alhan.admin',
+        email: 'admin@alhan.pro',
+        phone: '+244 922 021 211',
+        role: 'SUPER_ADMIN',
+        companyId: 'alhan-sgi',
+        approvalStatus: 'aprovado',
+      };
+      setUser(active);
+      logActivity('Acesso privado autorizado ao Painel Administrativo Central (SUPER_ADMIN)', active.fullName);
+      return 'SUPER_ADMIN';
+    }
+
+    if (
+      (cleanId === 'gestao.alhan' || cleanId === 'gestao@alhan.pro' || cleanId === 'admin') &&
+      (cleanPass === 'Alhan@2026' || cleanPass === 'Alhan@SGI2026')
+    ) {
+      const active: ActiveUser = {
+        uid: 'staff-admin',
+        fullName: 'Gestor Operacional ALHAN',
+        username: 'gestao.alhan',
+        email: 'gestao@alhan.pro',
+        phone: '+244 922 021 211',
+        role: 'ADMIN',
+        companyId: 'alhan-sgi',
+        approvalStatus: 'aprovado',
+      };
+      setUser(active);
+      logActivity('Acesso privado autorizado ao Painel Administrativo Operacional (ADMIN)', active.fullName);
+      return 'ADMIN';
+    }
+
     const internalCred = panelCredentials.find(
       (c) =>
         (c.role === 'SUPER_ADMIN' || c.role === 'ADMIN' || c.role === 'PROFESSOR') &&
@@ -555,17 +660,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         phone: '+244 922 021 211',
         role: internalCred.role,
         companyId: 'alhan-sgi',
+        approvalStatus: 'aprovado',
       };
       setUser(active);
-      logActivity(`Acesso privado autorizado ao painel ${internalCred.role}`, active.fullName);
+      logActivity(`Acesso autorizado ao painel ${internalCred.role}`, active.fullName);
       return internalCred.role;
     }
 
-    // 3. If user tried to log in as ALUNO or CLIENTE_EMPRESARIAL without registering first
-    if (selectedRole === 'ALUNO' || selectedRole === 'CLIENTE_EMPRESARIAL') {
+    // 3. If user tried to log in as ALUNO, PROFESSOR or CLIENTE_EMPRESARIAL without registering first
+    if (selectedRole === 'ALUNO' || selectedRole === 'CLIENTE_EMPRESARIAL' || selectedRole === 'PROFESSOR') {
       throw new Error(
         selectedRole === 'ALUNO'
           ? 'Conta de Aluno não encontrada. O Painel do Aluno só é activado após efectuar o seu cadastro em «Criar Conta / Cadastrar».'
+          : selectedRole === 'PROFESSOR'
+          ? 'Conta de Professor / Formador não encontrada. Inscreva-se no separador «Criar Conta / Cadastrar» e aguarde a autorização do Painel Administrativo.'
           : 'Conta Empresarial não encontrada. O Painel do Cliente Empresarial só é activado após efectuar o cadastro da sua empresa em «Criar Conta / Cadastrar».'
       );
     }
@@ -581,9 +689,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     password: string;
     role: UserRole;
     companyName?: string;
+    specialty?: string;
   }) => {
-    const allowedRegisterRole: 'ALUNO' | 'CLIENTE_EMPRESARIAL' =
-      payload.role === 'CLIENTE_EMPRESARIAL' ? 'CLIENTE_EMPRESARIAL' : 'ALUNO';
+    const allowedRegisterRole: 'ALUNO' | 'CLIENTE_EMPRESARIAL' | 'PROFESSOR' =
+      payload.role === 'CLIENTE_EMPRESARIAL'
+        ? 'CLIENTE_EMPRESARIAL'
+        : payload.role === 'PROFESSOR'
+        ? 'PROFESSOR'
+        : 'ALUNO';
 
     const cleanUsername = (payload.username.trim() || payload.email.split('@')[0]).toLowerCase();
     const cleanEmail = payload.email.trim().toLowerCase();
@@ -596,8 +709,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const newUid = `usr-${Date.now()}`;
-    const companyId = allowedRegisterRole === 'CLIENTE_EMPRESARIAL' ? `emp-${Date.now()}` : 'alhan-aluno';
+    const companyId =
+      allowedRegisterRole === 'CLIENTE_EMPRESARIAL'
+        ? `emp-${Date.now()}`
+        : allowedRegisterRole === 'PROFESSOR'
+        ? 'alhan-docente'
+        : 'alhan-aluno';
     const companyTitle = payload.companyName?.trim() || payload.fullName.trim();
+    const initialApprovalStatus: 'pendente' | 'aprovado' =
+      allowedRegisterRole === 'PROFESSOR' ? 'pendente' : 'aprovado';
 
     const newAccount: RegisteredUserAccount = {
       uid: newUid,
@@ -609,6 +729,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role: allowedRegisterRole,
       companyId,
       companyName: allowedRegisterRole === 'CLIENTE_EMPRESARIAL' ? companyTitle : undefined,
+      specialty:
+        allowedRegisterRole === 'PROFESSOR'
+          ? payload.specialty?.trim() || payload.companyName?.trim() || 'Consultoria e Formação SGI / Normas ISO & HSE'
+          : undefined,
+      approvalStatus: initialApprovalStatus,
       createdAt: new Date().toISOString(),
     };
 
@@ -645,16 +770,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role: allowedRegisterRole,
       companyId,
       companyName: newAccount.companyName,
+      specialty: newAccount.specialty,
+      approvalStatus: initialApprovalStatus,
     };
 
     setUser(newUser);
-    triggerNotification(
-      'Novo registo',
-      'Cadastro Concluído com Sucesso',
-      `Bem-vindo(a) à plataforma ALHAN SGI, ${newUser.fullName}. O seu painel privado foi activado.`,
-      allowedRegisterRole
-    );
-    logActivity(`Novo cadastro de ${allowedRegisterRole}: ${newUser.fullName}`, newUser.fullName);
+
+    if (allowedRegisterRole === 'PROFESSOR') {
+      triggerNotification(
+        'Novo registo',
+        `Nova Inscrição de Professor Aguarda Autorização: ${newUser.fullName}`,
+        `O professor/formador ${newUser.fullName} (${newAccount.specialty}) inscreveu-se no Painel do Professor e aguarda autorização do Painel Administrativo.`,
+        'ADMIN'
+      );
+      logActivity(
+        `Nova inscrição de PROFESSOR (Pendente de Autorização Administrativa): ${newUser.fullName}`,
+        newUser.fullName
+      );
+    } else {
+      triggerNotification(
+        'Novo registo',
+        'Cadastro Concluído com Sucesso',
+        `Bem-vindo(a) à plataforma ALHAN SGI, ${newUser.fullName}. O seu painel privado foi activado.`,
+        allowedRegisterRole
+      );
+      logActivity(`Novo cadastro de ${allowedRegisterRole}: ${newUser.fullName}`, newUser.fullName);
+    }
   };
 
   const logout = async () => {
@@ -1160,6 +1301,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         testimonials,
         panelCredentials,
         updatePanelCredential,
+        updateUserApprovalStatus,
         activityLogs,
         pushPermission,
         requestPushPermission,

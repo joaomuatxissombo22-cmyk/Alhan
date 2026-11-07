@@ -66,15 +66,20 @@ const PanelAccessGate: React.FC<{
   const navigate = useNavigate();
 
   const isRegistrationRequiredRole =
-    defaultRole === 'ALUNO' || defaultRole === 'CLIENTE_EMPRESARIAL';
+    defaultRole === 'ALUNO' ||
+    defaultRole === 'CLIENTE_EMPRESARIAL' ||
+    defaultRole === 'PROFESSOR';
 
   const [gateMode, setGateMode] = useState<'login' | 'registo'>('login');
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
 
-  // Registration fields for Aluno / Cliente Empresarial
+  // Registration fields for Aluno / Professor / Cliente Empresarial
   const [regFullName, setRegFullName] = useState('');
   const [regCompanyName, setRegCompanyName] = useState('');
+  const [regSpecialty, setRegSpecialty] = useState(
+    'Sistemas de Gestão Integrado (ISO 9001, ISO 14001, ISO 45001) & HSE'
+  );
   const [regEmail, setRegEmail] = useState('');
   const [regPhone, setRegPhone] = useState('+244 ');
   const [regUsername, setRegUsername] = useState('');
@@ -83,9 +88,119 @@ const PanelAccessGate: React.FC<{
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [forceLocked, setForceLocked] = useState(false);
 
-  const isAuthorized = !forceLocked && user && allowedRoles.includes(user.role);
+  const isRoleMatch = !forceLocked && user && allowedRoles.includes(user.role);
+  const isPendingOrRejectedProfessor =
+    isRoleMatch &&
+    user.role === 'PROFESSOR' &&
+    user.approvalStatus !== undefined &&
+    user.approvalStatus !== 'aprovado';
 
-  if (isAuthorized) {
+  if (isPendingOrRejectedProfessor && user) {
+    const isRejected = user.approvalStatus === 'rejeitado';
+    return (
+      <div className="py-14 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="bg-white rounded-2xl border-2 border-amber-300 shadow-sm overflow-hidden">
+          <div className="bg-[#061A2D] text-white p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 flex items-center justify-center shrink-0">
+                <Clock className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-400/20 text-amber-300 text-[11px] font-bold">
+                  {isRejected
+                    ? 'Inscrição Docente Não Autorizada / Suspensa'
+                    : 'Aguardando Autorização do Painel Administrativo'}
+                </span>
+                <h1 className="text-xl sm:text-2xl font-extrabold text-white mt-1.5">
+                  {isRejected
+                    ? 'Acesso Docente Não Autorizado pela Administração'
+                    : 'Inscrição de Professor / Formador Recebida com Sucesso!'}
+                </h1>
+                <p className="text-xs text-slate-300 mt-1">
+                  Painel do Professor · ALHAN – Sistema de Gestão Integrado
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 sm:p-8 space-y-6">
+            <div
+              className={`p-4 rounded-xl border text-xs leading-relaxed ${
+                isRejected
+                  ? 'bg-rose-50 border-rose-200 text-rose-900'
+                  : 'bg-amber-50 border-amber-200 text-amber-950'
+              }`}
+            >
+              {isRejected ? (
+                <p>
+                  Prezado(a) <strong>{user.fullName}</strong>, a sua inscrição como Professor / Formador encontra-se marcada como <strong>Não Autorizada / Suspensa</strong> pelo Painel Administrativo. Para esclarecimentos adicionais, contacte a Coordenação Pedagógica da ALHAN.
+                </p>
+              ) : (
+                <p>
+                  Prezado(a) <strong>{user.fullName}</strong>, a sua inscrição como Professor / Formador foi registada na plataforma! Conforme as normas de segurança institucional da ALHAN, <strong>após qualquer professor ou formador se inscrever, deve aguardar até que o Painel Administrativo autorize a sua inscrição</strong> para ter acesso às ferramentas internas de gestão de cursos, aulas e pautas.
+                </p>
+              )}
+            </div>
+
+            <div className="bg-[#F5F9FC] rounded-xl border border-slate-200 p-5 space-y-3 text-xs">
+              <p className="font-extrabold text-[#061A2D] uppercase tracking-wider text-[11px]">
+                Dados da Sua Inscrição Docente Registada
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <span className="text-slate-500 block">Professor / Formador:</span>
+                  <strong className="text-[#061A2D]">{user.fullName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Utilizador (User):</span>
+                  <strong className="font-mono-tabular text-[#0077C8]">{user.username}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">E-mail Institucional / Pessoal:</span>
+                  <strong className="font-mono-tabular text-[#061A2D]">{user.email}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Telefone / WhatsApp:</span>
+                  <strong className="font-mono-tabular text-[#061A2D]">{user.phone}</strong>
+                </div>
+                <div className="sm:col-span-2">
+                  <span className="text-slate-500 block">Especialidade / Normas e Áreas que Leciona:</span>
+                  <strong className="text-[#061A2D]">
+                    {user.specialty || 'Consultoria e Formação SGI / Normas ISO & HSE'}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200">
+              <a
+                href={`https://wa.me/${COMPANY_INFO.whatsappNumber}?text=${encodeURIComponent(
+                  `Olá Coordenação ALHAN! Realizei a minha inscrição como Professor/Formador (${user.fullName} · User: ${user.username}) no Painel do Professor e aguardo a autorização do Painel Administrativo.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Comunicar Inscrição no WhatsApp da Coordenação</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => logout()}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Terminar Sessão</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isRoleMatch) {
     return <>{children(() => setForceLocked(true))}</>;
   }
 
@@ -102,6 +217,7 @@ const PanelAccessGate: React.FC<{
           password: regPassword,
           role: defaultRole,
           companyName: defaultRole === 'CLIENTE_EMPRESARIAL' ? regCompanyName : undefined,
+          specialty: defaultRole === 'PROFESSOR' ? regSpecialty : undefined,
         });
         setForceLocked(false);
         return;
@@ -110,7 +226,7 @@ const PanelAccessGate: React.FC<{
       const resolved = await loginWithCredentials(usernameInput, passwordInput, defaultRole);
       setForceLocked(false);
       if (!allowedRoles.includes(resolved)) {
-        if (resolved === 'SUPER_ADMIN' || resolved === 'ADMIN') navigate('/admin');
+        if (resolved === 'SUPER_ADMIN' || resolved === 'ADMIN') navigate('/gestao-alhan-sgi');
         else if (resolved === 'PROFESSOR') navigate('/professor');
         else if (resolved === 'CLIENTE_EMPRESARIAL') navigate('/empresa');
         else navigate('/aluno');
@@ -146,7 +262,7 @@ const PanelAccessGate: React.FC<{
                   gateMode === 'login' ? 'bg-white text-[#061A2D] shadow-sm' : 'text-slate-600'
                 }`}
               >
-                Já sou Cadastrado (Login)
+                Já sou Inscrito (Login)
               </button>
               <button
                 type="button"
@@ -158,7 +274,9 @@ const PanelAccessGate: React.FC<{
                   gateMode === 'registo' ? 'bg-white text-[#061A2D] shadow-sm' : 'text-slate-600'
                 }`}
               >
-                Cadastrar Conta Agora
+                {defaultRole === 'PROFESSOR'
+                  ? 'Inscrever-se como Professor'
+                  : 'Cadastrar Conta Agora'}
               </button>
             </div>
           )}
@@ -168,9 +286,13 @@ const PanelAccessGate: React.FC<{
               ? gateMode === 'registo'
                 ? defaultRole === 'ALUNO'
                   ? 'Preencha os seus dados abaixo para criar a sua conta de Aluno e activar o seu Painel LMS privado.'
+                  : defaultRole === 'PROFESSOR'
+                  ? 'Preencha os seus dados abaixo para se inscrever como Professor / Formador. Após a inscrição, aguarde a autorização do Painel Administrativo para aceder ao painel docente.'
                   : 'Preencha os dados da sua organização abaixo para cadastrar a sua empresa e activar o Painel do Cliente Empresarial.'
-                : 'Este painel é privado e exclusivo para utilizadores cadastrados. Introduza o seu Utilizador/E-mail e Senha ou cadastre a sua conta.'
-              : 'Painel de acesso estritamente privado e restrito. Introduza as suas credenciais corporativas autorizadas pela ALHAN.'}
+                : defaultRole === 'PROFESSOR'
+                ? 'Acesso público para inscrição de Professores e Formadores. Inicie sessão com a sua conta docente ou clique em «Inscrever-se como Professor» (sujeito a autorização do Painel Administrativo).'
+                : 'Este painel é exclusivo para utilizadores cadastrados. Introduza o seu Utilizador/E-mail e Senha ou cadastre a sua conta.'
+              : 'Ambiente administrativo separado do site público. Introduza o Utilizador (User) e a Senha exclusivos da Administração ALHAN.'}
           </p>
 
           {errorMsg && (
@@ -186,6 +308,8 @@ const PanelAccessGate: React.FC<{
                   <label className="block text-xs font-bold text-[#061A2D] mb-1">
                     {defaultRole === 'CLIENTE_EMPRESARIAL'
                       ? 'Nome do Responsável / Representante *'
+                      : defaultRole === 'PROFESSOR'
+                      ? 'Nome Completo do Professor / Formador *'
                       : 'Nome Completo do Aluno *'}
                   </label>
                   <input
@@ -209,6 +333,22 @@ const PanelAccessGate: React.FC<{
                       value={regCompanyName}
                       onChange={(e) => setRegCompanyName(e.target.value)}
                       placeholder="Ex: Sociedade Industrial de Luanda, Lda"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                {defaultRole === 'PROFESSOR' && (
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      Especialidade Técnica / Normas e Formações que Leciona *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={regSpecialty}
+                      onChange={(e) => setRegSpecialty(e.target.value)}
+                      placeholder="Ex: ISO 9001, ISO 14001, ISO 45001, HSE, Auditoria Interna..."
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
                     />
                   </div>
@@ -246,7 +386,7 @@ const PanelAccessGate: React.FC<{
                       required
                       value={regUsername}
                       onChange={(e) => setRegUsername(e.target.value)}
-                      placeholder="Ex: joao.mateus"
+                      placeholder="Ex: eng.formador"
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
                     />
                   </div>
@@ -267,7 +407,9 @@ const PanelAccessGate: React.FC<{
                   type="submit"
                   className="w-full py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
                 >
-                  Concluir Cadastro e Abrir Meu Painel Privado
+                  {defaultRole === 'PROFESSOR'
+                    ? 'Submeter Inscrição de Professor e Aguardar Autorização'
+                    : 'Concluir Cadastro e Abrir Meu Painel Privado'}
                 </button>
               </>
             ) : (
@@ -304,7 +446,7 @@ const PanelAccessGate: React.FC<{
                   type="submit"
                   className="w-full py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
                 >
-                  Autenticar e Entrar no Painel Privado
+                  Autenticar e Entrar no Painel
                 </button>
               </>
             )}
@@ -330,23 +472,27 @@ const PanelAccessGate: React.FC<{
           <div>
             <p className="text-xs font-semibold text-[#19B5FE]">Acesso Protegido ALHAN SGI</p>
             <h2 className="text-base sm:text-lg font-extrabold text-white mt-1">
-              {isRegistrationRequiredRole
+              {defaultRole === 'PROFESSOR'
+                ? 'Inscrição Docente Sujeita a Autorização Administrativa'
+                : isRegistrationRequiredRole
                 ? 'Painel Exclusivo para Contas Cadastradas'
-                : 'Ambiente Corporativo Restrito'}
+                : 'Backoffice Administrativo Separado do Site'}
             </h2>
             <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-              {isRegistrationRequiredRole
+              {defaultRole === 'PROFESSOR'
+                ? 'O Painel do Professor está disponível publicamente para que qualquer professor ou formador possa efectuar a sua inscrição. Após inscrever-se, o acesso às ferramentas internas aguarda a autorização do Painel Administrativo.'
+                : isRegistrationRequiredRole
                 ? 'Por razões de segurança e confidencialidade, o Painel do Aluno e o Painel do Cliente Empresarial não possuem modo público de demonstração e só existem após o cadastro do aluno ou da empresa.'
-                : 'O Painel do Professor e o Painel Administrativo Central são estritamente privados e reservados à equipa autorizada da ALHAN.'}
+                : 'Este link do Painel Administrativo é separado e oculto do site público, de acesso exclusivo à Direcção da ALHAN.'}
             </p>
           </div>
 
           <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2 text-xs text-slate-300">
-            <p className="font-bold text-white">Isolamento e Protecção de Dados:</p>
+            <p className="font-bold text-white">Regras de Segurança e Acesso:</p>
             <ul className="space-y-1.5 list-disc list-inside text-[11px] leading-relaxed">
               <li>Autenticação obrigatória por utilizador e palavra-passe;</li>
-              <li>Protecção de vídeos, materiais pedagógicos e certificados QR;</li>
-              <li>Isolamento rigoroso de projectos ISO, auditorias e RNCs por empresa.</li>
+              <li>Validação administrativa obrigatória para novos professores/formadores;</li>
+              <li>Isolamento rigoroso de cursos, certificados QR e projectos ISO.</li>
             </ul>
           </div>
 
@@ -356,7 +502,9 @@ const PanelAccessGate: React.FC<{
               onClick={() => setGateMode('registo')}
               className="w-full py-2.5 px-4 rounded-xl bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
             >
-              Ainda não tem conta? Cadastrar Agora →
+              {defaultRole === 'PROFESSOR'
+                ? 'Novo Professor / Formador? Inscrever-se Agora →'
+                : 'Ainda não tem conta? Cadastrar Agora →'}
             </button>
           )}
         </div>
@@ -1631,8 +1779,8 @@ export const ProfessorPortal: React.FC = () => {
     <PanelAccessGate
       allowedRoles={['PROFESSOR', 'ADMIN', 'SUPER_ADMIN']}
       defaultRole="PROFESSOR"
-      panelTitle="Painel Privado do Professor / Formador"
-      panelSubtitle="Acesso Docente Estritamente Privado · ALHAN SGI"
+      panelTitle="Painel do Professor / Formador"
+      panelSubtitle="Inscrição Pública de Formadores · Acesso Interno Após Autorização Administrativa"
     >
       {(onLockPanel) => (
         <div className="min-h-[calc(100vh-8rem)] flex flex-col lg:flex-row bg-[#F5F9FC]">
@@ -2207,6 +2355,8 @@ export const CompanyPortal: React.FC = () => {
 // ==========================================
 export const AdminPortal: React.FC = () => {
   const {
+    registeredUsers,
+    updateUserApprovalStatus,
     courses,
     isoStandards,
     enrollments,
@@ -2231,6 +2381,24 @@ export const AdminPortal: React.FC = () => {
     panelCredentials,
     updatePanelCredential,
   } = useApp();
+
+  const registeredProfessors = registeredUsers.filter((u) => u.role === 'PROFESSOR');
+  const pendingProfessorsCount = registeredProfessors.filter(
+    (u) => !u.approvalStatus || u.approvalStatus === 'pendente'
+  ).length;
+
+  const buildProfessorWhatsAppUrl = (profName: string, profPhone: string, username: string) => {
+    const phone = (profPhone || '').replace(/[^0-9]/g, '');
+    const cleanPhone = phone.startsWith('244') ? phone : phone ? `244${phone}` : '244922021211';
+    const msg = `Olá, Prof./Formador(a) ${profName}! A sua inscrição no Painel do Professor da ALHAN – Sistema de Gestão Integrado (Utilizador: ${username}) foi AUTORIZADA e APROVADA pelo Painel Administrativo. Já pode iniciar sessão em https://www.alhan.pro/professor para gerir módulos, aulas e turmas. Bem-vindo(a) à equipa pedagógica ALHAN!`;
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+  };
+
+  const buildProfessorEmailUrl = (profName: string, profEmail: string, username: string) => {
+    const subject = `Inscrição de Professor Autorizada - ALHAN Sistema de Gestão Integrado`;
+    const body = `Prezado(a) Prof./Formador(a) ${profName},\n\nInformamos que a sua inscrição no Painel do Professor da plataforma ALHAN – Sistema de Gestão Integrado foi AUTORIZADA pela Administração.\n\nUtilizador: ${username}\nLink de Acesso: https://www.alhan.pro/professor\nEstado: AUTORIZADO / ACTIVO\n\nAtenciosamente,\nDirecção Pedagógica – ALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA`;
+    return `mailto:${profEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
 
   const [credSavedMsg, setCredSavedMsg] = useState<string | null>(null);
 
@@ -2497,7 +2665,7 @@ export const AdminPortal: React.FC = () => {
         {/* 1. DASHBOARD & INDICADORES (Section 21 & 25) */}
         {activeModule === 'Dashboard & Indicadores' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="bg-white rounded-xl border border-slate-200 p-5">
                 <p className="text-xs text-slate-500">Cursos no Catálogo</p>
                 <p className="text-2xl font-extrabold font-mono-tabular text-[#061A2D] mt-1">
@@ -2517,6 +2685,15 @@ export const AdminPortal: React.FC = () => {
                 </p>
               </div>
               <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <p className="text-xs text-slate-500">Professores Inscritos</p>
+                <p className="text-2xl font-extrabold font-mono-tabular text-[#061A2D] mt-1">
+                  {registeredProfessors.length}
+                </p>
+                <p className="text-[11px] text-amber-700 font-bold mt-1">
+                  {pendingProfessorsCount} aguardam autorização
+                </p>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
                 <p className="text-xs text-slate-500">Projectos ISO Activos</p>
                 <p className="text-2xl font-extrabold font-mono-tabular text-[#061A2D] mt-1">
                   {isoProjects.length}
@@ -2526,7 +2703,7 @@ export const AdminPortal: React.FC = () => {
                 </p>
               </div>
               <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <p className="text-xs text-slate-500">Pedidos de Diagnóstico / Inscrições</p>
+                <p className="text-xs text-slate-500">Pedidos & Certificados</p>
                 <p className="text-2xl font-extrabold font-mono-tabular text-emerald-700 mt-1">
                   {diagnosticRequests.length}
                 </p>
@@ -2534,6 +2711,134 @@ export const AdminPortal: React.FC = () => {
                   {certificates.length} certificados QR emitidos
                 </p>
               </div>
+            </div>
+
+            {/* Authorization of Registered Professors / Trainers */}
+            <div className="bg-white rounded-xl border-2 border-[#0077C8]/30 p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-[#061A2D]">
+                      Autorização de Professores e Formadores Inscritos no Site
+                    </h2>
+                    {pendingProfessorsCount > 0 && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-extrabold">
+                        {pendingProfessorsCount} Pendente(s) de Autorização
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Qualquer professor ou formador que se inscreva no Painel do Professor fica em espera até que o Painel Administrativo autorize a sua inscrição abaixo.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveModule('Utilizadores, Parceiros & Configurações')}
+                  className="text-xs font-semibold text-[#0077C8] hover:underline whitespace-nowrap"
+                >
+                  Ver definições de utilizadores →
+                </button>
+              </div>
+
+              {registeredProfessors.length === 0 ? (
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 text-xs text-slate-600">
+                  Ainda não existem novas inscrições públicas de professores/formadores pendentes. Quando um professor se inscrever em <code>/professor</code> ou <code>/registo</code>, aparecerá aqui para autorização administrativa.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500">
+                        <th className="py-2.5 px-3">Professor / Formador</th>
+                        <th className="py-2.5 px-3">Utilizador & Contactos</th>
+                        <th className="py-2.5 px-3">Especialidade / Normas</th>
+                        <th className="py-2.5 px-3">Estado de Autorização</th>
+                        <th className="py-2.5 px-3">Acção Administrativa & Notificação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {registeredProfessors.map((prof) => {
+                        const status = prof.approvalStatus || 'pendente';
+                        return (
+                          <tr key={prof.uid} className="hover:bg-slate-50">
+                            <td className="py-3 px-3">
+                              <p className="font-bold text-[#061A2D]">{prof.fullName}</p>
+                              <p className="text-[11px] text-slate-400">
+                                Inscrito em {new Date(prof.createdAt).toLocaleDateString('pt-AO')}
+                              </p>
+                            </td>
+                            <td className="py-3 px-3">
+                              <p className="font-mono-tabular font-bold text-[#0077C8]">User: {prof.username}</p>
+                              <p className="text-[11px] text-slate-600">{prof.email} · {prof.phone}</p>
+                            </td>
+                            <td className="py-3 px-3 text-slate-700">
+                              {prof.specialty || 'Consultoria e Formação SGI / ISO'}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span
+                                className={`inline-flex px-2.5 py-1 rounded-md font-bold text-[11px] ${
+                                  status === 'aprovado'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : status === 'rejeitado'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                }`}
+                              >
+                                {status === 'aprovado'
+                                  ? 'Autorizado / Activo'
+                                  : status === 'rejeitado'
+                                  ? 'Não Autorizado'
+                                  : 'Aguardando Autorização'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {status !== 'aprovado' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateUserApprovalStatus(prof.uid, 'aprovado')}
+                                    className="px-2.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px]"
+                                  >
+                                    Autorizar Inscrição
+                                  </button>
+                                )}
+                                {status !== 'rejeitado' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateUserApprovalStatus(prof.uid, 'rejeitado')}
+                                    className="px-2.5 py-1.5 rounded bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold text-[11px]"
+                                  >
+                                    Suspender / Rejeitar
+                                  </button>
+                                )}
+                                {status === 'aprovado' && (
+                                  <>
+                                    <a
+                                      href={buildProfessorWhatsAppUrl(prof.fullName, prof.phone, prof.username)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px]"
+                                    >
+                                      <MessageCircle className="w-3 h-3" />
+                                      <span>Notificar WhatsApp</span>
+                                    </a>
+                                    <a
+                                      href={buildProfessorEmailUrl(prof.fullName, prof.email, prof.username)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px]"
+                                    >
+                                      <Mail className="w-3 h-3" />
+                                      <span>E-mail</span>
+                                    </a>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {/* Quick Pending Payments Table */}
@@ -3652,18 +3957,102 @@ export const AdminPortal: React.FC = () => {
           </div>
         )}
 
-        {/* 9. UTILIZADORES, PARCEIROS & CONFIGURAÇÕES (Credenciais por Painel + Integrações) */}
+        {/* 9. UTILIZADORES, PARCEIROS & CONFIGURAÇÕES (Autorização de Professores + Credenciais por Painel + Integrações) */}
         {activeModule === 'Utilizadores, Parceiros & Configurações' && (
           <div className="space-y-6">
+            {/* Autorização de Professores / Formadores Inscritos */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+              <div>
+                <h2 className="text-base font-bold text-[#061A2D]">
+                  Autorização de Professores e Formadores Inscritos ({registeredProfessors.length})
+                </h2>
+                <p className="text-xs text-slate-600 mt-1">
+                  Gerencie abaixo os professores e formadores que se inscreveram no Painel do Professor (<code>/professor</code>). O acesso ao painel docente só é libertado após clicar em <strong>«Autorizar Inscrição»</strong>.
+                </p>
+              </div>
+
+              {registeredProfessors.length === 0 ? (
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 text-xs text-slate-600">
+                  Nenhum professor ou formador externo inscrito até ao momento.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500">
+                        <th className="py-2.5 px-3">Nome Completo</th>
+                        <th className="py-2.5 px-3">Utilizador (User)</th>
+                        <th className="py-2.5 px-3">E-mail & Telefone</th>
+                        <th className="py-2.5 px-3">Especialidade</th>
+                        <th className="py-2.5 px-3">Estado</th>
+                        <th className="py-2.5 px-3">Decisão Administrativa</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {registeredProfessors.map((prof) => {
+                        const status = prof.approvalStatus || 'pendente';
+                        return (
+                          <tr key={prof.uid} className="hover:bg-slate-50">
+                            <td className="py-3 px-3 font-bold text-[#061A2D]">{prof.fullName}</td>
+                            <td className="py-3 px-3 font-mono-tabular font-bold text-[#0077C8]">{prof.username}</td>
+                            <td className="py-3 px-3">
+                              <p>{prof.email}</p>
+                              <p className="font-mono-tabular text-slate-500">{prof.phone}</p>
+                            </td>
+                            <td className="py-3 px-3">{prof.specialty || 'Formação SGI & Normas ISO'}</td>
+                            <td className="py-3 px-3">
+                              <span
+                                className={`inline-flex px-2.5 py-1 rounded-md font-bold text-[11px] ${
+                                  status === 'aprovado'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : status === 'rejeitado'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                }`}
+                              >
+                                {status === 'aprovado'
+                                  ? 'Autorizado'
+                                  : status === 'rejeitado'
+                                  ? 'Não Autorizado'
+                                  : 'Pendente'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => updateUserApprovalStatus(prof.uid, 'aprovado')}
+                                  className="px-2.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px]"
+                                >
+                                  Autorizar Inscrição
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateUserApprovalStatus(prof.uid, 'rejeitado')}
+                                  className="px-2.5 py-1.5 rounded bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold text-[11px]"
+                                >
+                                  Rejeitar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             {/* Gestão de Credenciais de Acesso por Painel (User & Senha) */}
             <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h2 className="text-base font-bold text-[#061A2D]">
-                    Gestão de Acesso e Credenciais para Cada Painel Administrativo (Utilizador & Senha)
+                    Gestão de Acesso e Credenciais Privadas (Utilizador & Senha)
                   </h2>
                   <p className="text-xs text-slate-600 mt-1">
-                    Configure abaixo o <strong>Utilizador (User)</strong> e a <strong>Senha</strong> de acesso directo para cada um dos 5 painéis da plataforma (senha padrão: <code>user</code>).
+                    Configure abaixo o <strong>Utilizador (User)</strong> e a <strong>Senha</strong> de acesso directo do Painel Administrativo Separado (<code>/gestao-alhan-sgi</code>) e dos restantes painéis.
                   </p>
                 </div>
                 {credSavedMsg && (

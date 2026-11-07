@@ -63,6 +63,7 @@ export default function App() {
             <Route path="/aluno" element={<StudentPortal />} />
             <Route path="/professor" element={<ProfessorPortal />} />
             <Route path="/empresa" element={<CompanyPortal />} />
+            <Route path="/gestao-alhan-sgi" element={<AdminPortal />} />
             <Route path="/admin" element={<AdminPortal />} />
             <Route path="/termos" element={<LegalPage section="termos" />} />
             <Route path="/privacidade" element={<LegalPage section="privacidade" />} />

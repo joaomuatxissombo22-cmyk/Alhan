@@ -25,8 +25,8 @@ const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 const ROLE_PORTAL_PATHS: Record<UserRole, string> = {
-  SUPER_ADMIN: '/admin',
-  ADMIN: '/admin',
+  SUPER_ADMIN: '/gestao-alhan-sgi',
+  ADMIN: '/gestao-alhan-sgi',
   PROFESSOR: '/professor',
   ALUNO: '/aluno',
   CLIENTE_EMPRESARIAL: '/empresa',
@@ -49,15 +49,69 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  const isSeparateAdminRoute =
+    location.pathname.startsWith('/gestao-alhan-sgi') ||
+    location.pathname.startsWith('/admin');
+
   const isPortalRoute =
     location.pathname.startsWith('/aluno') ||
     location.pathname.startsWith('/professor') ||
     location.pathname.startsWith('/empresa') ||
-    location.pathname.startsWith('/admin');
+    isSeparateAdminRoute;
 
   const whatsappUrl = `https://wa.me/${COMPANY_INFO.whatsappNumber}?text=${encodeURIComponent(
     COMPANY_INFO.whatsappDefaultMessage
   )}`;
+
+  // Standalone Private Administrative Backoffice Layout (completely separated from the public website)
+  if (isSeparateAdminRoute) {
+    return (
+      <div className="min-h-screen flex flex-col bg-[#F5F9FC] text-[#061A2D]">
+        <header className="sticky top-0 z-40 bg-[#061A2D] text-[#F5F9FC] border-b border-white/10">
+          <div className="max-w-[1440px] mx-auto flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 h-16">
+            <div className="flex items-center gap-3">
+              <img
+                src={COMPANY_INFO.logoPath}
+                alt="Logotipo ALHAN"
+                referrerPolicy="no-referrer"
+                className="h-9 w-9 rounded-md bg-white p-0.5 object-contain shrink-0"
+              />
+              <div>
+                <p className="text-sm sm:text-base font-extrabold text-white leading-tight">
+                  ALHAN – SGI · Painel Administrativo Central
+                </p>
+                <p className="text-[11px] text-[#19B5FE] font-mono-tabular">
+                  Ambiente Backoffice Separado do Site Público · Acesso Restrito
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Link
+                to="/"
+                className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-[#F5F9FC] transition-colors whitespace-nowrap"
+              >
+                Ver Site Público →
+              </Link>
+              {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
+                <button
+                  onClick={() => {
+                    logout();
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white transition-colors"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sair do Admin</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </header>
+        <main className="flex-1">{children}</main>
+        <OfflineIndicator />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F5F9FC] text-[#061A2D]">
@@ -199,7 +253,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           <div className="flex flex-wrap items-center gap-2.5">
             <PWAInstallButton />
 
-            {user ? (
+            {user && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' ? (
               <div className="flex items-center gap-2">
                 <Link
                   to={ROLE_PORTAL_PATHS[user.role]}
@@ -221,7 +275,13 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  to="/professor"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white/10 hover:bg-white/20 text-[#19B5FE] font-semibold transition-colors whitespace-nowrap"
+                >
+                  <span>Painel do Professor</span>
+                </Link>
                 <Link
                   to="/login"
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white/10 hover:bg-white/20 text-[#F5F9FC] font-semibold transition-colors whitespace-nowrap"
@@ -234,7 +294,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#0077C8] hover:bg-[#008FEA] text-white font-semibold transition-colors whitespace-nowrap"
                 >
                   <UserPlus className="w-3 h-3" />
-                  <span>Cadastrar (Aluno / Empresa)</span>
+                  <span>Cadastrar (Aluno / Professor / Empresa)</span>
                 </Link>
               </div>
             )}
@@ -318,9 +378,10 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <Link to="/consultar-certificado" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Validar Certificado</Link>
             <Link to="/como-funciona" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Como Funciona</Link>
             <Link to="/contactos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Contactos</Link>
+            <Link to="/professor" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5 text-[#19B5FE] font-semibold">Painel do Professor</Link>
           </div>
           <div className="pt-2 border-t border-white/10 flex flex-wrap gap-2">
-            {user ? (
+            {user && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' ? (
               <Link
                 to={ROLE_PORTAL_PATHS[user.role]}
                 onClick={() => setMobileMenuOpen(false)}
@@ -443,13 +504,14 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
             {/* Col 3: Portals & Certificates */}
             <div>
-              <h3 className="text-xs font-bold text-white mb-3">Plataforma & Acesso Privado</h3>
+              <h3 className="text-xs font-bold text-white mb-3">Plataforma & Painéis de Acesso</h3>
               <ul className="space-y-2 text-xs text-[#9AA6AE]">
                 <li><Link to="/consultar-certificado" className="hover:text-white transition-colors">Consultar Certificado (QR / B.I.)</Link></li>
-                <li><Link to="/solicitar-diagnostico" className="hover:text-white transition-colors">Solicitar Diagnóstico Empresarial</Link></li>
-                <li><Link to="/registo" className="hover:text-white transition-colors">Cadastro de Aluno / Cliente Empresarial</Link></li>
-                <li><Link to="/login" className="hover:text-white transition-colors">Iniciar Sessão nos Painéis Privados</Link></li>
-                <li><Link to="/contactos" className="hover:text-white transition-colors">Contactos</Link></li>
+                <li><Link to="/aluno" className="hover:text-white transition-colors">Painel do Aluno (Academia LMS)</Link></li>
+                <li><Link to="/professor" className="hover:text-white transition-colors">Painel do Professor / Formador (Inscrição & Acesso)</Link></li>
+                <li><Link to="/empresa" className="hover:text-white transition-colors">Painel do Cliente Empresarial (Consultoria ISO)</Link></li>
+                <li><Link to="/registo" className="hover:text-white transition-colors">Criar Conta (Aluno / Professor / Empresa)</Link></li>
+                <li><Link to="/login" className="hover:text-white transition-colors">Iniciar Sessão</Link></li>
               </ul>
             </div>
 
