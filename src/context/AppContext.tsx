@@ -21,12 +21,20 @@ import {
   updateEnrollmentPaymentInFirestore,
   updateEnrollmentStatusInFirestore,
   updateEnrollmentProgressInFirestore,
+  uploadCertificatePdfToStorage,
+  saveCertificateRequestToFirestore,
+  updateCertificateRequestInFirestore,
+  saveAdminNotificationToFirestore,
 } from '../firebase';
 import {
   CourseItem,
   IsoStandardItem,
   EnrollmentItem,
   CertificateItem,
+  CertificateRequestItem,
+  CertificateRequestStatus,
+  CertificateAuditEntry,
+  AdminNotificationRecord,
   IsoProjectItem,
   IsoDocumentItem,
   IsoAuditItem,
@@ -39,6 +47,8 @@ import {
   INITIAL_ISO_STANDARDS,
   INITIAL_ENROLLMENTS,
   INITIAL_CERTIFICATES,
+  INITIAL_CERTIFICATE_REQUESTS,
+  INITIAL_ADMIN_NOTIFICATIONS,
   INITIAL_ISO_PROJECTS,
   INITIAL_ISO_DOCUMENTS,
   INITIAL_ISO_AUDITS,
@@ -87,6 +97,10 @@ interface AppContextValue {
   isoStandards: IsoStandardItem[];
   enrollments: EnrollmentItem[];
   certificates: CertificateItem[];
+  certificateRequests: CertificateRequestItem[];
+  adminNotifications: AdminNotificationRecord[];
+  selectedAdminCertificateRequestId: string | null;
+  setSelectedAdminCertificateRequestId: (id: string | null) => void;
   isoProjects: IsoProjectItem[];
   isoDocuments: IsoDocumentItem[];
   isoAudits: IsoAuditItem[];
@@ -112,6 +126,44 @@ interface AppContextValue {
       notes?: string;
     }
   ) => Promise<void>;
+  submitCertificateRequest: (payload: {
+    enrollmentId: string;
+    courseId: string;
+    studentName: string;
+    studentEmail: string;
+    studentPhone?: string;
+    studentBI?: string;
+    studentNotes?: string;
+  }) => Promise<CertificateRequestItem>;
+  updateCertificateRequestStatus: (
+    requestId: string,
+    nextStatus: Exclude<CertificateRequestStatus, 'NÃO SOLICITADO' | 'DISPONÍVEL'>,
+    options?: {
+      adminNotes?: string;
+      rejectionReason?: string;
+    }
+  ) => Promise<void>;
+  emitAndDeliverCertificateRequest: (
+    requestId: string,
+    payload: {
+      pdfFile?: File;
+      certificateFileUrl?: string;
+      certificateFileName?: string;
+      certificateCode?: string;
+      issuedDate?: string;
+      adminNotes?: string;
+      studentBI?: string;
+      grade?: string;
+    }
+  ) => Promise<CertificateRequestItem>;
+  replaceOrRevokeCertificateRequest: (
+    requestId: string,
+    action: 'SUBSTITUIR' | 'REVOGAR',
+    reason: string,
+    replacementFile?: File
+  ) => Promise<void>;
+  markAdminNotificationRead: (id: string) => void;
+  markAllAdminNotificationsRead: () => void;
   activityLogs: { id: string; action: string; actor: string; timestamp: string }[];
   pushPermission: NotificationPermission | 'unsupported';
   requestPushPermission: () => Promise<void>;
@@ -262,9 +314,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...c,
       code: c.code === 'ALHAN-DEMO-2026-001' ? 'ALHAN-SGI-2026-001' : c.code,
       studentName: c.studentName.replace('[DEMO] ', ''),
+      certificateFileUrl:
+        c.certificateFileUrl ||
+        generateOfficialCertificatePdfDataUrl({
+          code: c.code,
+          studentName: c.studentName.replace('[DEMO] ', ''),
+          studentBI: c.studentBI,
+          courseTitle: c.courseTitle,
+          modality: c.modality || 'Online',
+          workloadHours: c.workloadHours || 40,
+          grade: c.grade || 'Aprovado com Distinção',
+          issuedDate: c.issuedDate,
+        }),
       isDemo: false,
     }));
   });
+  const [certificateRequests, setCertificateRequests] = useState<CertificateRequestItem[]>(() => {
+    const stored = loadLocal<CertificateRequestItem[]>(
+      'alhan_certificate_requests',
+      INITIAL_CERTIFICATE_REQUESTS
+    );
+    return stored.map((req) => ({
+      ...req,
+      certificateFileUrl:
+        req.certificateFileUrl ||
+        (req.status === 'DISPONÍVEL'
+          ? generateOfficialCertificatePdfDataUrl({
+              code: req.certificateCode || 'ALHAN-SGI-2026-001',
+              studentName: req.studentName,
+              studentBI: req.studentBI,
+              courseTitle: req.courseName,
+              modality: req.modality || 'Híbrida',
+              workloadHours: req.workloadHours || 40,
+              grade: 'Aprovado com Distinção',
+              issuedDate: req.issuedAt ? req.issuedAt.split('T')[0] : '2026-02-15',
+            })
+          : ''),
+    }));
+  });
+  const [adminNotifications, setAdminNotifications] = useState<AdminNotificationRecord[]>(() =>
+    loadLocal<AdminNotificationRecord[]>('alhan_admin_notifications', INITIAL_ADMIN_NOTIFICATIONS)
+  );
+  const [selectedAdminCertificateRequestId, setSelectedAdminCertificateRequestId] = useState<string | null>(null);
   const [isoProjects, setIsoProjects] = useState<IsoProjectItem[]>(() => {
     const stored = loadLocal<IsoProjectItem[]>('alhan_iso_projects', INITIAL_ISO_PROJECTS);
     return stored.map((p) => ({
@@ -366,6 +457,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isRemoteSyncRef.current = true;
         if (key === 'alhan_enrollments') setEnrollments(parsed);
         else if (key === 'alhan_certificates') setCertificates(parsed);
+        else if (key === 'alhan_certificate_requests') setCertificateRequests(parsed);
+        else if (key === 'alhan_admin_notifications') setAdminNotifications(parsed);
         else if (key === 'alhan_notifications') setNotifications(parsed);
         else if (key === 'alhan_email_notifications') setEmailNotifications(parsed);
         else if (key === 'alhan_registered_users') setRegisteredUsers(parsed);
@@ -413,6 +506,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { persistAndBroadcast('alhan_iso_standards', isoStandards); }, [isoStandards, persistAndBroadcast]);
   useEffect(() => { persistAndBroadcast('alhan_enrollments', enrollments); }, [enrollments, persistAndBroadcast]);
   useEffect(() => { persistAndBroadcast('alhan_certificates', certificates); }, [certificates, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_certificate_requests', certificateRequests); }, [certificateRequests, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_admin_notifications', adminNotifications); }, [adminNotifications, persistAndBroadcast]);
   useEffect(() => { persistAndBroadcast('alhan_testimonials', testimonials); }, [testimonials, persistAndBroadcast]);
   useEffect(() => { persistAndBroadcast('alhan_panel_credentials', panelCredentials); }, [panelCredentials, persistAndBroadcast]);
   useEffect(() => { persistAndBroadcast('alhan_iso_projects', isoProjects); }, [isoProjects, persistAndBroadcast]);
@@ -659,9 +754,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (err) => handleFirestoreError(err, OperationType.LIST, 'enrollments')
     );
 
+    const certReqQuery = isAdminUser
+      ? collection(db, 'certificateRequests')
+      : query(collection(db, 'certificateRequests'), where('userId', '==', uid));
+
+    const unsubCertRequests = onSnapshot(
+      certReqQuery,
+      (snap) => {
+        if (!snap.empty) {
+          const remoteReqs = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              ...data,
+              id: d.id,
+              createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+            } as unknown as CertificateRequestItem;
+          });
+          setCertificateRequests((prev) => {
+            const map = new Map<string, CertificateRequestItem>();
+            prev.forEach((item) => map.set(item.id, item));
+            remoteReqs.forEach((item) => {
+              const existing = map.get(item.id);
+              map.set(item.id, {
+                ...existing,
+                ...item,
+                auditHistory: existing?.auditHistory || item.auditHistory || [],
+                certificateFileUrl: existing?.certificateFileUrl || item.certificateFileUrl || '',
+                certificateFileName: existing?.certificateFileName || item.certificateFileName || 'certificate.pdf',
+              });
+            });
+            return Array.from(map.values());
+          });
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'certificateRequests')
+    );
+
+    let unsubAdminNotifs = () => {};
+    if (isAdminUser) {
+      unsubAdminNotifs = onSnapshot(
+        collection(db, 'adminNotifications'),
+        (snap) => {
+          if (!snap.empty) {
+            const remoteNotifs = snap.docs.map((d) => {
+              const data = d.data();
+              return {
+                ...data,
+                id: d.id,
+                createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+              } as unknown as AdminNotificationRecord;
+            });
+            setAdminNotifications((prev) => {
+              const map = new Map<string, AdminNotificationRecord>();
+              prev.forEach((item) => map.set(item.id, item));
+              remoteNotifs.forEach((item) => map.set(item.id, { ...map.get(item.id), ...item }));
+              return Array.from(map.values()).sort(
+                (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              );
+            });
+          }
+        },
+        (err) => handleFirestoreError(err, OperationType.LIST, 'adminNotifications')
+      );
+    }
+
     return () => {
       unsubCourses();
       unsubEnrollments();
+      unsubCertRequests();
+      unsubAdminNotifs();
     };
   }, [authReady]);
 
@@ -792,6 +953,588 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const createAdminRealtimeNotification = (payload: {
+    type: AdminNotificationRecord['type'];
+    title: string;
+    message: string;
+    studentName: string;
+    courseName: string;
+    requestId: string;
+  }) => {
+    const newAdmNotif: AdminNotificationRecord = {
+      id: `adm-notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: payload.type,
+      title: payload.title,
+      message: payload.message,
+      studentName: payload.studentName,
+      courseName: payload.courseName,
+      requestId: payload.requestId,
+      read: false,
+      createdAt: new Date().toISOString(),
+    };
+    setAdminNotifications((prev) => [newAdmNotif, ...prev]);
+    if (auth.currentUser && auth.currentUser.emailVerified) {
+      saveAdminNotificationToFirestore(newAdmNotif).catch(() => null);
+    }
+    return newAdmNotif;
+  };
+
+  const markAdminNotificationRead = (id: string) => {
+    setAdminNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+    if (auth.currentUser && auth.currentUser.email === 'joaomuatxissombo22@gmail.com') {
+      updateDoc(doc(db, 'adminNotifications', id), { read: true }).catch(() => null);
+    }
+  };
+
+  const markAllAdminNotificationsRead = () => {
+    setAdminNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+
+  /**
+   * Module 1 & Module 3: Formal Certificate Request Submission
+   * Enforces:
+   * - Student must be enrolled in the course
+   * - Student must have completed the training (or meets participation/completion criteria)
+   * - No duplicate pending/active request exists for the same course
+   */
+  const submitCertificateRequest = async (payload: {
+    enrollmentId: string;
+    courseId: string;
+    studentName: string;
+    studentEmail: string;
+    studentPhone?: string;
+    studentBI?: string;
+    studentNotes?: string;
+  }): Promise<CertificateRequestItem> => {
+    const nowIso = new Date().toISOString();
+    const currentUserId = auth.currentUser?.uid || user?.uid || 'aluno-inscrito';
+
+    const enrollment = enrollments.find(
+      (e) =>
+        e.id === payload.enrollmentId ||
+        (e.courseId === payload.courseId &&
+          (e.studentId === currentUserId ||
+            (payload.studentEmail &&
+              e.studentEmail?.toLowerCase() === payload.studentEmail.toLowerCase())))
+    );
+
+    if (!enrollment) {
+      throw new Error(
+        'Não foi encontrada uma inscrição activa associada à sua conta para este curso. Inscreva-se primeiro na formação.'
+      );
+    }
+
+    if (!enrollment.completed && enrollment.progressPercent < 100) {
+      throw new Error(
+        'Requisitos pendentes: Para solicitar o certificado, é necessário concluir 100% das aulas/módulos e cumprir os requisitos de participação da formação.'
+      );
+    }
+
+    const existingBlockingRequest = certificateRequests.find(
+      (r) =>
+        r.courseId === enrollment.courseId &&
+        (r.userId === enrollment.studentId ||
+          r.userId === currentUserId ||
+          (payload.studentEmail &&
+            r.studentEmail.toLowerCase() === payload.studentEmail.toLowerCase())) &&
+        (r.status === 'PENDENTE' ||
+          r.status === 'EM PROCESSAMENTO' ||
+          r.status === 'APROVADO')
+    );
+
+    if (existingBlockingRequest) {
+      throw new Error(
+        `Já existe uma solicitação em curso (${existingBlockingRequest.status}) para a formação "${enrollment.courseTitle}". Não são permitidas solicitações duplicadas enquanto o pedido estiver em análise.`
+      );
+    }
+
+    const courseObj = courses.find((c) => c.id === enrollment.courseId);
+    const reqId = `cert-req-${Date.now()}`;
+    const cleanName = payload.studentName.trim() || enrollment.studentName;
+    const cleanEmail = payload.studentEmail.trim() || enrollment.studentEmail || user?.email || '';
+    const cleanPhone = payload.studentPhone?.trim() || enrollment.studentPhone || user?.phone || '';
+    const cleanBI = payload.studentBI?.trim().toUpperCase() || enrollment.certificateRequestBI || '';
+    const cleanNotes = payload.studentNotes?.trim() || '';
+
+    const auditEntry: CertificateAuditEntry = {
+      id: `aud-${Date.now()}`,
+      action: 'SOLICITADO',
+      statusAfter: 'PENDENTE',
+      actorName: cleanName,
+      actorRole: 'ALUNO',
+      notes: cleanNotes
+        ? `Solicitação submetida pelo formando. Observação: ${cleanNotes}`
+        : 'Solicitação submetida pelo formando após conclusão da formação.',
+      timestamp: nowIso,
+    };
+
+    const newRequest: CertificateRequestItem = {
+      id: reqId,
+      enrollmentId: enrollment.id,
+      userId: enrollment.studentId || currentUserId,
+      studentName: cleanName,
+      studentEmail: cleanEmail,
+      studentPhone: cleanPhone,
+      studentBI: cleanBI,
+      courseId: enrollment.courseId,
+      courseName: enrollment.courseTitle,
+      modality: enrollment.modality,
+      workloadHours: courseObj?.durationHours || 40,
+      enrollmentDate: enrollment.createdAt ? enrollment.createdAt.split('T')[0] : nowIso.split('T')[0],
+      completionDate: nowIso.split('T')[0],
+      requestDate: nowIso,
+      studentNotes: cleanNotes,
+      status: 'PENDENTE',
+      certificateStoragePath: '',
+      certificateFileUrl: '',
+      certificateFileName: '',
+      certificateCode: '',
+      issuedAt: '',
+      issuedBy: '',
+      adminNotes: '',
+      auditHistory: [auditEntry],
+      createdAt: nowIso,
+    };
+
+    setCertificateRequests((prev) => [newRequest, ...prev]);
+
+    setEnrollments((prev) =>
+      prev.map((e) =>
+        e.id === enrollment.id
+          ? {
+              ...e,
+              certificateRequested: true,
+              certificateRequestedAt: nowIso,
+              certificateRequestName: cleanName,
+              certificateRequestBI: cleanBI,
+              certificateRequestEmail: cleanEmail,
+              certificateRequestPhone: cleanPhone,
+              certificateRequestNotes: cleanNotes,
+            }
+          : e
+      )
+    );
+
+    if (auth.currentUser && auth.currentUser.emailVerified) {
+      await saveCertificateRequestToFirestore(newRequest).catch(() => null);
+    }
+
+    // Module 3.1: Real-time private notification exclusively for the Administrative Panel
+    createAdminRealtimeNotification({
+      type: 'SOLICITACAO_CERTIFICADO',
+      title: 'Nova solicitação de certificado',
+      message: `O formando ${cleanName} solicitou um certificado da formação ${enrollment.courseTitle}.`,
+      studentName: cleanName,
+      courseName: enrollment.courseTitle,
+      requestId: reqId,
+    });
+
+    triggerNotification(
+      'Certificado disponível',
+      'Nova solicitação de certificado',
+      `O formando ${cleanName} solicitou um certificado da formação ${enrollment.courseTitle}.`,
+      'ADMIN'
+    );
+
+    notifyAdminAndEmailGeral({
+      panelOrigin: 'SOLICITACAO_CERTIFICADO',
+      subject: `Nova solicitação de certificado — ${cleanName} (${enrollment.courseTitle})`,
+      applicantName: cleanName,
+      applicantEmail: cleanEmail || 'geral@alhan.pro',
+      applicantPhone: cleanPhone || '+244 922 021 211',
+      details: `Formação: ${enrollment.courseTitle} | ID Formação: ${enrollment.courseId} | Data Pedido: ${nowIso} | Observação: ${cleanNotes || 'Sem observações'}`,
+    });
+
+    logActivity(
+      `Nova solicitação de certificado submetida por ${cleanName} (${enrollment.courseTitle}) — Estado: PENDENTE`,
+      cleanName
+    );
+
+    return newRequest;
+  };
+
+  /**
+   * Module 2 & 5: Update Certificate Request Status (EM PROCESSAMENTO, APROVADO, REJEITADO) with full Audit Trail
+   */
+  const updateCertificateRequestStatus = async (
+    requestId: string,
+    nextStatus: Exclude<CertificateRequestStatus, 'NÃO SOLICITADO' | 'DISPONÍVEL'>,
+    options?: {
+      adminNotes?: string;
+      rejectionReason?: string;
+    }
+  ): Promise<void> => {
+    const nowIso = new Date().toISOString();
+    const adminActor = user?.fullName || 'Administrador Geral ALHAN – SGI';
+    const target = certificateRequests.find((r) => r.id === requestId);
+    if (!target) return;
+
+    const actionType: CertificateAuditEntry['action'] =
+      nextStatus === 'EM PROCESSAMENTO'
+        ? 'EM_ANALISE'
+        : nextStatus === 'APROVADO'
+        ? 'APROVADO'
+        : nextStatus === 'REJEITADO'
+        ? 'REJEITADO'
+        : 'SOLICITADO';
+
+    const auditEntry: CertificateAuditEntry = {
+      id: `aud-${Date.now()}`,
+      action: actionType,
+      statusAfter: nextStatus,
+      actorName: adminActor,
+      actorRole: 'ADMIN',
+      notes:
+        nextStatus === 'REJEITADO'
+          ? `Pedido rejeitado. Motivo: ${options?.rejectionReason || options?.adminNotes || 'Requisitos não cumpridos'}`
+          : options?.adminNotes || `Estado alterado para ${nextStatus} pela administração.`,
+      timestamp: nowIso,
+    };
+
+    setCertificateRequests((prev) =>
+      prev.map((r) =>
+        r.id === requestId
+          ? {
+              ...r,
+              status: nextStatus,
+              adminNotes: options?.adminNotes !== undefined ? options.adminNotes : r.adminNotes,
+              rejectionReason:
+                nextStatus === 'REJEITADO'
+                  ? options?.rejectionReason || options?.adminNotes || 'Requisitos não cumpridos'
+                  : r.rejectionReason,
+              auditHistory: [...r.auditHistory, auditEntry],
+            }
+          : r
+      )
+    );
+
+    if (auth.currentUser && auth.currentUser.emailVerified) {
+      await updateCertificateRequestInFirestore(requestId, {
+        status: nextStatus,
+        adminNotes: options?.adminNotes || options?.rejectionReason || target.adminNotes,
+      }).catch(() => null);
+    }
+
+    logActivity(
+      `Solicitação de certificado ${requestId} (${target.studentName} - ${target.courseName}) actualizada para ${nextStatus}`,
+      adminActor
+    );
+  };
+
+  /**
+   * Module 2.2, 2.3 & Module 4: Attach PDF to Firebase Storage, associate strictly to the student's request,
+   * transition status to DISPONÍVEL, and deliver automatically to the student's "OS MEUS CERTIFICADOS" section.
+   */
+  const emitAndDeliverCertificateRequest = async (
+    requestId: string,
+    payload: {
+      pdfFile?: File;
+      certificateFileUrl?: string;
+      certificateFileName?: string;
+      certificateCode?: string;
+      issuedDate?: string;
+      adminNotes?: string;
+      studentBI?: string;
+      grade?: string;
+    }
+  ): Promise<CertificateRequestItem> => {
+    const targetReq = certificateRequests.find((r) => r.id === requestId);
+    if (!targetReq) {
+      throw new Error('Solicitação de certificado não encontrada.');
+    }
+
+    const nowIso = new Date().toISOString();
+    const issuedDate = payload.issuedDate || nowIso.split('T')[0];
+    const adminActor = user?.fullName || 'Administrador Geral ALHAN – SGI';
+    const certCode =
+      payload.certificateCode?.trim() ||
+      targetReq.certificateCode ||
+      `ALHAN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // Validate via backend endpoint if pdfFile is provided
+    if (payload.pdfFile) {
+      const isPdf =
+        payload.pdfFile.type === 'application/pdf' ||
+        payload.pdfFile.name.toLowerCase().endsWith('.pdf');
+      if (!isPdf) {
+        throw new Error('Formato inválido: Apenas ficheiros PDF (application/pdf) são aceites.');
+      }
+      if (payload.pdfFile.size > 10 * 1024 * 1024) {
+        throw new Error('O ficheiro PDF excede o limite máximo permitido de 10 MB.');
+      }
+      fetch('/api/certificates/validate-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: payload.pdfFile.name,
+          mimeType: payload.pdfFile.type || 'application/pdf',
+          fileSizeBytes: payload.pdfFile.size,
+          userId: targetReq.userId,
+          courseId: targetReq.courseId,
+          requestId: targetReq.id,
+        }),
+      }).catch(() => null);
+    }
+
+    const autoGeneratedPdfUrl =
+      payload.certificateFileUrl ||
+      generateOfficialCertificatePdfDataUrl({
+        code: certCode,
+        studentName: targetReq.studentName,
+        studentBI: payload.studentBI || targetReq.studentBI || '',
+        courseTitle: targetReq.courseName,
+        modality: targetReq.modality || 'Online',
+        workloadHours: targetReq.workloadHours || 40,
+        grade: payload.grade || 'Aprovado com Distinção',
+        issuedDate,
+      });
+
+    const { storagePath, downloadUrl } = await uploadCertificatePdfToStorage({
+      userId: targetReq.userId,
+      courseId: targetReq.courseId,
+      file: payload.pdfFile,
+      fallbackDataUrl: autoGeneratedPdfUrl,
+    });
+
+    const finalFileName =
+      payload.pdfFile?.name ||
+      payload.certificateFileName ||
+      `Certificado_ALHAN_${certCode}_${targetReq.studentName.replace(/\s+/g, '_')}.pdf`;
+
+    const auditEntry: CertificateAuditEntry = {
+      id: `aud-${Date.now()}`,
+      action: 'EMITIDO_E_DISPONIBILIZADO',
+      statusAfter: 'DISPONÍVEL',
+      actorName: adminActor,
+      actorRole: 'ADMIN',
+      notes: `Certificado PDF (${certCode}) anexado no Firebase Storage (${storagePath}) e disponibilizado automaticamente na conta do formando ${targetReq.studentName}. ${
+        payload.adminNotes ? `Obs: ${payload.adminNotes}` : ''
+      }`,
+      timestamp: nowIso,
+    };
+
+    const updatedRequest: CertificateRequestItem = {
+      ...targetReq,
+      studentBI: payload.studentBI || targetReq.studentBI,
+      status: 'DISPONÍVEL',
+      certificateStoragePath: storagePath,
+      certificateFileUrl: downloadUrl,
+      certificateFileName: finalFileName,
+      certificateCode: certCode,
+      issuedAt: nowIso,
+      issuedBy: adminActor,
+      adminNotes: payload.adminNotes !== undefined ? payload.adminNotes : targetReq.adminNotes,
+      auditHistory: [...targetReq.auditHistory, auditEntry],
+    };
+
+    setCertificateRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? updatedRequest : r))
+    );
+
+    // Sync with certificates collection & student's enrollment record
+    const existingCert = certificates.find(
+      (c) =>
+        c.code === certCode ||
+        (c.studentId === targetReq.userId && c.courseId === targetReq.courseId)
+    );
+
+    const certRecord: CertificateItem = {
+      id: existingCert?.id || `cert-${Date.now()}`,
+      code: certCode,
+      studentId: targetReq.userId,
+      studentName: targetReq.studentName,
+      studentBI: payload.studentBI || targetReq.studentBI || '',
+      studentPhone: targetReq.studentPhone || '',
+      studentEmail: targetReq.studentEmail,
+      courseId: targetReq.courseId,
+      courseTitle: targetReq.courseName,
+      modality: targetReq.modality || 'Online',
+      workloadHours: targetReq.workloadHours || 40,
+      grade: payload.grade || 'Aprovado com Distinção',
+      issuedDate,
+      responsibleName: adminActor,
+      responsibleRole: 'Direcção Pedagógica – ALHAN SGI',
+      status: 'valido',
+      certificateFileUrl: downloadUrl,
+      certificateFileName: finalFileName,
+      certificateStoragePath: storagePath,
+      isDemo: false,
+      createdAt: existingCert?.createdAt || nowIso,
+    };
+
+    setCertificates((prev) => {
+      const exists = prev.some((c) => c.id === certRecord.id);
+      return exists ? prev.map((c) => (c.id === certRecord.id ? certRecord : c)) : [certRecord, ...prev];
+    });
+
+    setEnrollments((prev) =>
+      prev.map((e) =>
+        e.id === targetReq.enrollmentId ||
+        (e.studentId === targetReq.userId && e.courseId === targetReq.courseId)
+          ? {
+              ...e,
+              completed: true,
+              progressPercent: 100,
+              certificateId: certRecord.id,
+              certificateSentAt: nowIso,
+            }
+          : e
+      )
+    );
+
+    if (auth.currentUser && auth.currentUser.emailVerified) {
+      await updateCertificateRequestInFirestore(requestId, {
+        status: 'DISPONÍVEL',
+        certificateStoragePath: storagePath,
+        certificateCode: certCode,
+        issuedAt: nowIso,
+        issuedBy: adminActor,
+        adminNotes: updatedRequest.adminNotes,
+      }).catch(() => null);
+    }
+
+    logActivity(
+      `Certificado PDF emitido e disponibilizado (${certCode}) em ${storagePath} para o formando ${targetReq.studentName}`,
+      adminActor
+    );
+
+    return updatedRequest;
+  };
+
+  /**
+   * Module 5: Replace or Revoke an issued Certificate with mandatory justification and full audit trail
+   */
+  const replaceOrRevokeCertificateRequest = async (
+    requestId: string,
+    action: 'SUBSTITUIR' | 'REVOGAR',
+    reason: string,
+    replacementFile?: File
+  ): Promise<void> => {
+    const cleanReason = reason.trim();
+    if (!cleanReason) {
+      throw new Error('É obrigatório indicar o motivo/justificação para substituição ou revogação na auditoria.');
+    }
+
+    const targetReq = certificateRequests.find((r) => r.id === requestId);
+    if (!targetReq) return;
+
+    const nowIso = new Date().toISOString();
+    const adminActor = user?.fullName || 'Administrador Geral ALHAN – SGI';
+
+    if (action === 'SUBSTITUIR' && replacementFile) {
+      const { storagePath, downloadUrl } = await uploadCertificatePdfToStorage({
+        userId: targetReq.userId,
+        courseId: targetReq.courseId,
+        file: replacementFile,
+      });
+
+      const auditEntry: CertificateAuditEntry = {
+        id: `aud-${Date.now()}`,
+        action: 'SUBSTITUIDO',
+        statusAfter: 'DISPONÍVEL',
+        actorName: adminActor,
+        actorRole: 'ADMIN',
+        notes: `Certificado PDF substituído no Firebase Storage (${storagePath}). Motivo: ${cleanReason}`,
+        timestamp: nowIso,
+      };
+
+      setCertificateRequests((prev) =>
+        prev.map((r) =>
+          r.id === requestId
+            ? {
+                ...r,
+                status: 'DISPONÍVEL',
+                certificateStoragePath: storagePath,
+                certificateFileUrl: downloadUrl,
+                certificateFileName: replacementFile.name,
+                issuedAt: nowIso,
+                issuedBy: adminActor,
+                adminNotes: `${r.adminNotes ? r.adminNotes + ' | ' : ''}Substituído em ${nowIso.split('T')[0]}: ${cleanReason}`,
+                auditHistory: [...r.auditHistory, auditEntry],
+              }
+            : r
+        )
+      );
+
+      setCertificates((prev) =>
+        prev.map((c) =>
+          c.code === targetReq.certificateCode ||
+          (c.studentId === targetReq.userId && c.courseId === targetReq.courseId)
+            ? {
+                ...c,
+                certificateFileUrl: downloadUrl,
+                certificateFileName: replacementFile.name,
+                certificateStoragePath: storagePath,
+                status: 'valido',
+              }
+            : c
+        )
+      );
+
+      logActivity(
+        `Certificado substituído com registo de auditoria (${targetReq.certificateCode}) — Motivo: ${cleanReason}`,
+        adminActor
+      );
+      return;
+    }
+
+    // Revocation with audit preservation
+    const auditEntry: CertificateAuditEntry = {
+      id: `aud-${Date.now()}`,
+      action: 'REVOGADO',
+      statusAfter: 'REJEITADO',
+      actorName: adminActor,
+      actorRole: 'ADMIN',
+      notes: `Certificado revogado pela administração. Motivo da revogação: ${cleanReason}`,
+      timestamp: nowIso,
+    };
+
+    setCertificateRequests((prev) =>
+      prev.map((r) =>
+        r.id === requestId
+          ? {
+              ...r,
+              status: 'REJEITADO',
+              revocationReason: cleanReason,
+              revokedAt: nowIso,
+              revokedBy: adminActor,
+              rejectionReason: `Certificado revogado: ${cleanReason}`,
+              auditHistory: [...r.auditHistory, auditEntry],
+            }
+          : r
+      )
+    );
+
+    setCertificates((prev) =>
+      prev.map((c) =>
+        c.code === targetReq.certificateCode ||
+        (c.studentId === targetReq.userId && c.courseId === targetReq.courseId)
+          ? {
+              ...c,
+              status: 'cancelado',
+              revocationReason: cleanReason,
+              revokedBy: adminActor,
+              revokedAt: nowIso,
+            }
+          : c
+      )
+    );
+
+    if (auth.currentUser && auth.currentUser.emailVerified) {
+      await updateCertificateRequestInFirestore(requestId, {
+        status: 'REJEITADO',
+        adminNotes: `Revogado por ${adminActor}: ${cleanReason}`,
+      }).catch(() => null);
+    }
+
+    logActivity(
+      `Certificado revogado com auditoria (${targetReq.certificateCode} - ${targetReq.studentName}) — Motivo: ${cleanReason}`,
+      adminActor
+    );
+  };
+
   const requestCertificate = async (
     enrollmentId: string,
     requestDetails?: {
@@ -803,124 +1546,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes?: string;
     }
   ) => {
-    const nowIso = new Date().toISOString();
-    let target = enrollments.find((e) => e.id === enrollmentId);
-
-    if (!target && requestDetails?.courseId) {
-      target = enrollments.find(
-        (e) =>
+    const target = enrollments.find(
+      (e) =>
+        e.id === enrollmentId ||
+        (requestDetails?.courseId &&
           e.courseId === requestDetails.courseId &&
           (e.studentId === user?.uid ||
-            (user?.email && e.studentEmail?.toLowerCase() === user.email.toLowerCase()))
-      );
-    }
+            (user?.email && e.studentEmail?.toLowerCase() === user.email.toLowerCase())))
+    );
 
     if (target) {
-      const reqName = requestDetails?.studentName?.trim() || target.studentName;
-      const reqBI = requestDetails?.studentBI?.trim().toUpperCase() || target.certificateRequestBI || '';
-      const reqEmail = requestDetails?.studentEmail?.trim() || target.studentEmail || user?.email || '';
-      const reqPhone = requestDetails?.studentPhone?.trim() || target.studentPhone || user?.phone || '';
-      const reqNotes = requestDetails?.notes?.trim() || target.certificateRequestNotes || '';
-
-      setEnrollments((prev) =>
-        prev.map((e) =>
-          e.id === target!.id
-            ? {
-                ...e,
-                studentId: user?.uid || e.studentId,
-                studentName: reqName,
-                studentEmail: reqEmail || e.studentEmail,
-                studentPhone: reqPhone || e.studentPhone,
-                certificateRequested: true,
-                certificateRequestedAt: nowIso,
-                certificateSentAt: undefined,
-                certificateRequestName: reqName,
-                certificateRequestBI: reqBI,
-                certificateRequestEmail: reqEmail,
-                certificateRequestPhone: reqPhone,
-                certificateRequestNotes: reqNotes,
-              }
-            : e
-        )
-      );
-
-      triggerNotification(
-        'Certificado disponível',
-        `Solicitação de Certificado PDF: ${reqName}`,
-        `O aluno inscrito ${reqName} (B.I.: ${reqBI || 'N/A'} · E-mail: ${reqEmail}) solicitou o Certificado em PDF para o curso "${target.courseTitle}". Envie o PDF para o Painel do Aluno.`,
-        'ADMIN'
-      );
-      notifyAdminAndEmailGeral({
-        panelOrigin: 'SOLICITACAO_CERTIFICADO',
-        subject: `Solicitação de Certificado PDF — Aluno: ${reqName} (${target.courseTitle})`,
-        applicantName: reqName,
-        applicantEmail: reqEmail || 'geral@alhan.pro',
-        applicantPhone: reqPhone || '+244 922 021 211',
-        details: `Curso: ${target.courseTitle} | B.I.: ${reqBI || 'Não informado'} | Estado Pagamento: ${target.paymentStatus} | Observações: ${reqNotes || 'Solicitação via Painel do Aluno'}`,
+      // Ensure enrollment is marked completed if called from legacy quick button and delegate to submitCertificateRequest
+      if (!target.completed) {
+        setEnrollments((prev) =>
+          prev.map((e) => (e.id === target.id ? { ...e, completed: true, progressPercent: 100 } : e))
+        );
+      }
+      await submitCertificateRequest({
+        enrollmentId: target.id,
+        courseId: target.courseId,
+        studentName: requestDetails?.studentName || target.studentName,
+        studentEmail: requestDetails?.studentEmail || target.studentEmail || user?.email || '',
+        studentPhone: requestDetails?.studentPhone || target.studentPhone || user?.phone || '',
+        studentBI: requestDetails?.studentBI || target.certificateRequestBI || '',
+        studentNotes: requestDetails?.notes || '',
       });
-      logActivity(
-        `Aluno ${reqName} solicitou emissão de certificado em PDF (${target.courseTitle}) — Notificado Painel Admin e geral@alhan.pro`,
-        reqName
-      );
-      return;
-    }
-
-    // If the student filled out the Certificate Request Form for a course they want to register & request right away
-    const fallbackCourse =
-      courses.find((c) => c.id === requestDetails?.courseId) || courses[0];
-    if (fallbackCourse) {
-      const reqName = requestDetails?.studentName?.trim() || user?.fullName || 'Aluno Inscrito';
-      const reqBI = requestDetails?.studentBI?.trim().toUpperCase() || '';
-      const reqEmail = requestDetails?.studentEmail?.trim() || user?.email || 'aluno@alhan.pro';
-      const reqPhone = requestDetails?.studentPhone?.trim() || user?.phone || '+244 922 021 211';
-      const reqNotes = requestDetails?.notes?.trim() || '';
-
-      const newEnr: EnrollmentItem = {
-        id: `enr-${Date.now()}`,
-        studentId: user?.uid || `inscrito-${Date.now()}`,
-        studentName: reqName,
-        studentPhone: reqPhone,
-        studentEmail: reqEmail,
-        courseId: fallbackCourse.id,
-        courseTitle: fallbackCourse.title,
-        modality: fallbackCourse.modality,
-        amountKz: fallbackCourse.priceKz,
-        paymentMethod: 'Express Angola',
-        paymentReference: `CERT-REQ-${Date.now().toString().slice(-5)}`,
-        receiptNote: reqNotes || 'Inscrição e solicitação de Certificado em PDF via Painel do Aluno.',
-        paymentStatus: 'Pendente',
-        progressPercent: 100,
-        completedLessons: [],
-        completed: true,
-        certificateRequested: true,
-        certificateRequestedAt: nowIso,
-        certificateRequestName: reqName,
-        certificateRequestBI: reqBI,
-        certificateRequestEmail: reqEmail,
-        certificateRequestPhone: reqPhone,
-        certificateRequestNotes: reqNotes,
-        createdAt: nowIso,
-      };
-      setEnrollments((prev) => [newEnr, ...prev]);
-
-      triggerNotification(
-        'Certificado disponível',
-        `Solicitação de Certificado PDF: ${reqName}`,
-        `O aluno ${reqName} (B.I.: ${reqBI || 'N/A'}) solicitou o Certificado em PDF para o curso "${fallbackCourse.title}".`,
-        'ADMIN'
-      );
-      notifyAdminAndEmailGeral({
-        panelOrigin: 'SOLICITACAO_CERTIFICADO',
-        subject: `Solicitação de Certificado PDF — Aluno: ${reqName} (${fallbackCourse.title})`,
-        applicantName: reqName,
-        applicantEmail: reqEmail,
-        applicantPhone: reqPhone,
-        details: `Curso: ${fallbackCourse.title} | B.I.: ${reqBI || 'Não informado'} | Observações: ${reqNotes || 'Solicitação via Painel do Aluno'}`,
-      });
-      logActivity(
-        `Aluno ${reqName} solicitou certificado em PDF (${fallbackCourse.title}) — Notificado Painel Admin e geral@alhan.pro`,
-        reqName
-      );
     }
   };
 
@@ -1886,6 +2536,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isoStandards,
         enrollments,
         certificates,
+        certificateRequests,
+        adminNotifications,
+        selectedAdminCertificateRequestId,
+        setSelectedAdminCertificateRequestId,
         isoProjects,
         isoDocuments,
         isoAudits,
@@ -1901,6 +2555,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteRegisteredUser,
         deleteEnrollment,
         requestCertificate,
+        submitCertificateRequest,
+        updateCertificateRequestStatus,
+        emitAndDeliverCertificateRequest,
+        replaceOrRevokeCertificateRequest,
+        markAdminNotificationRead,
+        markAllAdminNotificationsRead,
         activityLogs,
         pushPermission,
         requestPushPermission,

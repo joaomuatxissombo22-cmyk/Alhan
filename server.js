@@ -9,7 +9,7 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const distPath = path.join(__dirname, 'dist');
 
-app.use(express.json({ limit: '4mb' }));
+app.use(express.json({ limit: '15mb' }));
 
 app.use(
   express.static(distPath, {
@@ -28,6 +28,36 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     platform: 'ALHAN – SISTEMA DE GESTÃO INTEGRADO',
     nif: '5003128261',
+  });
+});
+
+app.post('/api/certificates/validate-upload', (req, res) => {
+  const { fileName, mimeType, fileSizeBytes, userId, courseId, requestId } = req.body || {};
+  if (!userId || !courseId || !requestId) {
+    return res.status(400).json({
+      ok: false,
+      error: 'A solicitação de certificado deve estar associada a um formando (userId) e curso (courseId) válidos.',
+    });
+  }
+  const isPdfMime = mimeType === 'application/pdf' || (typeof fileName === 'string' && fileName.toLowerCase().endsWith('.pdf'));
+  if (!isPdfMime) {
+    return res.status(400).json({
+      ok: false,
+      error: 'Formato inválido. Apenas ficheiros PDF (application/pdf) são permitidos.',
+    });
+  }
+  const maxBytes = 10 * 1024 * 1024;
+  if (typeof fileSizeBytes === 'number' && (fileSizeBytes <= 0 || fileSizeBytes > maxBytes)) {
+    return res.status(400).json({
+      ok: false,
+      error: 'O ficheiro PDF excede o limite máximo permitido de 10 MB.',
+    });
+  }
+  const storagePath = `certificates/${String(userId).replace(/[^a-zA-Z0-9_-]/g, '-')}/${String(courseId).replace(/[^a-zA-Z0-9_-]/g, '-')}/certificate.pdf`;
+  return res.json({
+    ok: true,
+    storagePath,
+    validatedAt: new Date().toISOString(),
   });
 });
 

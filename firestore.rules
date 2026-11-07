@@ -195,6 +195,41 @@ service cloud.firestore {
         data.createdAt is timestamp;
     }
 
+    function isValidCertificateRequest(data) {
+      return data.keys().hasAll(['id', 'userId', 'studentName', 'studentEmail', 'courseId', 'courseName', 'enrollmentDate', 'completionDate', 'requestDate', 'status', 'certificateStoragePath', 'certificateCode', 'issuedAt', 'issuedBy', 'adminNotes', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'userId', 'studentName', 'studentEmail', 'courseId', 'courseName', 'enrollmentDate', 'completionDate', 'requestDate', 'status', 'certificateStoragePath', 'certificateCode', 'issuedAt', 'issuedBy', 'adminNotes', 'createdAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.userId) &&
+        data.studentName is string && data.studentName.size() >= 2 && data.studentName.size() <= 120 &&
+        data.studentEmail is string && data.studentEmail.size() <= 160 &&
+        isValidId(data.courseId) &&
+        data.courseName is string && data.courseName.size() >= 2 && data.courseName.size() <= 160 &&
+        data.enrollmentDate is string && data.enrollmentDate.size() <= 40 &&
+        data.completionDate is string && data.completionDate.size() <= 40 &&
+        data.requestDate is string && data.requestDate.size() <= 40 &&
+        data.status in ['PENDENTE', 'EM PROCESSAMENTO', 'APROVADO', 'DISPONÍVEL', 'REJEITADO'] &&
+        data.certificateStoragePath is string && data.certificateStoragePath.size() <= 500 &&
+        data.certificateCode is string && data.certificateCode.size() <= 80 &&
+        data.issuedAt is string && data.issuedAt.size() <= 40 &&
+        data.issuedBy is string && data.issuedBy.size() <= 120 &&
+        data.adminNotes is string && data.adminNotes.size() <= 1000 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAdminNotification(data) {
+      return data.keys().hasAll(['id', 'type', 'title', 'message', 'studentName', 'courseName', 'requestId', 'read', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'type', 'title', 'message', 'studentName', 'courseName', 'requestId', 'read', 'createdAt']) &&
+        isValidId(data.id) &&
+        data.type in ['SOLICITACAO_CERTIFICADO', 'NOVA_INSCRICAO', 'NOVO_FORMANDO', 'PAGAMENTO_REGISTADO', 'NOVA_FORMACAO', 'AUDITORIA_CERTIFICADO'] &&
+        data.title is string && data.title.size() >= 2 && data.title.size() <= 160 &&
+        data.message is string && data.message.size() >= 2 && data.message.size() <= 1000 &&
+        data.studentName is string && data.studentName.size() <= 120 &&
+        data.courseName is string && data.courseName.size() <= 160 &&
+        data.requestId is string && data.requestId.size() <= 128 &&
+        data.read is bool &&
+        data.createdAt is timestamp;
+    }
+
     // Admins registry
     match /admins/{adminId} {
       allow get: if isOwner(adminId) || isAdmin();
@@ -299,6 +334,42 @@ service cloud.firestore {
         incoming().createdAt == existing().createdAt &&
         isAdmin();
       allow delete: if isValidId(certificateId) && isAdmin();
+    }
+
+    // 5B. Certificate Requests (Module 1, 2, 4, 5)
+    match /certificateRequests/{requestId} {
+      allow get: if isValidId(requestId) && isVerifiedUser() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(requestId) && isValidCertificateRequest(incoming()) &&
+        incoming().id == requestId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'PENDENTE' &&
+        incoming().certificateStoragePath == '' &&
+        incoming().issuedAt == '' &&
+        incoming().issuedBy == '' &&
+        incoming().createdAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(requestId) && isValidCertificateRequest(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().courseId == existing().courseId &&
+        incoming().createdAt == existing().createdAt &&
+        isAdmin();
+      allow delete: if isValidId(requestId) && isAdmin();
+    }
+
+    // 5C. Private Administrative Notifications (Module 3 — Exclusively for Admin)
+    match /adminNotifications/{notificationId} {
+      allow get: if isValidId(notificationId) && isAdmin();
+      allow list: if isAdmin() && resource.data.read in [true, false];
+      allow create: if isVerifiedUser() && isValidId(notificationId) && isValidAdminNotification(incoming()) &&
+        incoming().id == notificationId &&
+        incoming().read == false &&
+        incoming().createdAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(notificationId) && isValidAdminNotification(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        isAdmin();
+      allow delete: if isValidId(notificationId) && isAdmin();
     }
 
     // 6. ISO Projects

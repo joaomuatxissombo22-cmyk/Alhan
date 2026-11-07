@@ -96,6 +96,81 @@ export interface EnrollmentItem {
   createdAt: string;
 }
 
+export type CertificateRequestStatus =
+  | 'NÃO SOLICITADO'
+  | 'PENDENTE'
+  | 'EM PROCESSAMENTO'
+  | 'APROVADO'
+  | 'DISPONÍVEL'
+  | 'REJEITADO';
+
+export interface CertificateAuditEntry {
+  id: string;
+  action:
+    | 'SOLICITADO'
+    | 'EM_ANALISE'
+    | 'APROVADO'
+    | 'EMITIDO_E_DISPONIBILIZADO'
+    | 'REJEITADO'
+    | 'SUBSTITUIDO'
+    | 'REVOGADO';
+  statusAfter: CertificateRequestStatus;
+  actorName: string;
+  actorRole: 'ALUNO' | 'ADMIN' | 'SUPER_ADMIN';
+  notes: string;
+  timestamp: string;
+}
+
+export interface CertificateRequestItem {
+  id: string;
+  enrollmentId: string;
+  userId: string;
+  studentName: string;
+  studentEmail: string;
+  studentPhone?: string;
+  studentBI?: string;
+  courseId: string;
+  courseName: string;
+  modality?: 'Online' | 'Presencial' | 'Híbrida';
+  workloadHours?: number;
+  enrollmentDate: string;
+  completionDate: string;
+  requestDate: string;
+  studentNotes: string;
+  status: CertificateRequestStatus;
+  certificateStoragePath: string;
+  certificateFileUrl: string;
+  certificateFileName: string;
+  certificateCode: string;
+  issuedAt: string;
+  issuedBy: string;
+  adminNotes: string;
+  rejectionReason?: string;
+  revocationReason?: string;
+  revokedAt?: string;
+  revokedBy?: string;
+  auditHistory: CertificateAuditEntry[];
+  createdAt: string;
+}
+
+export interface AdminNotificationRecord {
+  id: string;
+  type:
+    | 'SOLICITACAO_CERTIFICADO'
+    | 'NOVA_INSCRICAO'
+    | 'NOVO_FORMANDO'
+    | 'PAGAMENTO_REGISTADO'
+    | 'NOVA_FORMACAO'
+    | 'AUDITORIA_CERTIFICADO';
+  title: string;
+  message: string;
+  studentName: string;
+  courseName: string;
+  requestId: string;
+  read: boolean;
+  createdAt: string;
+}
+
 export interface CertificateItem {
   id: string;
   code: string;
@@ -115,6 +190,10 @@ export interface CertificateItem {
   status: 'valido' | 'cancelado' | 'expirado';
   certificateFileUrl?: string;
   certificateFileName?: string;
+  certificateStoragePath?: string;
+  revocationReason?: string;
+  revokedBy?: string;
+  revokedAt?: string;
   isDemo?: boolean;
   createdAt: string;
 }
@@ -1515,7 +1594,7 @@ export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
     category: 'Nova aula',
     title: 'Turma de Novembro: Formação em HSE Aberta',
     message: 'Inscrições abertas para a Formação em HSE – Saúde, Segurança e Meio Ambiente (Online via Teams & Presencial).',
-    targetRole: 'ALL',
+    targetRole: 'ADMIN',
     read: false,
     createdAt: '2026-11-01T08:30:00Z',
   },
@@ -1524,8 +1603,81 @@ export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
     category: 'Certificado disponível',
     title: 'Validação Pública de Certificados Activa',
     message: 'Consulte a autenticidade de certificados de formação e baixe certificados presenciais pelo número de B.I.',
-    targetRole: 'ALL',
+    targetRole: 'ADMIN',
     read: false,
     createdAt: '2026-02-25T08:30:00Z',
   },
 ];
+
+export const INITIAL_CERTIFICATE_REQUESTS: CertificateRequestItem[] = [
+  {
+    id: 'cert-req-01',
+    enrollmentId: 'enr-01',
+    userId: 'aluno-01',
+    studentName: 'Manuel João Mateus',
+    studentEmail: 'manuel.mateus@empresa.ao',
+    studentPhone: '+244 923 456 789',
+    studentBI: '005432198LA031',
+    courseId: 'curso-sgi-01',
+    courseName: 'Sistema de Gestão Integrado – SGI',
+    modality: 'Híbrida',
+    workloadHours: 40,
+    enrollmentDate: '2026-02-01',
+    completionDate: '2026-02-14',
+    requestDate: '2026-02-14T15:20:00Z',
+    studentNotes: 'Concluí todos os módulos e avaliação final com 100% de aproveitamento.',
+    status: 'DISPONÍVEL',
+    certificateStoragePath: 'certificates/aluno-01/curso-sgi-01/certificate.pdf',
+    certificateFileUrl: '',
+    certificateFileName: 'Certificado_ALHAN_ALHAN-SGI-2026-001_Manuel_Joao_Mateus.pdf',
+    certificateCode: 'ALHAN-SGI-2026-001',
+    issuedAt: '2026-02-15T12:00:00Z',
+    issuedBy: 'Administrador Geral ALHAN – SGI',
+    adminNotes: 'Requisitos de participação e aproveitamento (100%) validados pela Direcção Pedagógica.',
+    auditHistory: [
+      {
+        id: 'aud-c-1',
+        action: 'SOLICITADO',
+        statusAfter: 'PENDENTE',
+        actorName: 'Manuel João Mateus',
+        actorRole: 'ALUNO',
+        notes: 'Solicitação submetida pelo formando após conclusão de 100% da formação.',
+        timestamp: '2026-02-14T15:20:00Z',
+      },
+      {
+        id: 'aud-c-2',
+        action: 'EM_ANALISE',
+        statusAfter: 'EM PROCESSAMENTO',
+        actorName: 'Administrador Geral ALHAN – SGI',
+        actorRole: 'ADMIN',
+        notes: 'Pedido em análise documental e verificação de aproveitamento.',
+        timestamp: '2026-02-15T09:10:00Z',
+      },
+      {
+        id: 'aud-c-3',
+        action: 'EMITIDO_E_DISPONIBILIZADO',
+        statusAfter: 'DISPONÍVEL',
+        actorName: 'Administrador Geral ALHAN – SGI',
+        actorRole: 'ADMIN',
+        notes: 'Certificado PDF anexado no Firebase Storage (certificates/aluno-01/curso-sgi-01/certificate.pdf) e disponibilizado na conta do formando.',
+        timestamp: '2026-02-15T12:00:00Z',
+      },
+    ],
+    createdAt: '2026-02-14T15:20:00Z',
+  },
+];
+
+export const INITIAL_ADMIN_NOTIFICATIONS: AdminNotificationRecord[] = [
+  {
+    id: 'adm-notif-01',
+    type: 'SOLICITACAO_CERTIFICADO',
+    title: 'Nova solicitação de certificado',
+    message: 'O formando Manuel João Mateus solicitou um certificado da formação Sistema de Gestão Integrado – SGI.',
+    studentName: 'Manuel João Mateus',
+    courseName: 'Sistema de Gestão Integrado – SGI',
+    requestId: 'cert-req-01',
+    read: false,
+    createdAt: '2026-02-14T15:20:00Z',
+  },
+];
+

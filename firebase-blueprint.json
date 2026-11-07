@@ -191,6 +191,47 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "type", "companyName", "contactName", "role", "phone", "whatsapp", "email", "province", "sector", "employeesCount", "targetStandard", "objective", "message", "userId", "status", "createdAt"]
+    },
+    "CertificateRequest": {
+      "title": "CertificateRequest",
+      "description": "Formal certificate request, approval workflow, PDF storage reference, and audit status.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "studentEmail": { "type": "string", "maxLength": 160 },
+        "courseId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "courseName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "enrollmentDate": { "type": "string", "maxLength": 40 },
+        "completionDate": { "type": "string", "maxLength": 40 },
+        "requestDate": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["PENDENTE", "EM PROCESSAMENTO", "APROVADO", "DISPONÍVEL", "REJEITADO"] },
+        "certificateStoragePath": { "type": "string", "maxLength": 500 },
+        "certificateCode": { "type": "string", "maxLength": 80 },
+        "issuedAt": { "type": "string", "maxLength": 40 },
+        "issuedBy": { "type": "string", "maxLength": 120 },
+        "adminNotes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "studentName", "studentEmail", "courseId", "courseName", "enrollmentDate", "completionDate", "requestDate", "status", "certificateStoragePath", "certificateCode", "issuedAt", "issuedBy", "adminNotes", "createdAt"]
+    },
+    "AdminNotification": {
+      "title": "AdminNotification",
+      "description": "Real-time private administrative notification visible exclusively to authorized administrators.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "type": { "type": "string", "enum": ["SOLICITACAO_CERTIFICADO", "NOVA_INSCRICAO", "NOVO_FORMANDO", "PAGAMENTO_REGISTADO", "NOVA_FORMACAO", "AUDITORIA_CERTIFICADO"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "message": { "type": "string", "minLength": 2, "maxLength": 1000 },
+        "studentName": { "type": "string", "maxLength": 120 },
+        "courseName": { "type": "string", "maxLength": 160 },
+        "requestId": { "type": "string", "maxLength": 128 },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "type", "title", "message", "studentName", "courseName", "requestId", "read", "createdAt"]
     }
   },
   "firestore": {
@@ -213,6 +254,14 @@
     "/certificates/{certificateId}": {
       "schema": { "$ref": "#/entities/Certificate" },
       "description": "Training certificates with unique validation code and QR support."
+    },
+    "/certificateRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/CertificateRequest" },
+      "description": "Formal student certificate requests, administrative workflow states, and Firebase Storage PDF links."
+    },
+    "/adminNotifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/AdminNotification" },
+      "description": "Real-time private notifications restricted exclusively to the Administrative Panel."
     },
     "/isoProjects/{projectId}": {
       "schema": { "$ref": "#/entities/IsoProject" },

@@ -38,19 +38,29 @@ const ROLE_PORTAL_PATHS: Record<UserRole, string> = {
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const {
     user,
-    notifications,
-    markNotificationRead,
+    adminNotifications,
+    markAdminNotificationRead,
+    markAllAdminNotificationsRead,
+    setSelectedAdminCertificateRequestId,
     logout,
-    pushPermission,
-    requestPushPermission,
   } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
+  const [adminNotifOpen, setAdminNotifOpen] = useState(false);
+  const [adminNotifFilter, setAdminNotifFilter] = useState<'ALL' | 'UNREAD' | 'CERTIFICADOS'>('ALL');
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const isAdminAuthenticated = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+  const unreadAdminCount = isAdminAuthenticated
+    ? adminNotifications.filter((n) => !n.read).length
+    : 0;
+
+  const filteredAdminNotifications = adminNotifications.filter((n) => {
+    if (adminNotifFilter === 'UNREAD') return !n.read;
+    if (adminNotifFilter === 'CERTIFICADOS') return n.type === 'SOLICITACAO_CERTIFICADO';
+    return true;
+  });
 
   const isHostingerAdminSubdomain =
     typeof window !== 'undefined' &&
@@ -74,6 +84,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   )}`;
 
   // Standalone Private Administrative Backoffice Layout (completely separated from the public website)
+  // Module 3: Real-time Notifications exist EXCLUSIVELY in the Administrative Panel
   if (isSeparateAdminRoute) {
     return (
       <div className="min-h-screen flex flex-col bg-[#F5F9FC] text-[#061A2D]">
@@ -97,13 +108,192 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Module 3.1: Exclusive Administrative Notification Bell with Real-Time Unread Counter */}
+              {isAdminAuthenticated && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setAdminNotifOpen((prev) => !prev)}
+                    aria-label="Notificações Privadas do Painel Administrativo"
+                    className="relative inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[#F5F9FC] border border-white/15 transition-colors"
+                  >
+                    <Bell className="w-4 h-4 text-[#19B5FE]" />
+                    <span className="hidden sm:inline text-xs font-bold">Notificações</span>
+                    {unreadAdminCount > 0 && (
+                      <span className="px-1.5 min-w-[20px] h-5 rounded-full bg-amber-500 text-[#061A2D] text-[11px] font-mono-tabular font-extrabold flex items-center justify-center shadow">
+                        {unreadAdminCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {adminNotifOpen && (
+                    <div className="absolute right-0 mt-2 w-[340px] sm:w-[430px] rounded-xl bg-white text-[#061A2D] shadow-2xl border border-slate-200 z-50 overflow-hidden">
+                      <div className="px-4 py-3 bg-[#061A2D] text-white flex items-center justify-between gap-2">
+                        <div>
+                          <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#19B5FE]">
+                            Notificações Privadas — Administração ALHAN
+                          </h3>
+                          <p className="text-[11px] text-[#9AA6AE]">
+                            Exclusivo do Painel Administrativo · Tempo Real ({unreadAdminCount} não lidas)
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAdminNotifOpen(false)}
+                          className="p-1 rounded hover:bg-white/10 text-slate-300 hover:text-white"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Filter & Mark All Read Bar */}
+                      <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setAdminNotifFilter('ALL')}
+                            className={`px-2 py-1 rounded text-[11px] font-bold transition-colors ${
+                              adminNotifFilter === 'ALL'
+                                ? 'bg-[#061A2D] text-white'
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            Todas ({adminNotifications.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdminNotifFilter('UNREAD')}
+                            className={`px-2 py-1 rounded text-[11px] font-bold transition-colors ${
+                              adminNotifFilter === 'UNREAD'
+                                ? 'bg-[#0077C8] text-white'
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            Não Lidas ({unreadAdminCount})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdminNotifFilter('CERTIFICADOS')}
+                            className={`px-2 py-1 rounded text-[11px] font-bold transition-colors ${
+                              adminNotifFilter === 'CERTIFICADOS'
+                                ? 'bg-amber-500 text-[#061A2D]'
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            Certificados
+                          </button>
+                        </div>
+
+                        {unreadAdminCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={markAllAdminNotificationsRead}
+                            className="text-[11px] font-bold text-[#0077C8] hover:underline"
+                          >
+                            Marcar todas como lidas
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="max-h-96 overflow-y-auto divide-y divide-slate-100">
+                        {filteredAdminNotifications.length === 0 ? (
+                          <div className="p-6 text-center text-xs text-slate-500">
+                            Nenhuma notificação administrativa encontrada para este filtro.
+                          </div>
+                        ) : (
+                          filteredAdminNotifications.map((n) => (
+                            <div
+                              key={n.id}
+                              className={`p-3.5 text-left transition-colors ${
+                                !n.read ? 'bg-[#F5F9FC] border-l-4 border-l-[#0077C8]' : 'bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                                <span className="font-extrabold text-[#0077C8] uppercase tracking-wider">
+                                  {n.title}
+                                </span>
+                                <span className="font-mono-tabular">
+                                  {new Date(n.createdAt).toLocaleString('pt-AO', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+
+                              <p className="text-xs font-bold text-[#061A2D] mt-1 leading-relaxed">
+                                {n.message}
+                              </p>
+
+                              {(n.studentName || n.courseName) && (
+                                <div className="mt-1.5 text-[11px] text-slate-600 space-y-0.5 bg-white/80 p-2 rounded border border-slate-200/80">
+                                  {n.studentName && (
+                                    <p>
+                                      <strong>Formando:</strong> {n.studentName}
+                                    </p>
+                                  )}
+                                  {n.courseName && (
+                                    <p>
+                                      <strong>Curso Solicitado:</strong> {n.courseName}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              <div className="mt-2.5 flex items-center justify-between gap-2">
+                                {n.requestId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      markAdminNotificationRead(n.id);
+                                      setSelectedAdminCertificateRequestId(n.requestId);
+                                      setAdminNotifOpen(false);
+                                      const el = document.getElementById('gestao-certificados');
+                                      if (el) {
+                                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                      }
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-extrabold transition-colors"
+                                  >
+                                    <Award className="w-3.5 h-3.5" />
+                                    <span>VER SOLICITAÇÃO</span>
+                                  </button>
+                                ) : (
+                                  <span />
+                                )}
+
+                                {!n.read ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => markAdminNotificationRead(n.id)}
+                                    className="text-[11px] font-semibold text-slate-600 hover:text-[#061A2D] underline"
+                                  >
+                                    Marcar como lida
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] font-semibold text-emerald-700">
+                                    ✓ Lida
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <Link
                 to="/"
                 className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-[#F5F9FC] transition-colors whitespace-nowrap"
               >
                 Ver Site Público →
               </Link>
-              {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
+              {isAdminAuthenticated && (
                 <button
                   onClick={() => {
                     logout();
@@ -205,7 +395,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </div>
       </header>
 
-      {/* Secondary Workspace & Institutional Utility Bar (below top bar) */}
+      {/* Secondary Workspace & Institutional Utility Bar (below top bar) — Module 3: Zero public notifications */}
       <div className="bg-[#071B2F] text-[#F5F9FC]/90 border-b border-white/10 text-xs">
         <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-2 flex flex-wrap items-center justify-between gap-3">
           {/* Secondary public links & WhatsApp */}
@@ -259,7 +449,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             </a>
           </div>
 
-          {/* Right side: Private Portal Access, Auth, Notifications & PWA */}
+          {/* Right side: Private Portal Access, Auth & PWA (Module 3: No real-time notifications on public area) */}
           <div className="flex flex-wrap items-center gap-2.5">
             <PWAInstallButton />
 
@@ -308,67 +498,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                 </Link>
               </div>
             )}
-
-            {/* Notifications button */}
-            <div className="relative">
-              <button
-                onClick={() => setNotifOpen(!notifOpen)}
-                aria-label="Notificações da plataforma"
-                className="relative p-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-[#F5F9FC] transition-colors"
-              >
-                <Bell className="w-4 h-4" />
-                {unreadCount > 0 && (
-                  <span className="-top-1 -right-1 absolute px-1 min-w-[16px] h-4 rounded-full bg-[#008FEA] text-[10px] font-mono-tabular font-bold flex items-center justify-center">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-
-              {notifOpen && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl bg-white text-[#061A2D] shadow-xl border border-slate-200 z-50 overflow-hidden">
-                  <div className="px-4 py-3 bg-[#061A2D] text-white flex items-center justify-between">
-                    <div>
-                      <h3 className="text-xs font-bold">Centro de Notificações ALHAN</h3>
-                      <p className="text-[11px] text-[#9AA6AE]">Alertas em tempo real de cursos e projectos ISO</p>
-                    </div>
-                    <button onClick={() => setNotifOpen(false)} className="text-slate-400 hover:text-white">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {pushPermission === 'default' && (
-                    <div className="px-4 py-2.5 bg-[#F5F9FC] border-b border-slate-200 flex items-center justify-between gap-2">
-                      <span className="text-[11px] text-slate-600">Receber notificações push no navegador?</span>
-                      <button
-                        onClick={requestPushPermission}
-                        className="px-2.5 py-1 rounded bg-[#0077C8] text-white text-[11px] font-semibold hover:bg-[#008FEA] whitespace-nowrap"
-                      >
-                        Activar Push
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
-                    {notifications.map((n) => (
-                      <div
-                        key={n.id}
-                        onClick={() => markNotificationRead(n.id)}
-                        className={`p-3.5 text-left cursor-pointer hover:bg-slate-50 transition-colors ${
-                          !n.read ? 'bg-[#F5F9FC]' : 'bg-white'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-[11px] text-slate-500">
-                          <span className="font-semibold text-[#0077C8]">{n.category}</span>
-                          <span className="font-mono-tabular">{new Date(n.createdAt).toLocaleDateString('pt-AO')}</span>
-                        </div>
-                        <p className="text-xs font-bold text-[#061A2D] mt-0.5">{n.title}</p>
-                        <p className="text-xs text-slate-600 mt-1 leading-relaxed">{n.message}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>

@@ -9,13 +9,19 @@ import {
   serverTimestamp,
   collection,
 } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
-import type { EnrollmentItem } from './data/initialData';
+import type {
+  EnrollmentItem,
+  CertificateRequestItem,
+  AdminNotificationRecord,
+} from './data/initialData';
 
-// Initialize Firebase App & Firestore Database with the provided project configuration
+// Initialize Firebase App, Firestore Database & Storage with the provided project configuration
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 export { firebaseConfig };
 
@@ -23,6 +29,8 @@ export { firebaseConfig };
 export const enrollmentsCollection = collection(db, 'enrollments');
 export const coursesCollection = collection(db, 'courses');
 export const certificatesCollection = collection(db, 'certificates');
+export const certificateRequestsCollection = collection(db, 'certificateRequests');
+export const adminNotificationsCollection = collection(db, 'adminNotifications');
 export const usersCollection = collection(db, 'users');
 
 export enum OperationType {
@@ -75,9 +83,183 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 const VALID_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
 
-function sanitizeFirestoreId(rawId: string, fallbackPrefix = 'id'): string {
-  const cleaned = rawId.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+export function sanitizeFirestoreId(rawId: string, fallbackPrefix = 'id'): string {
+  const cleaned = (rawId || '').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
   return VALID_ID_REGEX.test(cleaned) && cleaned.length > 0 ? cleaned : `${fallbackPrefix}-${Date.now()}`;
+}
+
+/**
+ * Module 4: Uploads a Certificate PDF to Firebase Storage under
+ * certificates/{userId}/{courseId}/certificate.pdf
+ * Validates PDF MIME type and size <= 10 MB.
+ * Falls back gracefully to DataURL if Firebase Storage bucket is not yet provisioned in preview.
+ */
+export async function uploadCertificatePdfToStorage(params: {
+  userId: string;
+  courseId: string;
+  file?: File;
+  fallbackDataUrl?: string;
+}): Promise<{ storagePath: string; downloadUrl: string }> {
+  const safeUserId = sanitizeFirestoreId(params.userId, 'usr');
+  const safeCourseId = sanitizeFirestoreId(params.courseId, 'course');
+  const storagePath = `certificates/${safeUserId}/${safeCourseId}/certificate.pdf`;
+
+  if (params.file) {
+    const isPdf =
+      params.file.type === 'application/pdf' ||
+      params.file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      throw new Error('Formato de ficheiro inválido. Apenas ficheiros PDF (application/pdf) são aceites.');
+    }
+    const maxBytes = 10 * 1024 * 1024;
+    if (params.file.size <= 0 || params.file.size > maxBytes) {
+      throw new Error('O ficheiro PDF excede o tamanho máximo permitido de 10 MB.');
+    }
+
+    // Attempt Firebase Storage upload when authenticated
+    if (auth.currentUser) {
+      try {
+        const storageRef = ref(storage, storagePath);
+        await uploadBytes(storageRef, params.file, {
+          contentType: 'application/pdf',
+          customMetadata: {
+            userId: safeUserId,
+            courseId: safeCourseId,
+            issuedBy: auth.currentUser.email || 'admin@alhan.pro',
+            issuedAt: new Date().toISOString(),
+          },
+        });
+        const downloadUrl = await getDownloadURL(storageRef);
+        return { storagePath, downloadUrl };
+      } catch (err) {
+        console.warn('Firebase Storage fallback to secure DataURL:', err);
+      }
+    }
+
+    // Convert File to DataURL if Storage bucket is offline in preview
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Erro ao processar o ficheiro PDF.'));
+      reader.readAsDataURL(params.file!);
+    });
+    return { storagePath, downloadUrl: dataUrl };
+  }
+
+  return {
+    storagePath,
+    downloadUrl: params.fallbackDataUrl || '',
+  };
+}
+
+/**
+ * Stores a Certificate Request in Firestore (/certificateRequests/{requestId})
+ */
+export async function saveCertificateRequestToFirestore(reqItem: CertificateRequestItem): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+
+  const safeId = sanitizeFirestoreId(reqItem.id, 'creq');
+  const safeUserId = sanitizeFirestoreId(auth.currentUser.uid, 'usr');
+  const safeCourseId = sanitizeFirestoreId(reqItem.courseId, 'course');
+  const path = `certificateRequests/${safeId}`;
+
+  const payload = {
+    id: safeId,
+    userId: safeUserId,
+    studentName: (reqItem.studentName || 'Formando ALHAN').trim().slice(0, 120),
+    studentEmail: (reqItem.studentEmail || auth.currentUser.email || '').trim().slice(0, 160),
+    courseId: safeCourseId,
+    courseName: (reqItem.courseName || 'Formação ALHAN').trim().slice(0, 160),
+    enrollmentDate: (reqItem.enrollmentDate || '').slice(0, 40),
+    completionDate: (reqItem.completionDate || '').slice(0, 40),
+    requestDate: (reqItem.requestDate || new Date().toISOString()).slice(0, 40),
+    status: 'PENDENTE' as const,
+    certificateStoragePath: '',
+    certificateCode: (reqItem.certificateCode || '').slice(0, 80),
+    issuedAt: '',
+    issuedBy: '',
+    adminNotes: (reqItem.studentNotes || '').slice(0, 1000),
+    createdAt: serverTimestamp(),
+  };
+
+  try {
+    await setDoc(doc(db, 'certificateRequests', safeId), payload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
+/**
+ * Updates a Certificate Request in Firestore (/certificateRequests/{requestId}) by Admin
+ */
+export async function updateCertificateRequestInFirestore(
+  requestId: string,
+  updates: {
+    status: 'PENDENTE' | 'EM PROCESSAMENTO' | 'APROVADO' | 'DISPONÍVEL' | 'REJEITADO';
+    certificateStoragePath?: string;
+    certificateCode?: string;
+    issuedAt?: string;
+    issuedBy?: string;
+    adminNotes?: string;
+  }
+): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+
+  const safeId = sanitizeFirestoreId(requestId, 'creq');
+  const path = `certificateRequests/${safeId}`;
+
+  const payload: Record<string, unknown> = {
+    status: updates.status,
+  };
+  if (updates.certificateStoragePath !== undefined) {
+    payload.certificateStoragePath = updates.certificateStoragePath.slice(0, 500);
+  }
+  if (updates.certificateCode !== undefined) {
+    payload.certificateCode = updates.certificateCode.slice(0, 80);
+  }
+  if (updates.issuedAt !== undefined) {
+    payload.issuedAt = updates.issuedAt.slice(0, 40);
+  }
+  if (updates.issuedBy !== undefined) {
+    payload.issuedBy = updates.issuedBy.slice(0, 120);
+  }
+  if (updates.adminNotes !== undefined) {
+    payload.adminNotes = updates.adminNotes.slice(0, 1000);
+  }
+
+  try {
+    await updateDoc(doc(db, 'certificateRequests', safeId), payload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+/**
+ * Stores a private Admin Notification in Firestore (/adminNotifications/{notificationId})
+ */
+export async function saveAdminNotificationToFirestore(notif: AdminNotificationRecord): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+
+  const safeId = sanitizeFirestoreId(notif.id, 'admnotif');
+  const path = `adminNotifications/${safeId}`;
+
+  const payload = {
+    id: safeId,
+    type: notif.type,
+    title: (notif.title || 'Notificação Administrativa').trim().slice(0, 160),
+    message: (notif.message || '').trim().slice(0, 1000),
+    studentName: (notif.studentName || '').trim().slice(0, 120),
+    courseName: (notif.courseName || '').trim().slice(0, 160),
+    requestId: sanitizeFirestoreId(notif.requestId || 'req', 'req'),
+    read: false,
+    createdAt: serverTimestamp(),
+  };
+
+  try {
+    await setDoc(doc(db, 'adminNotifications', safeId), payload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
 }
 
 /**

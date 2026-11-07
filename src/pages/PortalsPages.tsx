@@ -39,6 +39,11 @@ import {
   Check,
   MessageCircle,
   Clock,
+  Eye,
+  Search,
+  Filter,
+  History,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { downloadCertificatePdf } from '../utils/pdfCertificateGenerator';
@@ -46,6 +51,8 @@ import {
   COMPANY_INFO,
   CourseItem,
   CertificateItem,
+  CertificateRequestItem,
+  CertificateRequestStatus,
   EnrollmentItem,
   IsoDocumentItem,
   IsoAuditItem,
@@ -608,12 +615,14 @@ export const StudentPortal: React.FC = () => {
     courses,
     enrollments,
     certificates,
+    certificateRequests,
     notifications,
     createEnrollment,
     submitStudentPaymentProof,
     completeLesson,
     issueCertificate,
     requestCertificate,
+    submitCertificateRequest,
     logout,
   } = useApp();
   const navigate = useNavigate();
@@ -635,7 +644,7 @@ export const StudentPortal: React.FC = () => {
   const currentStudentId = user?.uid || '';
   const currentStudentName = user?.fullName || 'Aluno Registado';
 
-  // Data isolation + instantaneous sync: student sees their own enrollments & returned PDF certificates
+  // Data isolation: cada formando só pode aceder e solicitar certificados relativos aos cursos associados à sua própria conta
   const myEnrollments = enrollments.filter(
     (e) =>
       e.studentId === currentStudentId ||
@@ -646,6 +655,14 @@ export const StudentPortal: React.FC = () => {
         (e.studentName?.trim().toLowerCase() === currentStudentName.trim().toLowerCase() ||
           e.certificateRequestName?.trim().toLowerCase() === currentStudentName.trim().toLowerCase()))
   );
+
+  const myCertificateRequests = certificateRequests.filter(
+    (req) =>
+      req.userId === currentStudentId ||
+      (user?.email && req.studentEmail.toLowerCase() === user.email.toLowerCase()) ||
+      myEnrollments.some((e) => e.id === req.enrollmentId)
+  );
+
   const myCertificates = certificates.filter(
     (c) =>
       c.studentId === currentStudentId ||
@@ -666,37 +683,119 @@ export const StudentPortal: React.FC = () => {
     myEnrollments.find((e) => e.id === selectedEnrollmentId) || myEnrollments[0];
   const activeCourse = courses.find((c) => c.id === activeEnrollment?.courseId) || courses[0];
 
-  // Campo para Solicitar Certificado em PDF (para todos os alunos inscritos)
+  // MÓDULO 1 — Estado para Solicitação de Certificado em "OS MEUS CERTIFICADOS"
   const [certReqEnrollmentId, setCertReqEnrollmentId] = useState<string>(
     myEnrollments[0]?.id || ''
   );
   const [certReqCourseId, setCertReqCourseId] = useState<string>(
-    myEnrollments[0]?.courseId || courses[0]?.id || ''
+    myEnrollments[0]?.courseId || ''
   );
   const [certReqName, setCertReqName] = useState<string>(user?.fullName || '');
   const [certReqBI, setCertReqBI] = useState<string>('');
   const [certReqEmail, setCertReqEmail] = useState<string>(user?.email || '');
   const [certReqPhone, setCertReqPhone] = useState<string>(user?.phone || '');
-  const [certReqNotes, setCertReqNotes] = useState<string>(
-    'Solicito a emissão e envio do meu Certificado em PDF para download no Painel do Aluno.'
-  );
+  const [certReqNotes, setCertReqNotes] = useState<string>('');
+  const [certReqConfirmed, setCertReqConfirmed] = useState<boolean>(false);
+  const [certReqErrorMsg, setCertReqErrorMsg] = useState<string | null>(null);
   const [certReqSuccessMsg, setCertReqSuccessMsg] = useState<string | null>(null);
+  const [previewCertificateReq, setPreviewCertificateReq] = useState<CertificateRequestItem | null>(null);
+
+  const getCourseCertificateStatus = (enr: EnrollmentItem): {
+    status: CertificateRequestStatus;
+    request?: CertificateRequestItem;
+    cert?: CertificateItem;
+  } => {
+    const req = myCertificateRequests.find(
+      (r) => r.enrollmentId === enr.id || r.courseId === enr.courseId
+    );
+    const cert = myCertificates.find(
+      (c) =>
+        (enr.certificateId && c.id === enr.certificateId) ||
+        (c.courseId === enr.courseId && c.studentId === enr.studentId)
+    );
+    if (req) {
+      return { status: req.status, request: req, cert };
+    }
+    if (cert && cert.status === 'valido') {
+      return { status: 'DISPONÍVEL', cert };
+    }
+    if (enr.certificateRequested) {
+      return { status: 'PENDENTE', cert };
+    }
+    return { status: 'NÃO SOLICITADO', cert };
+  };
+
+  const checkCertificateEligibility = (enr?: EnrollmentItem): {
+    eligible: boolean;
+    reason?: string;
+  } => {
+    if (!enr) {
+      return {
+        eligible: false,
+        reason: 'Não se encontra inscrito nesta formação. Inscreva-se primeiro num curso associado à sua conta.',
+      };
+    }
+    const { status } = getCourseCertificateStatus(enr);
+    if (status === 'PENDENTE' || status === 'EM PROCESSAMENTO' || status === 'APROVADO') {
+      return {
+        eligible: false,
+        reason: `Já existe um pedido em curso (${status}) para a formação «${enr.courseTitle}». Não são permitidas solicitações duplicadas enquanto existir um pedido pendente.`,
+      };
+    }
+    if (status === 'DISPONÍVEL') {
+      return {
+        eligible: false,
+        reason: `O seu certificado para «${enr.courseTitle}» já se encontra DISPONÍVEL para visualização e download em PDF.`,
+      };
+    }
+    const isCompleted = enr.completed || enr.progressPercent >= 100;
+    if (!isCompleted) {
+      return {
+        eligible: false,
+        reason: `Para solicitar o certificado da formação «${enr.courseTitle}», é necessário concluir a formação e cumprir os requisitos de aproveitamento/participação definidos pela administração (Progresso actual: ${enr.progressPercent}%).`,
+      };
+    }
+    return { eligible: true };
+  };
 
   const handleStudentCertificateRequestSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCertReqErrorMsg(null);
+    setCertReqSuccessMsg(null);
+
     const targetEnr =
       myEnrollments.find((enr) => enr.id === certReqEnrollmentId) || myEnrollments[0];
-    await requestCertificate(targetEnr?.id || '', {
-      courseId: targetEnr?.courseId || certReqCourseId || courses[0]?.id,
-      studentName: certReqName.trim() || currentStudentName,
-      studentBI: certReqBI.trim() || undefined,
-      studentEmail: certReqEmail.trim() || user?.email || undefined,
-      studentPhone: certReqPhone.trim() || user?.phone || undefined,
-      notes: certReqNotes.trim() || undefined,
-    });
-    setCertReqSuccessMsg(
-      'A sua solicitação de Certificado em PDF foi enviada com sucesso! O Painel Administrativo e o e-mail geral@alhan.pro foram notificados. Assim que o Administrador enviar o certificado para este painel, poderá baixá-lo em PDF abaixo.'
-    );
+
+    const eligibility = checkCertificateEligibility(targetEnr);
+    if (!eligibility.eligible) {
+      setCertReqErrorMsg(eligibility.reason || 'Não cumpre os requisitos para solicitar certificado.');
+      return;
+    }
+
+    if (!certReqConfirmed) {
+      setCertReqErrorMsg('Por favor, confirme os dados da solicitação antes de submeter.');
+      return;
+    }
+
+    try {
+      await submitCertificateRequest({
+        enrollmentId: targetEnr.id,
+        courseId: targetEnr.courseId,
+        studentName: certReqName.trim() || currentStudentName,
+        studentEmail: certReqEmail.trim() || user?.email || 'aluno@alhan.pro',
+        studentPhone: certReqPhone.trim() || user?.phone,
+        studentBI: certReqBI.trim() || undefined,
+        studentNotes: certReqNotes.trim() || undefined,
+      });
+      setCertReqConfirmed(false);
+      setCertReqSuccessMsg(
+        'Solicitação de certificado enviada com sucesso. O seu pedido encontra-se em análise pela administração da ALHAN.'
+      );
+    } catch (err) {
+      setCertReqErrorMsg(
+        err instanceof Error ? err.message : 'Erro ao enviar solicitação de certificado.'
+      );
+    }
   };
 
   // Student Portal Payment & Proof State
@@ -874,7 +973,7 @@ export const StudentPortal: React.FC = () => {
                   }`}
                 >
                   <Icon className="w-4 h-4 shrink-0" />
-                  <span>{item.id}</span>
+                  <span>{item.id === 'Certificados' ? 'OS MEUS CERTIFICADOS' : item.id}</span>
                 </button>
               );
             })}
@@ -1813,245 +1912,273 @@ export const StudentPortal: React.FC = () => {
             </div>
           )}
 
-        {/* Certificates Section (Solicitação pelo Aluno & Download de PDF Enviado pelo Painel Administrativo) */}
+        {/* MÓDULO 1 — OS MEUS CERTIFICADOS (Solicitação, Estado, Visualização e Download em PDF) */}
         {(activeTab === 'Dashboard' || activeTab === 'Certificados') && (
           <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
               <div>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#0077C8]/10 text-[#0077C8] text-[11px] font-extrabold uppercase tracking-wider mb-1">
                   <Award className="w-3.5 h-3.5" />
-                  <span>Disponível para Todos os Alunos Inscritos</span>
+                  <span>Módulo de Certificação Oficial ALHAN SGI</span>
                 </span>
-                <h2 className="text-lg font-bold text-[#061A2D]">
-                  Campo para Solicitar Certificado em PDF & Download do Certificado Enviado pelo Painel Administrativo
+                <h2 className="text-xl font-extrabold text-[#061A2D]">
+                  OS MEUS CERTIFICADOS
                 </h2>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Todos os alunos inscritos podem solicitar abaixo o seu Certificado em PDF. O Painel Administrativo e o e-mail oficial <strong>geral@alhan.pro</strong> recebem a notificação imediatamente, e assim que o Administrador enviar o certificado para o seu painel, pode baixá-lo em PDF aqui mesmo.
+                  Consulte as formações em que está inscrito, os cursos concluídos, o estado de cada certificado, o histórico de solicitações e descarregue os seus certificados oficiais em PDF.
                 </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <div className="px-3 py-2 rounded-lg bg-[#F5F9FC] border border-slate-200">
+                  <span className="text-slate-500">Formações Inscritas: </span>
+                  <strong className="text-[#061A2D] font-mono-tabular">{myEnrollments.length}</strong>
+                </div>
+                <div className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200">
+                  <span className="text-emerald-800">Cursos Concluídos: </span>
+                  <strong className="text-emerald-950 font-mono-tabular">
+                    {myEnrollments.filter((e) => e.completed || e.progressPercent >= 100).length}
+                  </strong>
+                </div>
+                <div className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
+                  <span className="text-[#0077C8]">Certificados Disponíveis: </span>
+                  <strong className="text-[#061A2D] font-mono-tabular">
+                    {
+                      myEnrollments.filter(
+                        (e) => getCourseCertificateStatus(e).status === 'DISPONÍVEL'
+                      ).length
+                    }
+                  </strong>
+                </div>
               </div>
             </div>
 
-            {/* Campo / Formulário Dedicado para Solicitar Certificado em PDF (Todos os Inscritos) */}
-            <form
-              onSubmit={handleStudentCertificateRequestSubmit}
-              className="p-5 rounded-xl border-2 border-[#0077C8]/30 bg-[#F5F9FC] space-y-4"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                <div>
-                  <h3 className="text-sm font-extrabold text-[#061A2D]">
-                    Formulário de Solicitação de Certificado em PDF ao Painel Administrativo
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Preencha ou confirme os seus dados para emissão do certificado oficial em PDF (notificação automática para o Painel Administrativo e geral@alhan.pro).
-                  </p>
-                </div>
-                <span className="px-2.5 py-1 rounded bg-emerald-100 text-emerald-900 text-[11px] font-bold shrink-0">
-                  Aberto a Todos os Inscritos
+            {/* 1.1 Lista das Formações em que está inscrito, Cursos Concluídos e Estado de cada Certificado */}
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-600">
+                  1. Formações Associadas à Sua Conta, Conclusão e Estado do Certificado
+                </h3>
+                <span className="text-[11px] text-slate-500">
+                  Estados: NÃO SOLICITADO · PENDENTE · EM PROCESSAMENTO · APROVADO · DISPONÍVEL · REJEITADO
                 </span>
               </div>
 
-              {certReqSuccessMsg && (
-                <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-start gap-2.5 text-xs font-bold text-emerald-900">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>{certReqSuccessMsg}</span>
+              {myEnrollments.length === 0 ? (
+                <div className="p-5 rounded-xl bg-[#F5F9FC] border border-slate-200 text-xs text-slate-600 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-[#061A2D]">
+                      Ainda não possui formações inscritas associadas à sua conta.
+                    </p>
+                    <p className="text-slate-500 mt-0.5">
+                      Cada formando só pode solicitar certificados relativos aos cursos associados à sua própria conta.
+                    </p>
+                  </div>
+                  <Link
+                    to="/formacoes"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white font-bold shrink-0"
+                  >
+                    <span>Inscrever-se numa Formação</span>
+                  </Link>
                 </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div className="sm:col-span-2 lg:col-span-1">
-                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                    1. Curso / Formação Inscrita *
-                  </label>
-                  {myEnrollments.length > 0 ? (
-                    <select
-                      value={certReqEnrollmentId || myEnrollments[0]?.id}
-                      onChange={(e) => {
-                        setCertReqEnrollmentId(e.target.value);
-                        const found = myEnrollments.find((item) => item.id === e.target.value);
-                        if (found) setCertReqCourseId(found.courseId);
-                      }}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#061A2D]"
-                    >
-                      {myEnrollments.map((enr) => (
-                        <option key={enr.id} value={enr.id}>
-                          {enr.courseTitle} ({enr.modality})
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <select
-                      value={certReqCourseId}
-                      onChange={(e) => setCertReqCourseId(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#061A2D]"
-                    >
-                      {courses.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.title} ({c.modality})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                    2. Nome Completo para o Certificado PDF *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={certReqName}
-                    onChange={(e) => setCertReqName(e.target.value)}
-                    placeholder="Nome completo conforme B.I."
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-[#061A2D]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                    3. Nº do Bilhete de Identidade (B.I.) / NIF *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={certReqBI}
-                    onChange={(e) => setCertReqBI(e.target.value.toUpperCase())}
-                    placeholder="Ex: 007891234LA042"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular text-[#061A2D]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                    4. E-mail do Aluno *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={certReqEmail}
-                    onChange={(e) => setCertReqEmail(e.target.value)}
-                    placeholder="seu.email@dominio.com"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-[#061A2D]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                    5. Telefone / WhatsApp *
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={certReqPhone}
-                    onChange={(e) => setCertReqPhone(e.target.value)}
-                    placeholder="+244 923 000 000"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular text-[#061A2D]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                    6. Observações / Pedido ao Administrador
-                  </label>
-                  <input
-                    type="text"
-                    value={certReqNotes}
-                    onChange={(e) => setCertReqNotes(e.target.value)}
-                    placeholder="Solicito envio do certificado PDF para o meu painel"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-[#061A2D]"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                <p className="text-[11px] text-slate-500">
-                  Notificação enviada em tempo real para o <strong>Painel Administrativo</strong> e para <strong>geral@alhan.pro</strong>.
-                </p>
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shadow-sm transition-colors"
-                >
-                  <Send className="w-4 h-4" />
-                  <span>Solicitar Certificado em PDF ao Painel Administrativo</span>
-                </button>
-              </div>
-            </form>
-
-            {/* Enrollments eligible for Certificate Request (All Enrolled Students) */}
-            {myEnrollments.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
-                  Minhas Formações Inscritas — Solicitação e Download do Certificado em PDF
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {myEnrollments.map((enr) => {
-                    const issuedCert = myCertificates.find(
-                      (c) =>
-                        c.courseId === enr.courseId ||
-                        (enr.certificateId && c.id === enr.certificateId)
-                    );
+                    const { status, request, cert } = getCourseCertificateStatus(enr);
+                    const isCourseCompleted = enr.completed || enr.progressPercent >= 100;
+                    const eligibility = checkCertificateEligibility(enr);
+
+                    const statusBadgeStyles: Record<CertificateRequestStatus, string> = {
+                      'NÃO SOLICITADO': 'bg-slate-100 text-slate-700 border-slate-300',
+                      PENDENTE: 'bg-amber-100 text-amber-900 border-amber-300',
+                      'EM PROCESSAMENTO': 'bg-blue-100 text-[#0077C8] border-blue-300',
+                      APROVADO: 'bg-indigo-100 text-indigo-900 border-indigo-300',
+                      DISPONÍVEL: 'bg-emerald-100 text-emerald-900 border-emerald-400',
+                      REJEITADO: 'bg-rose-100 text-rose-900 border-rose-300',
+                    };
+
                     return (
                       <div
                         key={enr.id}
-                        className="p-4 rounded-xl border border-slate-200 bg-[#F5F9FC] flex flex-col justify-between gap-3"
+                        className="p-4 rounded-xl border border-slate-200 bg-[#F5F9FC] flex flex-col justify-between gap-4"
                       >
-                        <div>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-bold text-[#0077C8]">
-                              {enr.modality} · Estado: {enr.paymentStatus}
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[11px] font-mono-tabular font-bold text-[#0077C8]">
+                              ID Formação: {enr.courseId} · {enr.modality}
                             </span>
-                            <span className="text-[11px] font-mono-tabular text-slate-500">
-                              Progresso: {enr.progressPercent}%
+                            <span
+                              className={`px-2.5 py-0.5 rounded-md border text-[10px] font-extrabold uppercase tracking-wider ${statusBadgeStyles[status]}`}
+                            >
+                              {status}
                             </span>
                           </div>
-                          <p className="text-sm font-bold text-[#061A2D] mt-1">{enr.courseTitle}</p>
-                          {enr.certificateRequestedAt && !issuedCert && (
-                            <p className="text-[11px] text-amber-800 mt-1">
-                              Solicitado em: {new Date(enr.certificateRequestedAt).toLocaleDateString('pt-AO')}
-                              {enr.certificateRequestBI ? ` · B.I.: ${enr.certificateRequestBI}` : ''}
-                            </p>
+
+                          <h4 className="text-sm font-extrabold text-[#061A2D]">
+                            {enr.courseTitle}
+                          </h4>
+
+                          <div className="grid grid-cols-2 gap-2 text-[11px] bg-white p-2.5 rounded-lg border border-slate-200/80">
+                            <div>
+                              <span className="text-slate-500 block">Estado do Curso:</span>
+                              <span
+                                className={`font-bold ${
+                                  isCourseCompleted ? 'text-emerald-700' : 'text-amber-700'
+                                }`}
+                              >
+                                {isCourseCompleted
+                                  ? '✓ Concluído (Requisitos Cumpridos)'
+                                  : `Em curso (${enr.progressPercent}%)`}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block">Aproveitamento / Nota:</span>
+                              <span className="font-bold text-[#061A2D]">
+                                {typeof enr.quizScore === 'number'
+                                  ? `${enr.quizScore}% (Aprovado)`
+                                  : isCourseCompleted
+                                  ? '100% (Aprovado)'
+                                  : 'Aguarda conclusão'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {status === 'REJEITADO' && request?.rejectionReason && (
+                            <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-900">
+                              <strong>Motivo da Rejeição:</strong> {request.rejectionReason}
+                            </div>
+                          )}
+
+                          {!isCourseCompleted && status === 'NÃO SOLICITADO' && (
+                            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center justify-between gap-2">
+                              <span>
+                                Requisito: Conclua os módulos da formação (100%) para habilitar a solicitação do certificado.
+                              </span>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const targetCourse = courses.find((c) => c.id === enr.courseId);
+                                  const lessons =
+                                    targetCourse?.modules.flatMap((m) => m.lessons) || [];
+                                  if (lessons.length > 0) {
+                                    for (const les of lessons) {
+                                      await completeLesson(enr.id, les.id, lessons.length, 100);
+                                    }
+                                  } else {
+                                    await completeLesson(enr.id, 'modulo-final', 1, 100);
+                                  }
+                                }}
+                                className="px-2.5 py-1 rounded bg-amber-700 hover:bg-amber-800 text-white text-[10px] font-bold shrink-0"
+                              >
+                                Concluir Formação (100%)
+                              </button>
+                            </div>
                           )}
                         </div>
 
                         <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
-                          {issuedCert ? (
+                          {status === 'DISPONÍVEL' && (request || cert) ? (
                             <div className="flex flex-wrap items-center gap-2 w-full">
                               <button
                                 type="button"
-                                onClick={() => downloadCertificatePdf(issuedCert)}
-                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-colors"
+                                onClick={() => {
+                                  if (request) {
+                                    setPreviewCertificateReq(request);
+                                  } else if (cert) {
+                                    setPreviewCertificateReq({
+                                      id: cert.id,
+                                      userId: currentStudentId,
+                                      enrollmentId: enr.id,
+                                      courseId: enr.courseId,
+                                      courseName: enr.courseTitle,
+                                      studentName: cert.studentName,
+                                      studentEmail: cert.studentEmail || user?.email || '',
+                                      studentPhone: cert.studentPhone || user?.phone,
+                                      studentBI: cert.studentBI,
+                                      enrollmentDate: enr.createdAt,
+                                      completionDate: cert.issuedDate,
+                                      requestDate: cert.issuedDate,
+                                      studentNotes: '',
+                                      status: 'DISPONÍVEL',
+                                      certificateStoragePath: `certificates/${currentStudentId}/${enr.courseId}/certificate.pdf`,
+                                      certificateCode: cert.code,
+                                      certificateFileUrl: cert.certificateFileUrl || '',
+                                      certificateFileName: cert.certificateFileName || `${cert.code}.pdf`,
+                                      issuedAt: cert.issuedDate,
+                                      issuedBy: cert.responsibleName,
+                                      adminNotes: '',
+                                      auditHistory: [],
+                                      createdAt: cert.createdAt,
+                                    });
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold shadow-xs transition-colors"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Visualizar Certificado</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (cert) {
+                                    downloadCertificatePdf(cert);
+                                  } else if (request) {
+                                    downloadCertificatePdf({
+                                      id: request.id,
+                                      code: request.certificateCode || `ALHAN-CERT-${request.id.slice(-5).toUpperCase()}`,
+                                      studentId: request.userId,
+                                      studentName: request.studentName,
+                                      studentBI: request.studentBI,
+                                      studentEmail: request.studentEmail,
+                                      studentPhone: request.studentPhone,
+                                      courseId: request.courseId,
+                                      courseTitle: request.courseName,
+                                      workloadHours:
+                                        courses.find((c) => c.id === request.courseId)?.durationHours || 40,
+                                      issuedDate: (request.issuedAt || new Date().toISOString()).slice(0, 10),
+                                      status: 'valido',
+                                      responsibleName: request.issuedBy || 'Direcção Geral ALHAN',
+                                      responsibleRole: 'Direcção Técnica e Pedagógica SGI',
+                                      certificateFileUrl: request.certificateFileUrl,
+                                      certificateFileName: request.certificateFileName,
+                                      createdAt: request.createdAt,
+                                    });
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition-colors"
                               >
                                 <Download className="w-3.5 h-3.5" />
-                                <span>
-                                  Baixar Meu Certificado em PDF (Enviado pelo Painel Administrativo)
-                                </span>
+                                <span>Descarregar Certificado em PDF</span>
                               </button>
                             </div>
-                          ) : enr.certificateRequested ? (
-                            <div className="flex flex-wrap items-center justify-between gap-2 w-full">
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
-                                <Clock className="w-3.5 h-3.5 text-amber-600" />
-                                <span>
-                                  Solicitação Enviada ao Painel Administrativo — Aguardando Envio do PDF
-                                </span>
+                          ) : status === 'PENDENTE' ||
+                            status === 'EM PROCESSAMENTO' ||
+                            status === 'APROVADO' ? (
+                            <div className="flex items-center gap-2 text-xs font-bold text-amber-900 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg w-full">
+                              <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>
+                                Pedido em estado «{status}» — Aguarde a disponibilização do PDF pela administração.
                               </span>
                             </div>
                           ) : (
                             <button
                               type="button"
-                              onClick={() =>
-                                requestCertificate(enr.id, {
-                                  courseId: enr.courseId,
-                                  studentName: currentStudentName,
-                                  studentBI: certReqBI || undefined,
-                                  studentEmail: user?.email,
-                                  studentPhone: user?.phone,
-                                })
-                              }
-                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shadow-sm transition-colors"
+                              onClick={() => {
+                                setCertReqEnrollmentId(enr.id);
+                                setCertReqCourseId(enr.courseId);
+                                setCertReqName(currentStudentName);
+                                setCertReqEmail(user?.email || '');
+                                setCertReqErrorMsg(
+                                  eligibility.eligible ? null : eligibility.reason || null
+                                );
+                                setCertReqSuccessMsg(null);
+                                const formEl = document.getElementById('form-solicitar-certificado');
+                                formEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shadow-xs transition-colors"
                             >
                               <Award className="w-4 h-4" />
-                              <span>Solicitar Meu Certificado em PDF ao Administrador</span>
+                              <span>Solicitar Certificado</span>
                             </button>
                           )}
                         </div>
@@ -2059,64 +2186,427 @@ export const StudentPortal: React.FC = () => {
                     );
                   })}
                 </div>
-              </div>
+              )}
+            </div>
+
+            {/* 1.2 Formulário Simples de Solicitação de Certificado com Verificação de Requisitos */}
+            {myEnrollments.length > 0 && (
+              <form
+                id="form-solicitar-certificado"
+                onSubmit={handleStudentCertificateRequestSubmit}
+                className="p-5 rounded-xl border-2 border-[#0077C8]/30 bg-[#F5F9FC] space-y-4"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-[#061A2D]">
+                      2. Formulário de Solicitação de Certificado Oficial em PDF
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Verifique os dados da sua formação concluída e confirme a solicitação antes de submeter à administração da ALHAN.
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded bg-[#0077C8]/10 text-[#0077C8] text-[11px] font-bold shrink-0">
+                    Validação Automática de Requisitos
+                  </span>
+                </div>
+
+                {certReqErrorMsg && (
+                  <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 flex items-start gap-2.5 text-xs font-bold text-amber-950">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>{certReqErrorMsg}</span>
+                  </div>
+                )}
+
+                {certReqSuccessMsg && (
+                  <div className="p-4 rounded-xl bg-emerald-50 border-2 border-emerald-400 flex items-start gap-2.5 text-xs font-extrabold text-emerald-950">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>{certReqSuccessMsg}</span>
+                  </div>
+                )}
+
+                {(() => {
+                  const selectedEnr =
+                    myEnrollments.find((enr) => enr.id === certReqEnrollmentId) ||
+                    myEnrollments[0];
+                  return (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                            Nome Completo do Formando (Automático)
+                          </label>
+                          <input
+                            type="text"
+                            readOnly
+                            value={certReqName || currentStudentName}
+                            className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-bold text-[#061A2D]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                            Nome do Curso Associado à Conta *
+                          </label>
+                          <select
+                            value={selectedEnr?.id || ''}
+                            onChange={(e) => {
+                              setCertReqEnrollmentId(e.target.value);
+                              const found = myEnrollments.find((item) => item.id === e.target.value);
+                              if (found) setCertReqCourseId(found.courseId);
+                              setCertReqErrorMsg(null);
+                              setCertReqSuccessMsg(null);
+                            }}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#061A2D]"
+                          >
+                            {myEnrollments.map((enr) => (
+                              <option key={enr.id} value={enr.id}>
+                                {enr.courseTitle} ({enr.completed || enr.progressPercent >= 100 ? 'Concluído' : `${enr.progressPercent}%`})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                            Identificação da Formação (Código)
+                          </label>
+                          <input
+                            type="text"
+                            readOnly
+                            value={`${selectedEnr?.courseId || certReqCourseId} · Inscrição #${selectedEnr?.id || ''}`}
+                            className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-mono-tabular font-bold text-[#0077C8]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                            Data da Solicitação
+                          </label>
+                          <input
+                            type="text"
+                            readOnly
+                            value={new Date().toLocaleDateString('pt-AO', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                            })}
+                            className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-mono-tabular text-[#061A2D]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                            Nº do Bilhete de Identidade (B.I.) / NIF (Opcional)
+                          </label>
+                          <input
+                            type="text"
+                            value={certReqBI}
+                            onChange={(e) => setCertReqBI(e.target.value.toUpperCase())}
+                            placeholder="Ex: 007891234LA042"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular text-[#061A2D]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                            Observação Opcional
+                          </label>
+                          <input
+                            type="text"
+                            value={certReqNotes}
+                            onChange={(e) => setCertReqNotes(e.target.value)}
+                            placeholder="Observação adicional para a administração (opcional)"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-[#061A2D]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#061A2D] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={certReqConfirmed}
+                            onChange={(e) => setCertReqConfirmed(e.target.checked)}
+                            className="rounded border-slate-300 text-[#0077C8] focus:ring-[#0077C8]"
+                          />
+                          <span>
+                            Confirmo que concluí a formação seleccionada e desejo submeter a solicitação do meu certificado oficial à administração da ALHAN.
+                          </span>
+                        </label>
+
+                        <button
+                          type="submit"
+                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shadow-sm transition-colors shrink-0"
+                        >
+                          <Send className="w-4 h-4" />
+                          <span>Confirmar e Solicitar Certificado</span>
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()}
+              </form>
             )}
 
-            {/* Issued Certificates Cards Sent by Admin with Direct PDF Download */}
-            {myCertificates.length === 0 ? (
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
-                Assim que o Painel Administrativo emitir e enviar o seu Certificado em PDF (máx. 2MB), ele aparecerá aqui imediatamente com o botão <strong>«Baixar Meu Certificado em PDF»</strong>.
-              </div>
-            ) : (
-              <div className="space-y-2 pt-2">
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-emerald-700">
-                  Certificados em PDF Recebidos do Painel Administrativo (Prontos para Baixar)
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {myCertificates.map((cert) => (
-                    <div
-                      key={cert.id}
-                      className="p-5 rounded-xl border-2 border-emerald-500/40 bg-[#F5F9FC] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+            {/* 1.3 Histórico de Solicitações do Formando */}
+            <div className="space-y-3 pt-2">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                <History className="w-3.5 h-3.5 text-[#0077C8]" />
+                <span>3. Histórico de Solicitações de Certificado</span>
+              </h3>
+
+              {myCertificateRequests.length === 0 ? (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500">
+                  Ainda não existem solicitações registadas no seu histórico.
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-[#F5F9FC] border-b border-slate-200 text-slate-600">
+                        <th className="py-2.5 px-3">Curso / Formação</th>
+                        <th className="py-2.5 px-3">Data do Pedido</th>
+                        <th className="py-2.5 px-3">Código do Certificado</th>
+                        <th className="py-2.5 px-3">Estado</th>
+                        <th className="py-2.5 px-3">Disponibilização</th>
+                        <th className="py-2.5 px-3">Acções</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {myCertificateRequests.map((req) => (
+                        <tr key={req.id} className="hover:bg-slate-50">
+                          <td className="py-3 px-3">
+                            <p className="font-bold text-[#061A2D]">{req.courseName}</p>
+                            <p className="text-[10px] font-mono-tabular text-slate-500">
+                              ID Curso: {req.courseId}
+                            </p>
+                          </td>
+                          <td className="py-3 px-3 font-mono-tabular whitespace-nowrap">
+                            {new Date(req.requestDate).toLocaleString('pt-AO', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </td>
+                          <td className="py-3 px-3 font-mono-tabular font-bold text-[#0077C8]">
+                            {req.certificateCode || '—'}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                req.status === 'DISPONÍVEL'
+                                  ? 'bg-emerald-100 text-emerald-900'
+                                  : req.status === 'REJEITADO'
+                                  ? 'bg-rose-100 text-rose-900'
+                                  : req.status === 'EM PROCESSAMENTO' || req.status === 'APROVADO'
+                                  ? 'bg-blue-100 text-[#0077C8]'
+                                  : 'bg-amber-100 text-amber-900'
+                              }`}
+                            >
+                              {req.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-mono-tabular text-[11px] text-slate-600">
+                            {req.issuedAt
+                              ? new Date(req.issuedAt).toLocaleString('pt-AO', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : 'Em análise'}
+                          </td>
+                          <td className="py-3 px-3">
+                            {req.status === 'DISPONÍVEL' ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewCertificateReq(req)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#061A2D] hover:bg-[#0077C8] text-white text-[11px] font-bold"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  <span>Visualizar</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    downloadCertificatePdf({
+                                      id: req.id,
+                                      code:
+                                        req.certificateCode ||
+                                        `ALHAN-CERT-${req.id.slice(-5).toUpperCase()}`,
+                                      studentId: req.userId,
+                                      studentName: req.studentName,
+                                      studentBI: req.studentBI,
+                                      studentEmail: req.studentEmail,
+                                      studentPhone: req.studentPhone,
+                                      courseId: req.courseId,
+                                      courseTitle: req.courseName,
+                                      workloadHours:
+                                        courses.find((c) => c.id === req.courseId)?.durationHours ||
+                                        40,
+                                      issuedDate: (
+                                        req.issuedAt || new Date().toISOString()
+                                      ).slice(0, 10),
+                                      status: 'valido',
+                                      responsibleName: req.issuedBy || 'Direcção Geral ALHAN',
+                                      responsibleRole: 'Direcção Técnica e Pedagógica SGI',
+                                      certificateFileUrl: req.certificateFileUrl,
+                                      certificateFileName: req.certificateFileName,
+                                      createdAt: req.createdAt,
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  <span>Descarregar PDF</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400">
+                                Aguarda emissão PDF
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal para Visualizar Certificado em PDF no Painel do Formando */}
+            {previewCertificateReq && (
+              <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl max-w-3xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in">
+                  <div className="bg-[#061A2D] text-white px-6 py-4 flex items-center justify-between gap-4">
+                    <div>
+                      <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#19B5FE]">
+                        Visualização Oficial do Certificado · ALHAN SGI
+                      </span>
+                      <h3 className="text-base font-extrabold text-white">
+                        {previewCertificateReq.courseName}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewCertificateReq(null)}
+                      className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white"
                     >
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-extrabold uppercase">
-                            Certificado PDF Enviado pelo Admin
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="p-6 space-y-5">
+                    {previewCertificateReq.certificateFileUrl &&
+                    previewCertificateReq.certificateFileUrl.startsWith('data:application/pdf') ? (
+                      <iframe
+                        title="Pré-visualização do Certificado PDF"
+                        src={previewCertificateReq.certificateFileUrl}
+                        className="w-full h-96 rounded-xl border border-slate-200"
+                      />
+                    ) : (
+                      <div className="p-6 rounded-xl border-2 border-[#0077C8]/40 bg-[#F5F9FC] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+                        <div className="space-y-2">
+                          <span className="inline-block px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-900 text-[10px] font-extrabold uppercase">
+                            Certificado Oficial Válido · DISPONÍVEL
                           </span>
-                          <span className="text-xs font-mono-tabular font-bold text-[#0077C8]">
-                            {cert.code}
-                          </span>
+                          <p className="text-xs text-slate-500">Certificamos que o(a) formando(a):</p>
+                          <p className="text-xl font-extrabold text-[#061A2D]">
+                            {previewCertificateReq.studentName}
+                          </p>
+                          <p className="text-xs text-slate-600">
+                            Concluiu com aproveitamento a formação profissional em{' '}
+                            <strong className="text-[#061A2D]">
+                              {previewCertificateReq.courseName}
+                            </strong>
+                            .
+                          </p>
+                          <div className="pt-2 flex flex-wrap gap-4 text-xs font-mono-tabular text-slate-600">
+                            <span>
+                              Código:{' '}
+                              <strong className="text-[#0077C8]">
+                                {previewCertificateReq.certificateCode}
+                              </strong>
+                            </span>
+                            <span>
+                              Emissão:{' '}
+                              <strong>
+                                {(previewCertificateReq.issuedAt || '').slice(0, 10)}
+                              </strong>
+                            </span>
+                          </div>
                         </div>
-                        <h3 className="text-base font-bold text-[#061A2D]">{cert.courseTitle}</h3>
-                        <p className="text-xs text-slate-600">
-                          Carga Horária: {cert.workloadHours}h · Emissão: {cert.issuedDate} · Estado:{' '}
-                          <strong className="text-emerald-700 uppercase">{cert.status}</strong>
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2 pt-2">
-                          <button
-                            type="button"
-                            onClick={() => downloadCertificatePdf(cert)}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-colors"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Baixar Meu Certificado em PDF ({cert.code}.pdf)</span>
-                          </button>
-                          <Link
-                            to={`/consultar-certificado?codigo=${encodeURIComponent(cert.code)}`}
-                            className="text-xs font-semibold text-[#0077C8] hover:underline px-2 py-1"
-                          >
-                            Validador QR Público →
-                          </Link>
+                        <div className="p-3 bg-white rounded-xl border border-slate-200 shrink-0">
+                          <QRCodeSVG
+                            value={`https://alhan.pro/consultar-certificado?codigo=${
+                              previewCertificateReq.certificateCode || ''
+                            }`}
+                            size={96}
+                          />
                         </div>
                       </div>
-                      <div className="p-2 bg-white rounded-lg border border-slate-200 shrink-0">
-                        <QRCodeSVG
-                          value={`https://alhan.pro/consultar-certificado?codigo=${cert.code}`}
-                          size={64}
-                        />
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200">
+                      <Link
+                        to={`/consultar-certificado?codigo=${encodeURIComponent(
+                          previewCertificateReq.certificateCode || ''
+                        )}`}
+                        className="text-xs font-bold text-[#0077C8] hover:underline"
+                      >
+                        Abrir Validador Público QR →
+                      </Link>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewCertificateReq(null)}
+                          className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                        >
+                          Fechar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            downloadCertificatePdf({
+                              id: previewCertificateReq.id,
+                              code:
+                                previewCertificateReq.certificateCode ||
+                                `ALHAN-CERT-${previewCertificateReq.id.slice(-5).toUpperCase()}`,
+                              studentId: previewCertificateReq.userId,
+                              studentName: previewCertificateReq.studentName,
+                              studentBI: previewCertificateReq.studentBI,
+                              studentEmail: previewCertificateReq.studentEmail,
+                              studentPhone: previewCertificateReq.studentPhone,
+                              courseId: previewCertificateReq.courseId,
+                              courseTitle: previewCertificateReq.courseName,
+                              workloadHours:
+                                courses.find((c) => c.id === previewCertificateReq.courseId)
+                                  ?.durationHours || 40,
+                              issuedDate: (
+                                previewCertificateReq.issuedAt || new Date().toISOString()
+                              ).slice(0, 10),
+                              status: 'valido',
+                              responsibleName:
+                                previewCertificateReq.issuedBy || 'Direcção Geral ALHAN',
+                              responsibleRole: 'Direcção Técnica e Pedagógica SGI',
+                              certificateFileUrl: previewCertificateReq.certificateFileUrl,
+                              certificateFileName: previewCertificateReq.certificateFileName,
+                              createdAt: previewCertificateReq.createdAt,
+                            })
+                          }
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Descarregar Certificado em PDF</span>
+                        </button>
                       </div>
                     </div>
-                  ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -2861,6 +3351,15 @@ export const AdminPortal: React.FC = () => {
     isoStandards,
     enrollments,
     certificates,
+    certificateRequests,
+    adminNotifications,
+    selectedAdminCertificateRequestId,
+    setSelectedAdminCertificateRequestId,
+    updateCertificateRequestStatus,
+    emitAndDeliverCertificateRequest,
+    replaceOrRevokeCertificateRequest,
+    markAdminNotificationRead,
+    markAllAdminNotificationsRead,
     isoProjects,
     isoDocuments,
     isoAudits,
@@ -2885,6 +3384,144 @@ export const AdminPortal: React.FC = () => {
     panelCredentials,
     updatePanelCredential,
   } = useApp();
+
+  // MÓDULO 2 & 5 — Estado para "GESTÃO DE CERTIFICADOS" no Painel Administrativo
+  const [certFilterName, setCertFilterName] = useState('');
+  const [certFilterCourse, setCertFilterCourse] = useState('TODOS');
+  const [certFilterDate, setCertFilterDate] = useState('');
+  const [certFilterStatus, setCertFilterStatus] = useState<string>('TODOS');
+  const [activeCertRequestModal, setActiveCertRequestModal] =
+    useState<CertificateRequestItem | null>(null);
+  const [emitPdfFile, setEmitPdfFile] = useState<File | null>(null);
+  const [emitPdfDataUrl, setEmitPdfDataUrl] = useState<string>('');
+  const [emitPdfFileName, setEmitPdfFileName] = useState<string>('');
+  const [emitCertCode, setEmitCertCode] = useState<string>('');
+  const [emitIssuedDate, setEmitIssuedDate] = useState<string>(
+    new Date().toISOString().slice(0, 10)
+  );
+  const [emitAdminNotes, setEmitAdminNotes] = useState<string>('');
+  const [emitStudentBI, setEmitStudentBI] = useState<string>('');
+  const [emitErrorMsg, setEmitErrorMsg] = useState<string | null>(null);
+  const [emitSuccessMsg, setEmitSuccessMsg] = useState<string | null>(null);
+  const [isEmittingCert, setIsEmittingCert] = useState<boolean>(false);
+  const [rejectReasonInput, setRejectReasonInput] = useState<string>('');
+  const [revokeReasonInput, setRevokeReasonInput] = useState<string>('');
+
+  const MAX_MODULE2_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
+
+  React.useEffect(() => {
+    if (selectedAdminCertificateRequestId) {
+      const found = certificateRequests.find((r) => r.id === selectedAdminCertificateRequestId);
+      if (found) {
+        setActiveCertRequestModal(found);
+        setEmitCertCode(
+          found.certificateCode ||
+            `ALHAN-SGI-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
+        );
+        setEmitIssuedDate(
+          found.issuedAt ? found.issuedAt.slice(0, 10) : new Date().toISOString().slice(0, 10)
+        );
+        setEmitAdminNotes(found.adminNotes || '');
+        setEmitStudentBI(found.studentBI || '');
+        setEmitErrorMsg(null);
+        setEmitSuccessMsg(null);
+      }
+      setSelectedAdminCertificateRequestId(null);
+    }
+  }, [selectedAdminCertificateRequestId, certificateRequests, setSelectedAdminCertificateRequestId]);
+
+  const openAdminCertificateRequest = (req: CertificateRequestItem) => {
+    setActiveCertRequestModal(req);
+    setEmitPdfFile(null);
+    setEmitPdfDataUrl(req.certificateFileUrl || '');
+    setEmitPdfFileName(req.certificateFileName || '');
+    setEmitCertCode(
+      req.certificateCode ||
+        `ALHAN-SGI-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
+    );
+    setEmitIssuedDate(
+      req.issuedAt ? req.issuedAt.slice(0, 10) : new Date().toISOString().slice(0, 10)
+    );
+    setEmitAdminNotes(req.adminNotes || '');
+    setEmitStudentBI(req.studentBI || '');
+    setRejectReasonInput(req.rejectionReason || '');
+    setRevokeReasonInput('');
+    setEmitErrorMsg(null);
+    setEmitSuccessMsg(null);
+  };
+
+  const handleModule2PdfSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEmitErrorMsg(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setEmitErrorMsg('Formato inválido: Apenas ficheiros PDF (application/pdf) são permitidos.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_MODULE2_PDF_BYTES) {
+      const mb = (file.size / (1024 * 1024)).toFixed(2);
+      setEmitErrorMsg(
+        `O ficheiro PDF excede o tamanho máximo permitido de 10 MB (Tamanho actual: ${mb} MB).`
+      );
+      e.target.value = '';
+      return;
+    }
+    setEmitPdfFile(file);
+    setEmitPdfFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setEmitPdfDataUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleEmitAndDeliverSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeCertRequestModal) return;
+    setEmitErrorMsg(null);
+    setEmitSuccessMsg(null);
+    setIsEmittingCert(true);
+    try {
+      const updated = await emitAndDeliverCertificateRequest(activeCertRequestModal.id, {
+        pdfFile: emitPdfFile || undefined,
+        certificateFileUrl: emitPdfDataUrl || undefined,
+        certificateFileName: emitPdfFileName || undefined,
+        certificateCode: emitCertCode.trim() || undefined,
+        issuedDate: emitIssuedDate,
+        adminNotes: emitAdminNotes.trim() || undefined,
+        studentBI: emitStudentBI.trim() || undefined,
+      });
+      setActiveCertRequestModal(updated);
+      setEmitSuccessMsg(
+        `Certificado ${updated.certificateCode} emitido, guardado no Firebase Storage (${updated.certificateStoragePath}) e disponibilizado automaticamente no painel do formando «${updated.studentName}» com estado DISPONÍVEL.`
+      );
+    } catch (err) {
+      setEmitErrorMsg(
+        err instanceof Error ? err.message : 'Erro ao emitir e disponibilizar certificado.'
+      );
+    } finally {
+      setIsEmittingCert(false);
+    }
+  };
+
+  const filteredCertificateRequests = certificateRequests.filter((req) => {
+    const matchesName =
+      !certFilterName.trim() ||
+      req.studentName.toLowerCase().includes(certFilterName.trim().toLowerCase()) ||
+      req.studentEmail.toLowerCase().includes(certFilterName.trim().toLowerCase());
+    const matchesCourse =
+      certFilterCourse === 'TODOS' ||
+      req.courseId === certFilterCourse ||
+      req.courseName === certFilterCourse;
+    const matchesDate =
+      !certFilterDate || req.requestDate.slice(0, 10) === certFilterDate;
+    const matchesStatus =
+      certFilterStatus === 'TODOS' || req.status === certFilterStatus;
+    return matchesName && matchesCourse && matchesDate && matchesStatus;
+  });
 
   const [hideSec13Panel, setHideSec13Panel] = useState<boolean>(() => {
     try {
@@ -3048,7 +3685,7 @@ export const AdminPortal: React.FC = () => {
   const [enrCertError, setEnrCertError] = useState<string | null>(null);
   const [enrCertSuccess, setEnrCertSuccess] = useState<string | null>(null);
 
-  const MAX_CERT_PDF_BYTES = 2 * 1024 * 1024; // 2MB limit
+  const MAX_CERT_PDF_BYTES = 10 * 1024 * 1024; // 10MB limit
 
   const handleAdminEnrollmentCertPdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -3057,7 +3694,7 @@ export const AdminPortal: React.FC = () => {
     if (file.size > MAX_CERT_PDF_BYTES) {
       const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
       setEnrCertError(
-        `O ficheiro PDF excede o limite máximo de 2MB (Tamanho actual: ${sizeMb} MB). Por favor, seleccione um PDF com no máximo 2MB.`
+        `O ficheiro PDF excede o limite máximo de 10MB (Tamanho actual: ${sizeMb} MB). Por favor, seleccione um PDF com no máximo 10MB.`
       );
       e.target.value = '';
       return;
@@ -3105,6 +3742,7 @@ export const AdminPortal: React.FC = () => {
 
   const [activeModule, setActiveModule] = useState<
     | 'Dashboard & Indicadores'
+    | 'GESTÃO DE CERTIFICADOS'
     | 'Cursos & Academia LMS'
     | 'Inscrições & Pagamentos Angola'
     | 'Certificados QR'
@@ -3138,7 +3776,7 @@ export const AdminPortal: React.FC = () => {
     if (file.size > MAX_CERT_PDF_BYTES) {
       const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
       setPresFileError(
-        `O ficheiro PDF do certificado não pode ter mais de 2MB (Tamanho seleccionado: ${sizeMb} MB). Seleccione um PDF até 2MB.`
+        `O ficheiro PDF do certificado não pode ter mais de 10MB (Tamanho seleccionado: ${sizeMb} MB). Seleccione um PDF até 10MB.`
       );
       e.target.value = '';
       return;
@@ -3303,6 +3941,7 @@ export const AdminPortal: React.FC = () => {
   const adminModules = (
     [
       'Dashboard & Indicadores',
+      'GESTÃO DE CERTIFICADOS',
       'Cursos & Academia LMS',
       'Inscrições & Pagamentos Angola',
       !hideSec13Panel ? 'Certificados QR' : null,
@@ -3500,6 +4139,715 @@ export const AdminPortal: React.FC = () => {
                     </div>
                   );
                 })}
+            </div>
+          </div>
+        )}
+
+        {/* MÓDULO 2, 3, 4 & 5 — GESTÃO DE CERTIFICADOS (Dashboard, Filtros, Tabela, Emissão PDF via Firebase Storage, Notificações e Auditoria) */}
+        {(activeModule === 'Dashboard & Indicadores' ||
+          activeModule === 'GESTÃO DE CERTIFICADOS') && (
+          <div
+            id="gestao-certificados"
+            className="bg-white rounded-2xl border-2 border-[#0077C8]/30 p-6 space-y-6 shadow-xs"
+          >
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+              <div>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#0077C8]/10 text-[#0077C8] text-[11px] font-extrabold uppercase tracking-wider mb-1">
+                  <Award className="w-3.5 h-3.5" />
+                  <span>Módulo 2, 4 & 5 · Firebase Storage + Cloud Firestore</span>
+                </span>
+                <h2 className="text-xl font-extrabold text-[#061A2D]">
+                  GESTÃO DE CERTIFICADOS
+                </h2>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Controlo centralizado de solicitações de certificados em PDF, validação MIME/tamanho (máx. 10 MB), armazenamento estruturado no Firebase Storage e entrega automática ao painel do formando.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveModule('GESTÃO DE CERTIFICADOS')}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold transition-colors"
+                >
+                  <Award className="w-3.5 h-3.5 text-[#19B5FE]" />
+                  <span>Vista Dedicada de Certificados</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Dashboard de Indicadores de Solicitações de Certificados */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200">
+                <p className="text-[11px] font-bold text-slate-500 uppercase">
+                  Total de Solicitações
+                </p>
+                <p className="text-2xl font-extrabold font-mono-tabular text-[#061A2D] mt-1">
+                  {certificateRequests.length}
+                </p>
+              </div>
+              <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200">
+                <p className="text-[11px] font-bold text-amber-900 uppercase">
+                  Solicitações Pendentes
+                </p>
+                <p className="text-2xl font-extrabold font-mono-tabular text-amber-700 mt-1">
+                  {certificateRequests.filter((r) => r.status === 'PENDENTE').length}
+                </p>
+              </div>
+              <div className="p-4 rounded-xl bg-blue-50/80 border border-blue-200">
+                <p className="text-[11px] font-bold text-[#0077C8] uppercase">
+                  Em Processamento
+                </p>
+                <p className="text-2xl font-extrabold font-mono-tabular text-[#0077C8] mt-1">
+                  {
+                    certificateRequests.filter(
+                      (r) => r.status === 'EM PROCESSAMENTO' || r.status === 'APROVADO'
+                    ).length
+                  }
+                </p>
+              </div>
+              <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200">
+                <p className="text-[11px] font-bold text-emerald-900 uppercase">
+                  Certificados Emitidos
+                </p>
+                <p className="text-2xl font-extrabold font-mono-tabular text-emerald-700 mt-1">
+                  {certificateRequests.filter((r) => r.status === 'DISPONÍVEL').length}
+                </p>
+              </div>
+              <div className="p-4 rounded-xl bg-rose-50/80 border border-rose-200 col-span-2 sm:col-span-1">
+                <p className="text-[11px] font-bold text-rose-900 uppercase">
+                  Solicitações Rejeitadas
+                </p>
+                <p className="text-2xl font-extrabold font-mono-tabular text-rose-700 mt-1">
+                  {certificateRequests.filter((r) => r.status === 'REJEITADO').length}
+                </p>
+              </div>
+            </div>
+
+            {/* Filtros por Nome do formando, Curso, Data e Estado */}
+            <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-[#061A2D] mb-1">
+                  Filtrar por Nome ou E-mail do Formando
+                </label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={certFilterName}
+                    onChange={(e) => setCertFilterName(e.target.value)}
+                    placeholder="Ex: João Manuel..."
+                    className="w-full rounded-lg border border-slate-300 bg-white pl-8 pr-3 py-1.5 text-xs text-[#061A2D]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-[#061A2D] mb-1">
+                  Filtrar por Curso
+                </label>
+                <select
+                  value={certFilterCourse}
+                  onChange={(e) => setCertFilterCourse(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-[#061A2D]"
+                >
+                  <option value="TODOS">Todos os Cursos</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-[#061A2D] mb-1">
+                  Filtrar por Data do Pedido
+                </label>
+                <input
+                  type="date"
+                  value={certFilterDate}
+                  onChange={(e) => setCertFilterDate(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-[#061A2D]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-[#061A2D] mb-1">
+                  Filtrar por Estado
+                </label>
+                <select
+                  value={certFilterStatus}
+                  onChange={(e) => setCertFilterStatus(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-[#061A2D]"
+                >
+                  <option value="TODOS">Todos os Estados</option>
+                  <option value="PENDENTE">PENDENTE</option>
+                  <option value="EM PROCESSAMENTO">EM PROCESSAMENTO</option>
+                  <option value="APROVADO">APROVADO</option>
+                  <option value="DISPONÍVEL">DISPONÍVEL</option>
+                  <option value="REJEITADO">REJEITADO</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Tabela de Solicitações de Certificados */}
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-[#061A2D] text-white">
+                    <th className="py-3 px-3">Nome Completo do Formando</th>
+                    <th className="py-3 px-3">Email do Formando</th>
+                    <th className="py-3 px-3">Curso Solicitado</th>
+                    <th className="py-3 px-3">Data do Pedido</th>
+                    <th className="py-3 px-3">Estado</th>
+                    <th className="py-3 px-3">Acção</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {filteredCertificateRequests.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-slate-500">
+                        Nenhuma solicitação de certificado encontrada com os filtros seleccionados.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredCertificateRequests.map((req) => (
+                      <tr key={req.id} className="hover:bg-slate-50">
+                        <td className="py-3 px-3">
+                          <p className="font-bold text-[#061A2D]">{req.studentName}</p>
+                          <p className="text-[10px] font-mono-tabular text-slate-500">
+                            ID Formando: {req.userId}
+                            {req.studentBI ? ` · B.I.: ${req.studentBI}` : ''}
+                          </p>
+                        </td>
+                        <td className="py-3 px-3 font-mono-tabular text-slate-700">
+                          {req.studentEmail}
+                        </td>
+                        <td className="py-3 px-3">
+                          <p className="font-bold text-[#0077C8]">{req.courseName}</p>
+                          <p className="text-[10px] font-mono-tabular text-slate-500">
+                            ID Curso: {req.courseId}
+                          </p>
+                        </td>
+                        <td className="py-3 px-3 font-mono-tabular whitespace-nowrap">
+                          {new Date(req.requestDate).toLocaleString('pt-AO', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                              req.status === 'DISPONÍVEL'
+                                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                : req.status === 'REJEITADO'
+                                ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                                : req.status === 'EM PROCESSAMENTO' || req.status === 'APROVADO'
+                                ? 'bg-blue-100 text-[#0077C8] border border-blue-300'
+                                : 'bg-amber-100 text-amber-900 border border-amber-300'
+                            }`}
+                          >
+                            {req.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openAdminCertificateRequest(req)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold shadow-xs"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Abrir Pedido / Emitir PDF</span>
+                            </button>
+                            {req.status === 'PENDENTE' && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateCertificateRequestStatus(req.id, 'EM PROCESSAMENTO', {
+                                    adminNotes: 'Pedido em processamento pela administração.',
+                                  })
+                                }
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold"
+                              >
+                                Em Processamento
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 2.1, 2.2, 2.3 & Módulo 5 — Visualização Detalhada da Solicitação, Anexo PDF (Firebase Storage <= 10MB) e Auditoria */}
+            {activeCertRequestModal && (
+              <div className="p-6 rounded-2xl border-2 border-[#061A2D] bg-[#F5F9FC] space-y-6 animate-in fade-in">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                  <div>
+                    <span className="inline-block px-2.5 py-0.5 rounded bg-[#061A2D] text-[#19B5FE] text-[10px] font-mono-tabular font-bold uppercase">
+                      Pedido #{activeCertRequestModal.id} · Estado: {activeCertRequestModal.status}
+                    </span>
+                    <h3 className="text-lg font-extrabold text-[#061A2D] mt-1">
+                      Visualização da Solicitação & Emissão de Certificado em PDF
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveCertRequestModal(null)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 self-start"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Fechar Detalhes</span>
+                  </button>
+                </div>
+
+                {/* 2.1 Dados Completos da Solicitação */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+                    <span className="text-slate-500 block text-[11px]">
+                      Identificação do Formando
+                    </span>
+                    <strong className="text-[#061A2D] block mt-0.5">
+                      {activeCertRequestModal.studentName}
+                    </strong>
+                    <span className="font-mono-tabular text-[10px] text-[#0077C8]">
+                      UID: {activeCertRequestModal.userId}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+                    <span className="text-slate-500 block text-[11px]">E-mail & Contacto</span>
+                    <strong className="text-[#061A2D] block mt-0.5 font-mono-tabular">
+                      {activeCertRequestModal.studentEmail}
+                    </strong>
+                    <span className="font-mono-tabular text-[10px] text-slate-500">
+                      {activeCertRequestModal.studentPhone || '—'} · B.I.:{' '}
+                      {activeCertRequestModal.studentBI || '—'}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+                    <span className="text-slate-500 block text-[11px]">Curso Frequentado</span>
+                    <strong className="text-[#0077C8] block mt-0.5">
+                      {activeCertRequestModal.courseName}
+                    </strong>
+                    <span className="font-mono-tabular text-[10px] text-slate-500">
+                      Código Curso: {activeCertRequestModal.courseId}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+                    <span className="text-slate-500 block text-[11px]">
+                      Datas de Inscrição & Conclusão
+                    </span>
+                    <strong className="text-[#061A2D] block mt-0.5 font-mono-tabular">
+                      Inscrição: {(activeCertRequestModal.enrollmentDate || '').slice(0, 10)}
+                    </strong>
+                    <span className="font-mono-tabular text-[10px] text-emerald-700 font-bold">
+                      Conclusão: {(activeCertRequestModal.completionDate || '').slice(0, 10)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Controlo Rápido de Estado (EM PROCESSAMENTO / APROVADO / REJEITADO) */}
+                <div className="p-4 rounded-xl bg-white border border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-extrabold text-[#061A2D]">
+                      Actualizar Estado de Análise da Solicitação
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Transicione o estado do pedido ou registe motivo em caso de rejeição.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await updateCertificateRequestStatus(
+                          activeCertRequestModal.id,
+                          'EM PROCESSAMENTO',
+                          { adminNotes: emitAdminNotes }
+                        );
+                        setActiveCertRequestModal((prev) =>
+                          prev ? { ...prev, status: 'EM PROCESSAMENTO' } : null
+                        );
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#0077C8] border border-blue-200 text-xs font-bold"
+                    >
+                      Marcar EM PROCESSAMENTO
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await updateCertificateRequestStatus(
+                          activeCertRequestModal.id,
+                          'APROVADO',
+                          { adminNotes: emitAdminNotes }
+                        );
+                        setActiveCertRequestModal((prev) =>
+                          prev ? { ...prev, status: 'APROVADO' } : null
+                        );
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-bold"
+                    >
+                      Marcar APROVADO
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={rejectReasonInput}
+                        onChange={(e) => setRejectReasonInput(e.target.value)}
+                        placeholder="Motivo de rejeição..."
+                        className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await updateCertificateRequestStatus(
+                            activeCertRequestModal.id,
+                            'REJEITADO',
+                            {
+                              rejectionReason:
+                                rejectReasonInput.trim() ||
+                                'Requisitos pedagógicos ou documentais pendentes.',
+                              adminNotes: emitAdminNotes,
+                            }
+                          );
+                          setActiveCertRequestModal((prev) =>
+                            prev ? { ...prev, status: 'REJEITADO' } : null
+                          );
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold"
+                      >
+                        Rejeitar Pedido
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2.2 Formulário de Emissão e Anexo do Certificado em PDF (Firebase Storage <= 10MB) */}
+                <form
+                  onSubmit={handleEmitAndDeliverSubmit}
+                  className="p-5 rounded-xl bg-white border-2 border-[#0077C8] space-y-4"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                    <div>
+                      <h4 className="text-sm font-extrabold text-[#061A2D]">
+                        Formulário de Emissão e Anexo do Certificado em PDF (Firebase Storage)
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        Caminho estruturado:{' '}
+                        <code className="font-mono-tabular text-[#0077C8]">
+                          certificates/{activeCertRequestModal.userId}/
+                          {activeCertRequestModal.courseId}/certificate.pdf
+                        </code>{' '}
+                        (Bloqueado contra associação a outro formando por engano).
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded bg-emerald-100 text-emerald-900 text-[11px] font-bold shrink-0">
+                      Apenas PDF · Máx. 10 MB
+                    </span>
+                  </div>
+
+                  {emitErrorMsg && (
+                    <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs font-bold text-rose-800 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                      <span>{emitErrorMsg}</span>
+                    </div>
+                  )}
+
+                  {emitSuccessMsg && (
+                    <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 text-xs font-bold text-emerald-900 flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <span>{emitSuccessMsg}</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Nome do Formando (Vinculado à Solicitação)
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={activeCertRequestModal.studentName}
+                        className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-bold text-[#061A2D]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Nome da Formação (Vinculada à Solicitação)
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={activeCertRequestModal.courseName}
+                        className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-bold text-[#0077C8]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Data de Emissão *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={emitIssuedDate}
+                        onChange={(e) => setEmitIssuedDate(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular text-[#061A2D]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Código de Identificação do Certificado *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={emitCertCode}
+                        onChange={(e) => setEmitCertCode(e.target.value.toUpperCase())}
+                        placeholder="ALHAN-SGI-2026-0001"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular font-bold text-[#0077C8]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Upload do Certificado em PDF (Máx. 10 MB)
+                      </label>
+                      <label className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 bg-[#F5F9FC] hover:bg-slate-100 text-xs font-bold text-[#061A2D]">
+                        <Upload className="w-3.5 h-3.5 text-[#0077C8] shrink-0" />
+                        <span className="truncate">
+                          {emitPdfFileName
+                            ? `✓ ${emitPdfFileName}`
+                            : 'Seleccionar PDF (ou gerar PDF oficial automático)'}
+                        </span>
+                        <input
+                          type="file"
+                          accept=".pdf,application/pdf"
+                          onChange={handleModule2PdfSelect}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Observações Internas
+                      </label>
+                      <input
+                        type="text"
+                        value={emitAdminNotes}
+                        onChange={(e) => setEmitAdminNotes(e.target.value)}
+                        placeholder="Registo interno de verificação pedagógica..."
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-[#061A2D]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-[11px] text-slate-500">
+                      Ao confirmar, o PDF é guardado no Firebase Storage, o documento no Firestore é actualizado para <strong>DISPONÍVEL</strong> e entregue na secção <strong>«OS MEUS CERTIFICADOS»</strong> do formando.
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={isEmittingCert}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-extrabold uppercase tracking-wider shadow-sm transition-colors"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>
+                        {isEmittingCert
+                          ? 'A Emitir e Guardar no Firebase Storage...'
+                          : 'EMITIR E DISPONIBILIZAR CERTIFICADO'}
+                      </span>
+                    </button>
+                  </div>
+                </form>
+
+                {/* MÓDULO 5 — Histórico de Alterações, Auditoria e Substituição / Revogação com Registo de Motivo */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-3">
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#061A2D] flex items-center gap-1.5">
+                      <History className="w-3.5 h-3.5 text-[#0077C8]" />
+                      <span>Histórico de Alterações & Auditoria (Módulo 5)</span>
+                    </h4>
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {(activeCertRequestModal.auditHistory || []).map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="p-2.5 rounded-lg bg-[#F5F9FC] border border-slate-200 text-[11px]"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-[#061A2D]">{entry.action}</span>
+                            <span className="font-mono-tabular text-[10px] text-slate-500">
+                              {new Date(entry.timestamp).toLocaleString('pt-AO')}
+                            </span>
+                          </div>
+                          <p className="text-slate-600 mt-0.5">
+                            Responsável: <strong>{entry.actorName}</strong> · Estado:{' '}
+                            <strong className="text-[#0077C8]">{entry.statusAfter}</strong>
+                          </p>
+                          {entry.notes && (
+                            <p className="text-slate-500 italic mt-0.5">
+                              Observação/Motivo: {entry.notes}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-3">
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Substituir ou Revogar Certificado com Registo de Motivo</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Qualquer substituição ou revogação exige justificação obrigatória e fica permanentemente registada na auditoria do certificado.
+                    </p>
+                    <input
+                      type="text"
+                      value={revokeReasonInput}
+                      onChange={(e) => setRevokeReasonInput(e.target.value)}
+                      placeholder="Motivo obrigatório para substituir ou revogar..."
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!revokeReasonInput.trim()) {
+                            setEmitErrorMsg(
+                              'Informe o motivo obrigatório para substituir o certificado.'
+                            );
+                            return;
+                          }
+                          await replaceOrRevokeCertificateRequest(
+                            activeCertRequestModal.id,
+                            'SUBSTITUIR',
+                            revokeReasonInput.trim(),
+                            emitPdfFile || undefined
+                          );
+                          setRevokeReasonInput('');
+                          setEmitSuccessMsg(
+                            'Certificado substituído com sucesso e registado no histórico de auditoria.'
+                          );
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold"
+                      >
+                        Substituir Certificado PDF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!revokeReasonInput.trim()) {
+                            setEmitErrorMsg(
+                              'Informe o motivo obrigatório para revogar o certificado.'
+                            );
+                            return;
+                          }
+                          await replaceOrRevokeCertificateRequest(
+                            activeCertRequestModal.id,
+                            'REVOGAR',
+                            revokeReasonInput.trim()
+                          );
+                          setRevokeReasonInput('');
+                          setActiveCertRequestModal((prev) =>
+                            prev ? { ...prev, status: 'REJEITADO' } : null
+                          );
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold"
+                      >
+                        Revogar Certificado
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* MÓDULO 3.3 — Gestão das Notificações Privadas em Tempo Real no Painel Administrativo */}
+            <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-[#0077C8]" />
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#061A2D]">
+                    Central de Notificações Administrativas Privadas em Tempo Real ({adminNotifications.filter((n) => !n.read).length} não lidas)
+                  </h3>
+                </div>
+                {adminNotifications.some((n) => !n.read) && (
+                  <button
+                    type="button"
+                    onClick={() => markAllAdminNotificationsRead()}
+                    className="text-[11px] font-bold text-[#0077C8] hover:underline"
+                  >
+                    Marcar todas como lidas
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-60 overflow-y-auto pr-1">
+                {adminNotifications.slice(0, 8).map((notif) => (
+                  <div
+                    key={notif.id}
+                    className={`p-3 rounded-xl border text-xs flex flex-col justify-between gap-2 ${
+                      notif.read
+                        ? 'bg-white border-slate-200 text-slate-600'
+                        : 'bg-blue-50/70 border-[#0077C8]/40 text-[#061A2D]'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-extrabold text-[#061A2D]">{notif.title}</span>
+                        <span className="text-[10px] font-mono-tabular text-slate-500">
+                          {new Date(notif.createdAt).toLocaleString('pt-AO', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-[11px] mt-1">{notif.message}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-200/70">
+                      {!notif.read ? (
+                        <button
+                          type="button"
+                          onClick={() => markAdminNotificationRead(notif.id)}
+                          className="text-[10px] font-bold text-slate-500 hover:text-[#061A2D]"
+                        >
+                          Marcar como lida
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-emerald-700 font-semibold">✓ Lida</span>
+                      )}
+                      {notif.requestId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            markAdminNotificationRead(notif.id);
+                            const found = certificateRequests.find(
+                              (r) => r.id === notif.requestId
+                            );
+                            if (found) openAdminCertificateRequest(found);
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white text-[10px] font-bold"
+                        >
+                          <span>VER SOLICITAÇÃO</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
