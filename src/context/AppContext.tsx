@@ -47,7 +47,9 @@ import {
   INITIAL_TESTIMONIALS,
   PanelCredentialItem,
   INITIAL_PANEL_CREDENTIALS,
+  AdminEmailNotificationItem,
 } from '../data/initialData';
+import { generateOfficialCertificatePdfDataUrl } from '../utils/pdfCertificateGenerator';
 
 export interface ActiveUser {
   uid: string;
@@ -91,6 +93,7 @@ interface AppContextValue {
   nonConformities: NonConformityItem[];
   diagnosticRequests: DiagnosticRequestItem[];
   notifications: NotificationItem[];
+  emailNotifications: AdminEmailNotificationItem[];
   testimonials: TestimonialItem[];
   panelCredentials: PanelCredentialItem[];
   updatePanelCredential: (role: UserRole, username: string, email: string, password: string) => void;
@@ -98,7 +101,17 @@ interface AppContextValue {
   resetPasswordByEmail: (emailOrUser: string, newPassword: string) => Promise<RegisteredUserAccount>;
   deleteRegisteredUser: (uid: string) => void;
   deleteEnrollment: (enrollmentId: string) => Promise<void>;
-  requestCertificate: (enrollmentId: string) => Promise<void>;
+  requestCertificate: (
+    enrollmentId: string,
+    requestDetails?: {
+      courseId?: string;
+      studentName?: string;
+      studentBI?: string;
+      studentEmail?: string;
+      studentPhone?: string;
+      notes?: string;
+    }
+  ) => Promise<void>;
   activityLogs: { id: string; action: string; actor: string; timestamp: string }[];
   pushPermission: NotificationPermission | 'unsupported';
   requestPushPermission: () => Promise<void>;
@@ -262,6 +275,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [nonConformities, setNonConformities] = useState<NonConformityItem[]>(() => loadLocal('alhan_ncs', INITIAL_NON_CONFORMITIES));
   const [diagnosticRequests, setDiagnosticRequests] = useState<DiagnosticRequestItem[]>(() => loadLocal('alhan_diagnostics', []));
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => loadLocal('alhan_notifications', INITIAL_NOTIFICATIONS));
+  const [emailNotifications, setEmailNotifications] = useState<AdminEmailNotificationItem[]>(() =>
+    loadLocal('alhan_email_notifications', [
+      {
+        id: 'em-notif-init-1',
+        recipientEmail: 'geral@alhan.pro',
+        panelOrigin: 'PAINEL_ALUNO',
+        subject: 'Sistema de Notificações Activo — Painéis Professor, Aluno e Empresa',
+        applicantName: 'Plataforma ALHAN – SGI',
+        applicantEmail: 'geral@alhan.pro',
+        applicantPhone: '+244 922 021 211',
+        details:
+          'Todas as inscrições realizadas nos painéis de Professor, Aluno e Empresa e solicitações de Certificado PDF são notificadas automaticamente ao Painel Administrativo e ao e-mail geral@alhan.pro.',
+        createdAt: new Date().toISOString(),
+      },
+    ])
+  );
   const [testimonials, setTestimonials] = useState<TestimonialItem[]>(() =>
     loadLocal('alhan_testimonials', INITIAL_TESTIMONIALS)
   );
@@ -320,6 +349,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { localStorage.setItem('alhan_ncs', JSON.stringify(nonConformities)); }, [nonConformities]);
   useEffect(() => { localStorage.setItem('alhan_diagnostics', JSON.stringify(diagnosticRequests)); }, [diagnosticRequests]);
   useEffect(() => { localStorage.setItem('alhan_notifications', JSON.stringify(notifications)); }, [notifications]);
+  useEffect(() => { localStorage.setItem('alhan_email_notifications', JSON.stringify(emailNotifications)); }, [emailNotifications]);
   useEffect(() => { localStorage.setItem('alhan_activity_logs', JSON.stringify(activityLogs)); }, [activityLogs]);
 
   const logActivity = (action: string, actorName?: string) => {
@@ -360,6 +390,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch {
         // Fallback if Notification constructor is restricted in some mobile browsers
       }
+    }
+  };
+
+  const notifyAdminAndEmailGeral = (payload: {
+    panelOrigin: AdminEmailNotificationItem['panelOrigin'];
+    subject: string;
+    applicantName: string;
+    applicantEmail: string;
+    applicantPhone: string;
+    details: string;
+  }) => {
+    const item: AdminEmailNotificationItem = {
+      id: `em-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      recipientEmail: 'geral@alhan.pro',
+      panelOrigin: payload.panelOrigin,
+      subject: payload.subject,
+      applicantName: payload.applicantName,
+      applicantEmail: payload.applicantEmail,
+      applicantPhone: payload.applicantPhone,
+      details: payload.details,
+      createdAt: new Date().toISOString(),
+    };
+    setEmailNotifications((prev) => [item, ...prev.slice(0, 99)]);
+
+    // Non-blocking dispatch to server endpoint & FormSubmit AJAX for geral@alhan.pro
+    if (typeof window !== 'undefined') {
+      fetch('/api/notify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      }).catch(() => null);
+
+      fetch('https://formsubmit.co/ajax/geral@alhan.pro', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          _subject: `[ALHAN SGI] ${payload.subject}`,
+          Painel: payload.panelOrigin,
+          Inscrito: payload.applicantName,
+          Email: payload.applicantEmail,
+          Telefone_WhatsApp: payload.applicantPhone,
+          Detalhes: payload.details,
+        }),
+      }).catch(() => null);
     }
   };
 
@@ -643,26 +720,132 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const requestCertificate = async (enrollmentId: string) => {
-    const target = enrollments.find((e) => e.id === enrollmentId);
+  const requestCertificate = async (
+    enrollmentId: string,
+    requestDetails?: {
+      courseId?: string;
+      studentName?: string;
+      studentBI?: string;
+      studentEmail?: string;
+      studentPhone?: string;
+      notes?: string;
+    }
+  ) => {
     const nowIso = new Date().toISOString();
-    setEnrollments((prev) =>
-      prev.map((e) =>
-        e.id === enrollmentId
-          ? { ...e, certificateRequested: true, certificateRequestedAt: nowIso }
-          : e
-      )
-    );
+    let target = enrollments.find((e) => e.id === enrollmentId);
+
+    if (!target && requestDetails?.courseId) {
+      target = enrollments.find(
+        (e) =>
+          e.courseId === requestDetails.courseId &&
+          (e.studentId === user?.uid ||
+            (user?.email && e.studentEmail?.toLowerCase() === user.email.toLowerCase()))
+      );
+    }
+
     if (target) {
+      const reqName = requestDetails?.studentName?.trim() || target.studentName;
+      const reqBI = requestDetails?.studentBI?.trim().toUpperCase() || target.certificateRequestBI || '';
+      const reqEmail = requestDetails?.studentEmail?.trim() || target.studentEmail || user?.email || '';
+      const reqPhone = requestDetails?.studentPhone?.trim() || target.studentPhone || user?.phone || '';
+      const reqNotes = requestDetails?.notes?.trim() || target.certificateRequestNotes || '';
+
+      setEnrollments((prev) =>
+        prev.map((e) =>
+          e.id === target!.id
+            ? {
+                ...e,
+                studentName: reqName,
+                studentEmail: reqEmail || e.studentEmail,
+                studentPhone: reqPhone || e.studentPhone,
+                certificateRequested: true,
+                certificateRequestedAt: nowIso,
+                certificateRequestName: reqName,
+                certificateRequestBI: reqBI,
+                certificateRequestEmail: reqEmail,
+                certificateRequestPhone: reqPhone,
+                certificateRequestNotes: reqNotes,
+              }
+            : e
+        )
+      );
+
       triggerNotification(
         'Certificado disponível',
-        `Solicitação de Certificado: ${target.studentName}`,
-        `O aluno ${target.studentName} solicitou a emissão do certificado em PDF para o curso "${target.courseTitle}".`,
+        `Solicitação de Certificado PDF: ${reqName}`,
+        `O aluno inscrito ${reqName} (B.I.: ${reqBI || 'N/A'} · E-mail: ${reqEmail}) solicitou o Certificado em PDF para o curso "${target.courseTitle}". Envie o PDF para o Painel do Aluno.`,
         'ADMIN'
       );
+      notifyAdminAndEmailGeral({
+        panelOrigin: 'SOLICITACAO_CERTIFICADO',
+        subject: `Solicitação de Certificado PDF — Aluno: ${reqName} (${target.courseTitle})`,
+        applicantName: reqName,
+        applicantEmail: reqEmail || 'geral@alhan.pro',
+        applicantPhone: reqPhone || '+244 922 021 211',
+        details: `Curso: ${target.courseTitle} | B.I.: ${reqBI || 'Não informado'} | Estado Pagamento: ${target.paymentStatus} | Observações: ${reqNotes || 'Solicitação via Painel do Aluno'}`,
+      });
       logActivity(
-        `Aluno ${target.studentName} solicitou emissão de certificado em PDF (${target.courseTitle})`,
-        target.studentName
+        `Aluno ${reqName} solicitou emissão de certificado em PDF (${target.courseTitle}) — Notificado Painel Admin e geral@alhan.pro`,
+        reqName
+      );
+      return;
+    }
+
+    // If the student filled out the Certificate Request Form for a course they want to register & request right away
+    const fallbackCourse =
+      courses.find((c) => c.id === requestDetails?.courseId) || courses[0];
+    if (fallbackCourse) {
+      const reqName = requestDetails?.studentName?.trim() || user?.fullName || 'Aluno Inscrito';
+      const reqBI = requestDetails?.studentBI?.trim().toUpperCase() || '';
+      const reqEmail = requestDetails?.studentEmail?.trim() || user?.email || 'aluno@alhan.pro';
+      const reqPhone = requestDetails?.studentPhone?.trim() || user?.phone || '+244 922 021 211';
+      const reqNotes = requestDetails?.notes?.trim() || '';
+
+      const newEnr: EnrollmentItem = {
+        id: `enr-${Date.now()}`,
+        studentId: user?.uid || `inscrito-${Date.now()}`,
+        studentName: reqName,
+        studentPhone: reqPhone,
+        studentEmail: reqEmail,
+        courseId: fallbackCourse.id,
+        courseTitle: fallbackCourse.title,
+        modality: fallbackCourse.modality,
+        amountKz: fallbackCourse.priceKz,
+        paymentMethod: 'Express Angola',
+        paymentReference: `CERT-REQ-${Date.now().toString().slice(-5)}`,
+        receiptNote: reqNotes || 'Inscrição e solicitação de Certificado em PDF via Painel do Aluno.',
+        paymentStatus: 'Pendente',
+        progressPercent: 100,
+        completedLessons: [],
+        completed: true,
+        certificateRequested: true,
+        certificateRequestedAt: nowIso,
+        certificateRequestName: reqName,
+        certificateRequestBI: reqBI,
+        certificateRequestEmail: reqEmail,
+        certificateRequestPhone: reqPhone,
+        certificateRequestNotes: reqNotes,
+        createdAt: nowIso,
+      };
+      setEnrollments((prev) => [newEnr, ...prev]);
+
+      triggerNotification(
+        'Certificado disponível',
+        `Solicitação de Certificado PDF: ${reqName}`,
+        `O aluno ${reqName} (B.I.: ${reqBI || 'N/A'}) solicitou o Certificado em PDF para o curso "${fallbackCourse.title}".`,
+        'ADMIN'
+      );
+      notifyAdminAndEmailGeral({
+        panelOrigin: 'SOLICITACAO_CERTIFICADO',
+        subject: `Solicitação de Certificado PDF — Aluno: ${reqName} (${fallbackCourse.title})`,
+        applicantName: reqName,
+        applicantEmail: reqEmail,
+        applicantPhone: reqPhone,
+        details: `Curso: ${fallbackCourse.title} | B.I.: ${reqBI || 'Não informado'} | Observações: ${reqNotes || 'Solicitação via Painel do Aluno'}`,
+      });
+      logActivity(
+        `Aluno ${reqName} solicitou certificado em PDF (${fallbackCourse.title}) — Notificado Painel Admin e geral@alhan.pro`,
+        reqName
       );
     }
   };
@@ -877,22 +1060,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (allowedRegisterRole === 'PROFESSOR') {
       triggerNotification(
         'Novo registo',
-        `Nova Inscrição de Professor Aguarda Autorização: ${newUser.fullName}`,
-        `O professor/formador ${newUser.fullName} (${newAccount.specialty}) inscreveu-se no Painel do Professor e aguarda autorização do Painel Administrativo.`,
+        `Nova Inscrição no Painel do Professor: ${newUser.fullName}`,
+        `O professor/formador ${newUser.fullName} (E-mail: ${newUser.email} · Tel: ${newUser.phone} · Especialidade: ${newAccount.specialty}) inscreveu-se no Painel do Professor e aguarda autorização administrativa. Notificação enviada para geral@alhan.pro.`,
         'ADMIN'
       );
+      notifyAdminAndEmailGeral({
+        panelOrigin: 'PAINEL_PROFESSOR',
+        subject: `Nova Inscrição no Painel do Professor — ${newUser.fullName}`,
+        applicantName: newUser.fullName,
+        applicantEmail: newUser.email,
+        applicantPhone: newUser.phone,
+        details: `Utilizador: ${newUser.username} | Especialidade: ${newAccount.specialty} | Estado: Aguardando Autorização do Painel Administrativo`,
+      });
       logActivity(
-        `Nova inscrição de PROFESSOR (Pendente de Autorização Administrativa): ${newUser.fullName}`,
+        `Nova inscrição no Painel do PROFESSOR (${newUser.fullName}) — Notificado Painel Administrativo e geral@alhan.pro`,
+        newUser.fullName
+      );
+    } else if (allowedRegisterRole === 'CLIENTE_EMPRESARIAL') {
+      triggerNotification(
+        'Novo registo',
+        `Nova Inscrição no Painel da Empresa: ${companyTitle}`,
+        `A empresa "${companyTitle}" (Responsável: ${newUser.fullName} · E-mail: ${newUser.email} · Tel: ${newUser.phone}) cadastrou-se no Painel do Cliente Empresarial. Notificação enviada para geral@alhan.pro.`,
+        'ADMIN'
+      );
+      triggerNotification(
+        'Novo registo',
+        'Painel Empresarial Activado com Sucesso',
+        `Bem-vindo(a) à plataforma ALHAN SGI, ${newUser.fullName} (${companyTitle}).`,
+        'CLIENTE_EMPRESARIAL'
+      );
+      notifyAdminAndEmailGeral({
+        panelOrigin: 'PAINEL_EMPRESA',
+        subject: `Nova Inscrição no Painel da Empresa — ${companyTitle} (${newUser.fullName})`,
+        applicantName: `${newUser.fullName} (${companyTitle})`,
+        applicantEmail: newUser.email,
+        applicantPhone: newUser.phone,
+        details: `Empresa: ${companyTitle} | Responsável: ${newUser.fullName} | Utilizador: ${newUser.username} | Projecto SGI/ISO inicializado`,
+      });
+      logActivity(
+        `Nova inscrição no Painel da EMPRESA (${companyTitle} - ${newUser.fullName}) — Notificado Painel Administrativo e geral@alhan.pro`,
         newUser.fullName
       );
     } else {
       triggerNotification(
         'Novo registo',
-        'Cadastro Concluído com Sucesso',
-        `Bem-vindo(a) à plataforma ALHAN SGI, ${newUser.fullName}. O seu painel privado foi activado.`,
-        allowedRegisterRole
+        `Nova Inscrição no Painel do Aluno: ${newUser.fullName}`,
+        `O aluno ${newUser.fullName} (E-mail: ${newUser.email} · Tel: ${newUser.phone}) cadastrou-se no Painel do Aluno. Notificação enviada para geral@alhan.pro.`,
+        'ADMIN'
       );
-      logActivity(`Novo cadastro de ${allowedRegisterRole}: ${newUser.fullName}`, newUser.fullName);
+      triggerNotification(
+        'Novo registo',
+        'Cadastro de Aluno Concluído com Sucesso',
+        `Bem-vindo(a) à plataforma ALHAN SGI, ${newUser.fullName}. O seu Painel do Aluno foi activado.`,
+        'ALUNO'
+      );
+      notifyAdminAndEmailGeral({
+        panelOrigin: 'PAINEL_ALUNO',
+        subject: `Nova Inscrição no Painel do Aluno — ${newUser.fullName}`,
+        applicantName: newUser.fullName,
+        applicantEmail: newUser.email,
+        applicantPhone: newUser.phone,
+        details: `Aluno: ${newUser.fullName} | Utilizador: ${newUser.username} | E-mail: ${newUser.email} | Telefone: ${newUser.phone}`,
+      });
+      logActivity(
+        `Nova inscrição no Painel do ALUNO (${newUser.fullName}) — Notificado Painel Administrativo e geral@alhan.pro`,
+        newUser.fullName
+      );
     }
   };
 
@@ -1050,10 +1283,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     triggerNotification(
       'Nova inscrição',
-      `Nova Inscrição: ${payload.course.title}`,
-      `Inscrição de ${studentName} (${payload.course.priceKz.toLocaleString('pt-AO')} Kz via ${payload.paymentMethod}) aguarda validação.`
+      `Nova Inscrição de Aluno em Curso: ${payload.course.title}`,
+      `Inscrição de ${studentName} (Tel: ${newEnrollment.studentPhone} · E-mail: ${newEnrollment.studentEmail}) no curso "${payload.course.title}" (${payload.course.priceKz.toLocaleString('pt-AO')} Kz via ${payload.paymentMethod}). Notificado geral@alhan.pro.`,
+      'ADMIN'
     );
-    logActivity(`Nova inscrição no curso ${payload.course.title} (${payload.paymentMethod})`);
+    notifyAdminAndEmailGeral({
+      panelOrigin: 'INSCRICAO_CURSO',
+      subject: `Nova Inscrição em Curso — ${studentName} (${payload.course.title})`,
+      applicantName: studentName,
+      applicantEmail: newEnrollment.studentEmail || 'geral@alhan.pro',
+      applicantPhone: newEnrollment.studentPhone || '+244 922 021 211',
+      details: `Curso: ${payload.course.title} | Modalidade: ${payload.modality} | Valor: ${payload.course.priceKz.toLocaleString('pt-AO')} Kz | Canal: ${payload.paymentMethod} | Ref: ${newEnrollment.paymentReference}`,
+    });
+    logActivity(
+      `Nova inscrição no curso ${payload.course.title} (${studentName}) — Notificado Painel Admin e geral@alhan.pro`
+    );
 
     return newEnrollment;
   };
@@ -1195,64 +1439,106 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         (enrollment.certificateId && c.id === enrollment.certificateId)
     );
 
+    const course = courses.find((c) => c.id === enrollment.courseId);
+    const resolvedBI =
+      pdfOptions?.studentBI?.trim().toUpperCase() ||
+      enrollment.certificateRequestBI ||
+      existingCert?.studentBI ||
+      '';
+    const resolvedName =
+      enrollment.certificateRequestName || enrollment.studentName;
+    const resolvedGrade = pdfOptions?.grade?.trim() || existingCert?.grade || 'Aprovado com Distinção';
+    const issuedDate = new Date().toISOString().split('T')[0];
+
     if (existingCert) {
-      if (pdfOptions?.certificateFileUrl || pdfOptions?.studentBI || pdfOptions?.grade) {
-        const updatedCert: CertificateItem = {
-          ...existingCert,
-          certificateFileUrl: pdfOptions.certificateFileUrl || existingCert.certificateFileUrl,
-          certificateFileName:
-            pdfOptions.certificateFileName ||
-            existingCert.certificateFileName ||
-            `Certificado_${enrollment.studentName.replace(/\s+/g, '_')}.pdf`,
-          studentBI: pdfOptions.studentBI || existingCert.studentBI,
-          grade: pdfOptions.grade || existingCert.grade || 'Aprovado',
-          status: 'valido',
-        };
-        setCertificates((prev) => prev.map((c) => (c.id === existingCert.id ? updatedCert : c)));
-        setEnrollments((prev) =>
-          prev.map((e) =>
-            e.id === enrollment.id
-              ? { ...e, completed: true, progressPercent: 100, certificateId: updatedCert.id }
-              : e
-          )
-        );
-        triggerNotification(
-          'Certificado disponível',
-          `Certificado PDF Actualizado: ${updatedCert.code}`,
-          `O Administrador anexou o certificado em PDF para "${enrollment.courseTitle}" (${enrollment.studentName}). Já disponível para download no Painel do Aluno.`,
-          'ALUNO'
-        );
-        logActivity(`Certificado PDF anexado/actualizado (${updatedCert.code}) para ${enrollment.studentName}`);
-        return updatedCert;
-      }
-      return existingCert;
+      const generatedPdfUrl =
+        pdfOptions?.certificateFileUrl ||
+        existingCert.certificateFileUrl ||
+        generateOfficialCertificatePdfDataUrl({
+          code: existingCert.code,
+          studentName: resolvedName,
+          studentBI: resolvedBI,
+          courseTitle: enrollment.courseTitle,
+          modality: enrollment.modality,
+          workloadHours: course?.durationHours || existingCert.workloadHours || 24,
+          grade: resolvedGrade,
+          issuedDate: existingCert.issuedDate || issuedDate,
+        });
+
+      const updatedCert: CertificateItem = {
+        ...existingCert,
+        studentName: resolvedName,
+        certificateFileUrl: generatedPdfUrl,
+        certificateFileName:
+          pdfOptions?.certificateFileName ||
+          existingCert.certificateFileName ||
+          `Certificado_ALHAN_${existingCert.code}_${resolvedName.replace(/\s+/g, '_')}.pdf`,
+        studentBI: resolvedBI,
+        grade: resolvedGrade,
+        status: 'valido',
+      };
+      setCertificates((prev) => prev.map((c) => (c.id === existingCert.id ? updatedCert : c)));
+      setEnrollments((prev) =>
+        prev.map((e) =>
+          e.id === enrollment.id
+            ? {
+                ...e,
+                completed: true,
+                progressPercent: 100,
+                certificateId: updatedCert.id,
+                certificateSentAt: new Date().toISOString(),
+              }
+            : e
+        )
+      );
+      triggerNotification(
+        'Certificado disponível',
+        `Certificado em PDF Enviado para o Seu Painel: ${updatedCert.code}`,
+        `O Painel Administrativo enviou o seu Certificado em PDF da formação "${enrollment.courseTitle}" (${resolvedName}). Já pode baixá-lo em PDF no seu Painel do Aluno!`,
+        'ALUNO'
+      );
+      logActivity(
+        `Certificado em PDF enviado para o Painel do Aluno (${updatedCert.code}) — ${resolvedName}`
+      );
+      return updatedCert;
     }
 
-    const course = courses.find((c) => c.id === enrollment.courseId);
     const code = `ALHAN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const workloadHours = course?.durationHours || 24;
+    const pdfDataUrl =
+      pdfOptions?.certificateFileUrl ||
+      generateOfficialCertificatePdfDataUrl({
+        code,
+        studentName: resolvedName,
+        studentBI: resolvedBI,
+        courseTitle: enrollment.courseTitle,
+        modality: enrollment.modality || 'Online',
+        workloadHours,
+        grade: resolvedGrade,
+        issuedDate,
+      });
+
     const newCert: CertificateItem = {
       id: `cert-${Date.now()}`,
       code,
       studentId: enrollment.studentId,
-      studentName: enrollment.studentName,
-      studentBI: pdfOptions?.studentBI || '',
-      studentPhone: enrollment.studentPhone,
-      studentEmail: enrollment.studentEmail,
+      studentName: resolvedName,
+      studentBI: resolvedBI,
+      studentPhone: enrollment.certificateRequestPhone || enrollment.studentPhone,
+      studentEmail: enrollment.certificateRequestEmail || enrollment.studentEmail,
       courseId: enrollment.courseId,
       courseTitle: enrollment.courseTitle,
       modality: enrollment.modality || 'Online',
-      workloadHours: course?.durationHours || 24,
-      grade: pdfOptions?.grade || 'Aprovado',
-      issuedDate: new Date().toISOString().split('T')[0],
+      workloadHours,
+      grade: resolvedGrade,
+      issuedDate,
       responsibleName: 'Direcção Pedagógica – ALHAN SGI',
       responsibleRole: 'Coordenação de Formação Profissional',
       status: 'valido',
-      certificateFileUrl: pdfOptions?.certificateFileUrl || '',
+      certificateFileUrl: pdfDataUrl,
       certificateFileName:
         pdfOptions?.certificateFileName ||
-        (pdfOptions?.certificateFileUrl
-          ? `Certificado_${enrollment.studentName.replace(/\s+/g, '_')}.pdf`
-          : undefined),
+        `Certificado_ALHAN_${code}_${resolvedName.replace(/\s+/g, '_')}.pdf`,
       isDemo: false,
       createdAt: new Date().toISOString(),
     };
@@ -1261,17 +1547,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setEnrollments((prev) =>
       prev.map((e) =>
         e.id === enrollment.id
-          ? { ...e, completed: true, progressPercent: 100, certificateId: newCert.id }
+          ? {
+              ...e,
+              completed: true,
+              progressPercent: 100,
+              certificateId: newCert.id,
+              certificateSentAt: new Date().toISOString(),
+            }
           : e
       )
     );
     triggerNotification(
       'Certificado disponível',
-      `Certificado Emitido: ${code}`,
-      `O certificado de conclusão da formação "${enrollment.courseTitle}" encontra-se disponível em PDF no Painel do Aluno.`,
+      `Certificado em PDF Enviado para o Seu Painel: ${code}`,
+      `O Painel Administrativo enviou o seu Certificado de Conclusão da formação "${enrollment.courseTitle}" em PDF para o seu Painel do Aluno. Já pode baixá-lo!`,
       'ALUNO'
     );
-    logActivity(`Certificado emitido (${code}) para ${enrollment.studentName}`);
+    logActivity(`Certificado em PDF emitido e enviado para o Painel do Aluno (${code}) — ${resolvedName}`);
     return newCert;
   };
 
@@ -1354,7 +1646,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : 'Contacto Institucional';
 
     triggerNotification('Nova mensagem', `Novo ${label}`, `${item.contactName} (${item.companyName || 'Individual'}) enviou um pedido.`, 'ADMIN');
-    logActivity(`Submissão de formulário (${label}): ${item.contactName}`);
+    notifyAdminAndEmailGeral({
+      panelOrigin: item.type === 'diagnostico' ? 'PAINEL_EMPRESA' : 'INSCRICAO_CURSO',
+      subject: `Novo ${label} — ${item.companyName || item.contactName}`,
+      applicantName: `${item.contactName} (${item.companyName || 'Individual'})`,
+      applicantEmail: item.email,
+      applicantPhone: item.whatsapp || item.phone,
+      details: `Tipo: ${label} | Norma/Curso: ${item.targetStandard} | Província: ${item.province} | Mensagem: ${item.message}`,
+    });
+    logActivity(`Submissão de formulário (${label}): ${item.contactName} — Notificado Painel Admin e geral@alhan.pro`);
 
     if (auth.currentUser && auth.currentUser.emailVerified) {
       const path = `diagnosticRequests/${id}`;
@@ -1453,6 +1753,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         nonConformities,
         diagnosticRequests,
         notifications,
+        emailNotifications,
         testimonials,
         panelCredentials,
         updatePanelCredential,

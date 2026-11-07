@@ -86,6 +86,12 @@ export interface EnrollmentItem {
   completed: boolean;
   certificateRequested?: boolean;
   certificateRequestedAt?: string;
+  certificateRequestName?: string;
+  certificateRequestBI?: string;
+  certificateRequestEmail?: string;
+  certificateRequestPhone?: string;
+  certificateRequestNotes?: string;
+  certificateSentAt?: string;
   certificateId?: string;
   createdAt: string;
 }
@@ -221,6 +227,23 @@ export interface NotificationItem {
   message: string;
   targetRole: UserRole | 'ALL';
   read: boolean;
+  createdAt: string;
+}
+
+export interface AdminEmailNotificationItem {
+  id: string;
+  recipientEmail: string;
+  panelOrigin:
+    | 'PAINEL_PROFESSOR'
+    | 'PAINEL_ALUNO'
+    | 'PAINEL_EMPRESA'
+    | 'INSCRICAO_CURSO'
+    | 'SOLICITACAO_CERTIFICADO';
+  subject: string;
+  applicantName: string;
+  applicantEmail: string;
+  applicantPhone: string;
+  details: string;
   createdAt: string;
 }
 
