@@ -84,6 +84,9 @@ export interface EnrollmentItem {
   completedLessons: string[];
   quizScore?: number;
   completed: boolean;
+  certificateRequested?: boolean;
+  certificateRequestedAt?: string;
+  certificateId?: string;
   createdAt: string;
 }
 
@@ -274,22 +277,13 @@ export interface PanelCredentialItem {
 
 export const INITIAL_PANEL_CREDENTIALS: PanelCredentialItem[] = [
   {
-    role: 'SUPER_ADMIN',
-    panelName: 'Painel Super Administrativo Central (Acesso Separado)',
+    role: 'ADMIN',
+    panelName: 'Painel do Administrador Único ALHAN (Controlo Total)',
     route: '/gestao-alhan-sgi',
     username: 'alhan.admin',
     email: 'admin@alhan.pro',
     password: 'Alhan@2026',
-    description: 'Link exclusivo e oculto do site público · Controlo total da plataforma e autorização de professores.',
-  },
-  {
-    role: 'ADMIN',
-    panelName: 'Painel Administrativo Operacional (Acesso Separado)',
-    route: '/gestao-alhan-sgi',
-    username: 'gestao.alhan',
-    email: 'gestao@alhan.pro',
-    password: 'Alhan@2026',
-    description: 'Validação de pagamentos (Express / Banco Sol), inscrições, certificados QR e aprovação de formadores.',
+    description: 'Administrador único com acesso total: aceita professores, controla alunos, gere cursos/videoaulas/materiais, valida pagamentos e emite certificados PDF (máx. 2MB).',
   },
   {
     role: 'PROFESSOR',
@@ -316,7 +310,7 @@ export const INITIAL_PANEL_CREDENTIALS: PanelCredentialItem[] = [
     username: 'aluno',
     email: 'aluno@alhan.pro',
     password: 'user',
-    description: 'Acesso aos cursos inscritos, aulas em vídeo, avaliações, progresso e download de certificados.',
+    description: 'Acesso aos cursos inscritos, aulas em vídeo, materiais, solicitação e download de certificados em PDF.',
   },
 ];
 
@@ -337,6 +331,26 @@ export interface HeroSlideItem {
 }
 
 export const HERO_SLIDES: HeroSlideItem[] = [
+  {
+    id: 'slide-sgi-destaque',
+    kicker: 'FORMAÇÃO EM SISTEMA DE GESTÃO INTEGRADO (SGI) · ANGOLA & MUNDO',
+    headline: 'Formação em SGI (ISO 9001, ISO 14001 e ISO 45001) e HSE.',
+    headlinePrefix: 'Formação Especializada em ',
+    headlineHighlight: 'Sistema de Gestão Integrado (SGI) & HSE',
+    headlineSuffix: ' em Angola.',
+    description:
+      'Invista no seu conhecimento e lidere a implementação de Qualidade (ISO 9001), Ambiente (ISO 14001) e Segurança e Saúde no Trabalho (ISO 45001 / HSE). Assista ao vídeo motivacional sobre a Formação SGI e inscreva-se já!',
+    highlights: [
+      'Formação SGI e HSE Online (Microsoft Teams) & Presencial em Luanda',
+      'Certificado Reconhecido em PDF com Validação Pública QR Code',
+      'Videoaulas Gravadas, Material Didático em PDF e Aplicação Prática',
+    ],
+    image: '/assets/aistudio/sgi_764c3f34.jpg',
+    thumbnailLabel: 'Formação SGI',
+    caption: 'Formação em Sistema de Gestão Integrado (SGI) — ISO 9001 · ISO 14001 · ISO 45001 · Luanda, Angola',
+    primaryCta: { label: 'Inscrever-se Agora na Formação SGI', to: '/formacoes' },
+    secondaryCta: { label: 'Política e Canais de Pagamento', to: '/politica-pagamentos' },
+  },
   {
     id: 'slide-hse-novembro',
     kicker: 'FORMAÇÃO EM DESTAQUE · TURMA DE NOVEMBRO · VAGAS LIMITADAS',

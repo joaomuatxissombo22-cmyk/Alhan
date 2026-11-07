@@ -62,7 +62,7 @@ const PanelAccessGate: React.FC<{
   panelSubtitle: string;
   children: (onLockPanel: () => void) => React.ReactNode;
 }> = ({ allowedRoles, defaultRole, panelTitle, panelSubtitle, children }) => {
-  const { user, loginWithCredentials, registerAccount, logout } = useApp();
+  const { user, loginWithCredentials, registerAccount, resetPasswordByEmail, logout } = useApp();
   const navigate = useNavigate();
 
   const isRegistrationRequiredRole =
@@ -70,9 +70,12 @@ const PanelAccessGate: React.FC<{
     defaultRole === 'CLIENTE_EMPRESARIAL' ||
     defaultRole === 'PROFESSOR';
 
-  const [gateMode, setGateMode] = useState<'login' | 'registo'>('login');
+  const [gateMode, setGateMode] = useState<'login' | 'registo' | 'recuperar'>('login');
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+  const [resetEmailInput, setResetEmailInput] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
 
   // Registration fields for Aluno / Professor / Cliente Empresarial
   const [regFullName, setRegFullName] = useState('');
@@ -207,7 +210,19 @@ const PanelAccessGate: React.FC<{
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setResetSuccessMsg(null);
     try {
+      if (gateMode === 'recuperar') {
+        const acc = await resetPasswordByEmail(resetEmailInput, resetNewPassword);
+        setResetSuccessMsg(
+          `Palavra-passe de ${acc.fullName} (${acc.email}) redefinida com sucesso! Já pode iniciar sessão com a nova palavra-passe.`
+        );
+        setUsernameInput(acc.email);
+        setPasswordInput('');
+        setGateMode('login');
+        return;
+      }
+
       if (gateMode === 'registo' && isRegistrationRequiredRole) {
         await registerAccount({
           fullName: regFullName,
@@ -237,9 +252,9 @@ const PanelAccessGate: React.FC<{
   };
 
   return (
-    <div className="py-14 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="py-10 sm:py-14 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-5">
+        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 sm:p-8 shadow-sm space-y-5">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-[#061A2D] text-[#19B5FE] flex items-center justify-center shrink-0">
               <Lock className="w-5 h-5" />
@@ -251,7 +266,7 @@ const PanelAccessGate: React.FC<{
           </div>
 
           {isRegistrationRequiredRole && (
-            <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
+            <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-lg">
               <button
                 type="button"
                 onClick={() => {
@@ -262,37 +277,57 @@ const PanelAccessGate: React.FC<{
                   gateMode === 'login' ? 'bg-white text-[#061A2D] shadow-sm' : 'text-slate-600'
                 }`}
               >
-                Já sou Inscrito (Login)
+                Login
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setGateMode('registo');
                   setErrorMsg(null);
+                  setResetSuccessMsg(null);
                 }}
                 className={`py-2 text-xs font-bold rounded-md ${
                   gateMode === 'registo' ? 'bg-white text-[#061A2D] shadow-sm' : 'text-slate-600'
                 }`}
               >
-                {defaultRole === 'PROFESSOR'
-                  ? 'Inscrever-se como Professor'
-                  : 'Cadastrar Conta Agora'}
+                {defaultRole === 'PROFESSOR' ? 'Inscrever Professor' : 'Cadastrar Conta'}
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGateMode('recuperar');
+                  setErrorMsg(null);
+                  setResetSuccessMsg(null);
+                }}
+                className={`py-2 text-xs font-bold rounded-md ${
+                  gateMode === 'recuperar' ? 'bg-white text-[#0077C8] shadow-sm' : 'text-slate-600'
+                }`}
+              >
+                Redefinir Senha
+              </button>
+            </div>
+          )}
+
+          {resetSuccessMsg && (
+            <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 font-semibold leading-relaxed">
+              {resetSuccessMsg}
             </div>
           )}
 
           <p className="text-xs text-slate-600 leading-relaxed">
             {isRegistrationRequiredRole
-              ? gateMode === 'registo'
+              ? gateMode === 'recuperar'
+                ? 'Esqueceu a sua palavra-passe? Introduza o seu E-mail registado de Aluno ou Formador e defina uma nova palavra-passe.'
+                : gateMode === 'registo'
                 ? defaultRole === 'ALUNO'
                   ? 'Preencha os seus dados abaixo para criar a sua conta de Aluno e activar o seu Painel LMS privado.'
                   : defaultRole === 'PROFESSOR'
                   ? 'Preencha os seus dados abaixo para se inscrever como Professor / Formador. Após a inscrição, aguarde a autorização do Painel Administrativo para aceder ao painel docente.'
                   : 'Preencha os dados da sua organização abaixo para cadastrar a sua empresa e activar o Painel do Cliente Empresarial.'
                 : defaultRole === 'PROFESSOR'
-                ? 'Acesso público para inscrição de Professores e Formadores. Inicie sessão com a sua conta docente ou clique em «Inscrever-se como Professor» (sujeito a autorização do Painel Administrativo).'
+                ? 'Acesso público para inscrição de Professores e Formadores. Inicie sessão com a sua conta docente ou clique em «Inscrever Professor» (sujeito a autorização do Administrador).'
                 : 'Este painel é exclusivo para utilizadores cadastrados. Introduza o seu Utilizador/E-mail e Senha ou cadastre a sua conta.'
-              : 'Ambiente administrativo separado do site público. Introduza o Utilizador (User) e a Senha exclusivos da Administração ALHAN.'}
+              : 'Ambiente administrativo separado do site público (alhan.pro/gestao-alhan-sgi). Introduza o Utilizador (User) e a Senha do Administrador Único ALHAN.'}
           </p>
 
           {errorMsg && (
@@ -412,6 +447,41 @@ const PanelAccessGate: React.FC<{
                     : 'Concluir Cadastro e Abrir Meu Painel Privado'}
                 </button>
               </>
+            ) : gateMode === 'recuperar' && isRegistrationRequiredRole ? (
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    E-mail Registado do Aluno ou Formador *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={resetEmailInput}
+                    onChange={(e) => setResetEmailInput(e.target.value)}
+                    placeholder="Introduza o seu e-mail registado"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    Nova Palavra-passe *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={resetNewPassword}
+                    onChange={(e) => setResetNewPassword(e.target.value)}
+                    placeholder="Crie a sua nova palavra-passe (mín. 4 caracteres)"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+                >
+                  Redefinir Palavra-passe com E-mail
+                </button>
+              </>
             ) : (
               <>
                 <div>
@@ -441,6 +511,21 @@ const PanelAccessGate: React.FC<{
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
                   />
                 </div>
+
+                {isRegistrationRequiredRole && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGateMode('recuperar');
+                        setErrorMsg(null);
+                      }}
+                      className="text-[11px] font-bold text-amber-700 hover:underline"
+                    >
+                      Esqueceu a palavra-passe? Redefinir com E-mail
+                    </button>
+                  </div>
+                )}
 
                 <button
                   type="submit"
@@ -527,6 +612,7 @@ export const StudentPortal: React.FC = () => {
     submitStudentPaymentProof,
     completeLesson,
     issueCertificate,
+    requestCertificate,
     logout,
   } = useApp();
   const navigate = useNavigate();
@@ -959,16 +1045,63 @@ export const StudentPortal: React.FC = () => {
                           </div>
                         )}
 
-                        {enr.completed && enr.paymentStatus === 'Pago' && (
-                          <button
-                            onClick={async () => {
-                              await issueCertificate(enr);
-                              setActiveTab('Certificados');
-                            }}
-                            className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold"
-                          >
-                            Obter Certificado QR
-                          </button>
+                        {enr.paymentStatus === 'Pago' && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {(() => {
+                              const linkedCert = myCertificates.find(
+                                (c) =>
+                                  c.courseId === enr.courseId ||
+                                  (enr.certificateId && c.id === enr.certificateId)
+                              );
+                              if (linkedCert) {
+                                return (
+                                  <>
+                                    {linkedCert.certificateFileUrl ? (
+                                      <a
+                                        href={linkedCert.certificateFileUrl}
+                                        download={
+                                          linkedCert.certificateFileName ||
+                                          `Certificado_${linkedCert.code}.pdf`
+                                        }
+                                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm"
+                                      >
+                                        <Download className="w-3.5 h-3.5" />
+                                        <span>Baixar Certificado PDF (Adicionado pelo Admin)</span>
+                                      </a>
+                                    ) : (
+                                      <Link
+                                        to={`/consultar-certificado?codigo=${encodeURIComponent(
+                                          linkedCert.code
+                                        )}`}
+                                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold"
+                                      >
+                                        <Award className="w-3.5 h-3.5" />
+                                        <span>Ver / Baixar Certificado ({linkedCert.code})</span>
+                                      </Link>
+                                    )}
+                                  </>
+                                );
+                              }
+                              if (enr.certificateRequested) {
+                                return (
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold">
+                                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                    <span>Certificado Solicitado — Aguardando PDF do Administrador</span>
+                                  </span>
+                                );
+                              }
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => requestCertificate(enr.id)}
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold"
+                                >
+                                  <Award className="w-3.5 h-3.5" />
+                                  <span>Solicitar Certificado em PDF</span>
+                                </button>
+                              );
+                            })()}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1591,38 +1724,169 @@ export const StudentPortal: React.FC = () => {
             </div>
           )}
 
-        {/* Certificates Section */}
+        {/* Certificates Section (Solicitação pelo Aluno & Download de PDF Adicionado pelo Administrador) */}
         {(activeTab === 'Dashboard' || activeTab === 'Certificados') && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-            <h2 className="text-lg font-bold text-[#061A2D]">Meus Certificados Emitidos</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {myCertificates.map((cert) => (
-                <div
-                  key={cert.id}
-                  className="p-5 rounded-xl border border-slate-200 bg-[#F5F9FC] flex items-center justify-between gap-4"
-                >
-                  <div>
-                    <p className="text-xs font-mono-tabular font-bold text-[#0077C8]">{cert.code}</p>
-                    <h3 className="text-base font-bold text-[#061A2D] mt-0.5">{cert.courseTitle}</h3>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Carga Horária: {cert.workloadHours}h · Conclusão: {cert.issuedDate} · Estado: {cert.status}
-                    </p>
-                    <Link
-                      to={`/consultar-certificado?codigo=${encodeURIComponent(cert.code)}`}
-                      className="inline-block mt-3 text-xs font-semibold text-[#0077C8] hover:underline"
-                    >
-                      Visualizar Certificado Completo e QR Code →
-                    </Link>
-                  </div>
-                  <div className="p-2 bg-white rounded-lg border border-slate-200 shrink-0">
-                    <QRCodeSVG
-                      value={`https://www.alhan.pro/consultar-certificado?codigo=${cert.code}`}
-                      size={64}
-                    />
-                  </div>
-                </div>
-              ))}
+          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-lg font-bold text-[#061A2D]">
+                  Meus Certificados & Solicitação de Certificado em PDF
+                </h2>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Solicite aqui o seu certificado ao Administrador e descarregue o documento oficial em PDF (até 2MB) assim que for emitido e adicionado pela Administração.
+                </p>
+              </div>
             </div>
+
+            {/* Enrollments eligible for Certificate Request */}
+            {myEnrollments.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                  Estado de Emissão por Formação Inscrita
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {myEnrollments.map((enr) => {
+                    const issuedCert = myCertificates.find(
+                      (c) =>
+                        c.courseId === enr.courseId ||
+                        (enr.certificateId && c.id === enr.certificateId)
+                    );
+                    return (
+                      <div
+                        key={enr.id}
+                        className="p-4 rounded-xl border border-slate-200 bg-[#F5F9FC] flex flex-col justify-between gap-3"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold text-[#0077C8]">
+                              {enr.modality} · Pagamento: {enr.paymentStatus}
+                            </span>
+                            <span className="text-[11px] font-mono-tabular text-slate-500">
+                              Progresso: {enr.progressPercent}%
+                            </span>
+                          </div>
+                          <p className="text-sm font-bold text-[#061A2D] mt-1">{enr.courseTitle}</p>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
+                          {issuedCert ? (
+                            <div className="flex flex-wrap items-center gap-2 w-full">
+                              {issuedCert.certificateFileUrl ? (
+                                <a
+                                  href={issuedCert.certificateFileUrl}
+                                  download={
+                                    issuedCert.certificateFileName ||
+                                    `Certificado_${issuedCert.code}.pdf`
+                                  }
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Baixar Certificado em PDF (Adicionado pelo Admin)</span>
+                                </a>
+                              ) : (
+                                <Link
+                                  to={`/consultar-certificado?codigo=${encodeURIComponent(
+                                    issuedCert.code
+                                  )}`}
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Abrir & Baixar Certificado PDF ({issuedCert.code})</span>
+                                </Link>
+                              )}
+                            </div>
+                          ) : enr.paymentStatus !== 'Pago' ? (
+                            <span className="text-[11px] text-amber-800 font-semibold">
+                              Realize/valide primeiro o pagamento da formação para solicitar o seu certificado.
+                            </span>
+                          ) : enr.certificateRequested ? (
+                            <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
+                                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                <span>Solicitação Enviada ao Administrador — Aguardando PDF</span>
+                              </span>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => requestCertificate(enr.id)}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shadow-sm transition-colors"
+                            >
+                              <Award className="w-4 h-4" />
+                              <span>Solicitar Meu Certificado em PDF ao Administrador</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Issued Certificates Cards with Direct PDF Download */}
+            {myCertificates.length === 0 ? (
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
+                Assim que o Administrador emitir e anexar o seu Certificado em PDF (máx. 2MB), ele aparecerá aqui com botão de download directo.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                {myCertificates.map((cert) => (
+                  <div
+                    key={cert.id}
+                    className="p-5 rounded-xl border-2 border-emerald-500/30 bg-[#F5F9FC] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-extrabold uppercase">
+                          Certificado Oficial Emitido
+                        </span>
+                        <span className="text-xs font-mono-tabular font-bold text-[#0077C8]">
+                          {cert.code}
+                        </span>
+                      </div>
+                      <h3 className="text-base font-bold text-[#061A2D]">{cert.courseTitle}</h3>
+                      <p className="text-xs text-slate-600">
+                        Carga Horária: {cert.workloadHours}h · Emissão: {cert.issuedDate} · Estado:{' '}
+                        <strong className="text-emerald-700 uppercase">{cert.status}</strong>
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 pt-2">
+                        {cert.certificateFileUrl ? (
+                          <a
+                            href={cert.certificateFileUrl}
+                            download={cert.certificateFileName || `Certificado_${cert.code}.pdf`}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Baixar Certificado em PDF (Adicionado pelo Admin)</span>
+                          </a>
+                        ) : (
+                          <Link
+                            to={`/consultar-certificado?codigo=${encodeURIComponent(cert.code)}`}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Abrir e Baixar Certificado PDF</span>
+                          </Link>
+                        )}
+                        <Link
+                          to={`/consultar-certificado?codigo=${encodeURIComponent(cert.code)}`}
+                          className="text-xs font-semibold text-[#0077C8] hover:underline px-2 py-1"
+                        >
+                          Validador QR Público →
+                        </Link>
+                      </div>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-slate-200 shrink-0">
+                      <QRCodeSVG
+                        value={`https://alhan.pro/consultar-certificado?codigo=${cert.code}`}
+                        size={64}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -2357,6 +2621,9 @@ export const AdminPortal: React.FC = () => {
   const {
     registeredUsers,
     updateUserApprovalStatus,
+    resetPasswordByEmail,
+    deleteRegisteredUser,
+    deleteEnrollment,
     courses,
     isoStandards,
     enrollments,
@@ -2383,20 +2650,180 @@ export const AdminPortal: React.FC = () => {
   } = useApp();
 
   const registeredProfessors = registeredUsers.filter((u) => u.role === 'PROFESSOR');
+  const registeredStudents = registeredUsers.filter((u) => u.role === 'ALUNO');
   const pendingProfessorsCount = registeredProfessors.filter(
     (u) => !u.approvalStatus || u.approvalStatus === 'pendente'
   ).length;
+  const certRequestsCount = enrollments.filter(
+    (e) =>
+      e.certificateRequested &&
+      !certificates.some(
+        (c) => c.courseId === e.courseId && (c.studentId === e.studentId || c.id === e.certificateId)
+      )
+  ).length;
+
+  // Admin Password Reset by Email state (for any Student or Professor)
+  const [resetTargetEmail, setResetTargetEmail] = useState('');
+  const [resetTargetNewPass, setResetTargetNewPass] = useState('Alhan2026');
+  const [adminResetFeedback, setAdminResetFeedback] = useState<{
+    fullName: string;
+    email: string;
+    phone: string;
+    newPass: string;
+  } | null>(null);
+  const [adminResetError, setAdminResetError] = useState<string | null>(null);
+
+  const handleAdminPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminResetError(null);
+    setAdminResetFeedback(null);
+    try {
+      const updated = await resetPasswordByEmail(resetTargetEmail, resetTargetNewPass);
+      setAdminResetFeedback({
+        fullName: updated.fullName,
+        email: updated.email,
+        phone: updated.phone,
+        newPass: resetTargetNewPass,
+      });
+    } catch (err) {
+      setAdminResetError(err instanceof Error ? err.message : 'Erro ao redefinir palavra-passe.');
+    }
+  };
+
+  // Admin Course Material Didático & Recorded Video Lesson state
+  const [matCourseId, setMatCourseId] = useState<string>(courses[0]?.id || '');
+  const [matLessonTitle, setMatLessonTitle] = useState('');
+  const [matVideoUrl, setMatVideoUrl] = useState(
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
+  );
+  const [matDuration, setMatDuration] = useState(45);
+  const [matTitle, setMatTitle] = useState('');
+  const [matSummary, setMatSummary] = useState('');
+  const [matSuccessMsg, setMatSuccessMsg] = useState<string | null>(null);
+
+  const selectedMatCourse = courses.find((c) => c.id === matCourseId) || courses[0];
+
+  const handleAdminAddMaterialAndVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMatCourse || !matLessonTitle.trim()) return;
+    const updatedModules = [...selectedMatCourse.modules];
+    if (updatedModules.length === 0) {
+      updatedModules.push({
+        id: `mod-${Date.now()}`,
+        title: 'Módulo 1 — Conteúdo Programático e Aulas Gravadas',
+        lessons: [],
+      });
+    }
+    updatedModules[0] = {
+      ...updatedModules[0],
+      lessons: [
+        ...updatedModules[0].lessons,
+        {
+          id: `les-${Date.now()}`,
+          title: matLessonTitle.trim(),
+          durationMinutes: Number(matDuration) || 45,
+          videoUrl:
+            matVideoUrl.trim() ||
+            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+          materialTitle: matTitle.trim() || `Apostila e Material Didático — ${matLessonTitle.trim()} (PDF)`,
+          materialSummary:
+            matSummary.trim() ||
+            'Material didático oficial e guia prático da formação disponibilizado pela Administração ALHAN – SGI.',
+          quizQuestion: `Qual é a aplicação prática abordada na aula "${matLessonTitle.trim()}"?`,
+          quizOptions: [
+            'Implementação estruturada conforme os requisitos normativos e controlo de evidências',
+            'Execução sem registo documental',
+            'Aplicação facultativa',
+            'Nenhuma das opções anteriores',
+          ],
+          quizCorrectIndex: 0,
+        },
+      ],
+    };
+
+    await saveCourse({
+      ...selectedMatCourse,
+      lessonsCount: selectedMatCourse.lessonsCount + 1,
+      modules: updatedModules,
+    });
+    setMatLessonTitle('');
+    setMatTitle('');
+    setMatSummary('');
+    setMatSuccessMsg(
+      `Videoaula gravada e material didático adicionados com sucesso ao curso «${selectedMatCourse.title}»!`
+    );
+    setTimeout(() => setMatSuccessMsg(null), 4000);
+  };
+
+  const handleAdminDeleteLesson = async (course: CourseItem, moduleId: string, lessonId: string) => {
+    const updatedModules = course.modules.map((m) =>
+      m.id === moduleId ? { ...m, lessons: m.lessons.filter((l) => l.id !== lessonId) } : m
+    );
+    await saveCourse({
+      ...course,
+      lessonsCount: Math.max(0, course.lessonsCount - 1),
+      modules: updatedModules,
+    });
+  };
+
+  // Admin Emitir Certificado em PDF (<= 2MB) para Aluno Inscrito
+  const [certTargetEnrollment, setCertTargetEnrollment] = useState<EnrollmentItem | null>(null);
+  const [enrCertFileUrl, setEnrCertFileUrl] = useState('');
+  const [enrCertFileName, setEnrCertFileName] = useState('');
+  const [enrCertBI, setEnrCertBI] = useState('');
+  const [enrCertGrade, setEnrCertGrade] = useState('Aprovado com Distinção');
+  const [enrCertError, setEnrCertError] = useState<string | null>(null);
+  const [enrCertSuccess, setEnrCertSuccess] = useState<string | null>(null);
+
+  const MAX_CERT_PDF_BYTES = 2 * 1024 * 1024; // 2MB limit
+
+  const handleAdminEnrollmentCertPdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setEnrCertError(null);
+    if (!file) return;
+    if (file.size > MAX_CERT_PDF_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+      setEnrCertError(
+        `O ficheiro PDF excede o limite máximo de 2MB (Tamanho actual: ${sizeMb} MB). Por favor, seleccione um PDF com no máximo 2MB.`
+      );
+      e.target.value = '';
+      return;
+    }
+    setEnrCertFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setEnrCertFileUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleConfirmEnrollmentCertificatePdf = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!certTargetEnrollment) return;
+    setEnrCertError(null);
+    const cert = await issueCertificate(certTargetEnrollment, {
+      certificateFileUrl: enrCertFileUrl || undefined,
+      certificateFileName: enrCertFileName || undefined,
+      studentBI: enrCertBI.trim() || undefined,
+      grade: enrCertGrade.trim() || 'Aprovado',
+    });
+    setEnrCertSuccess(
+      `Certificado ${cert.code} emitido com sucesso para ${certTargetEnrollment.studentName}! O aluno já pode baixar o PDF no seu Painel do Aluno.`
+    );
+  };
 
   const buildProfessorWhatsAppUrl = (profName: string, profPhone: string, username: string) => {
     const phone = (profPhone || '').replace(/[^0-9]/g, '');
     const cleanPhone = phone.startsWith('244') ? phone : phone ? `244${phone}` : '244922021211';
-    const msg = `Olá, Prof./Formador(a) ${profName}! A sua inscrição no Painel do Professor da ALHAN – Sistema de Gestão Integrado (Utilizador: ${username}) foi AUTORIZADA e APROVADA pelo Painel Administrativo. Já pode iniciar sessão em https://www.alhan.pro/professor para gerir módulos, aulas e turmas. Bem-vindo(a) à equipa pedagógica ALHAN!`;
+    const msg = `Olá, Prof./Formador(a) ${profName}! A sua inscrição no Painel do Professor da ALHAN – Sistema de Gestão Integrado (Utilizador: ${username}) foi AUTORIZADA e APROVADA pelo Painel Administrativo. Já pode iniciar sessão em https://alhan.pro/professor para gerir módulos, aulas e turmas. Bem-vindo(a) à equipa pedagógica ALHAN!`;
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
   };
 
   const buildProfessorEmailUrl = (profName: string, profEmail: string, username: string) => {
     const subject = `Inscrição de Professor Autorizada - ALHAN Sistema de Gestão Integrado`;
-    const body = `Prezado(a) Prof./Formador(a) ${profName},\n\nInformamos que a sua inscrição no Painel do Professor da plataforma ALHAN – Sistema de Gestão Integrado foi AUTORIZADA pela Administração.\n\nUtilizador: ${username}\nLink de Acesso: https://www.alhan.pro/professor\nEstado: AUTORIZADO / ACTIVO\n\nAtenciosamente,\nDirecção Pedagógica – ALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA`;
+    const body = `Prezado(a) Prof./Formador(a) ${profName},\n\nInformamos que a sua inscrição no Painel do Professor da plataforma ALHAN – Sistema de Gestão Integrado foi AUTORIZADA pela Administração.\n\nUtilizador: ${username}\nLink de Acesso: https://alhan.pro/professor\nEstado: AUTORIZADO / ACTIVO\n\nAtenciosamente,\nDirecção Pedagógica – ALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA`;
     return `mailto:${profEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 
@@ -2427,11 +2854,21 @@ export const AdminPortal: React.FC = () => {
   const [presGrade, setPresGrade] = useState('Aprovado com Distinção (18 valores)');
   const [presFileUrl, setPresFileUrl] = useState('');
   const [presFileName, setPresFileName] = useState('');
+  const [presFileError, setPresFileError] = useState<string | null>(null);
   const [presSuccessMsg, setPresSuccessMsg] = useState<{ code: string; studentName: string; studentBI: string; phone?: string; email?: string } | null>(null);
 
   const handlePresencialFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setPresFileError(null);
     if (!file) return;
+    if (file.size > MAX_CERT_PDF_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+      setPresFileError(
+        `O ficheiro PDF do certificado não pode ter mais de 2MB (Tamanho seleccionado: ${sizeMb} MB). Seleccione um PDF até 2MB.`
+      );
+      e.target.value = '';
+      return;
+    }
     setPresFileName(file.name);
     const reader = new FileReader();
     reader.onload = () => {
@@ -2830,6 +3267,23 @@ export const AdminPortal: React.FC = () => {
                                     </a>
                                   </>
                                 )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setResetTargetEmail(prof.email);
+                                    setActiveModule('Utilizadores, Parceiros & Configurações');
+                                  }}
+                                  className="px-2.5 py-1.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-[11px]"
+                                >
+                                  Redefinir Senha
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteRegisteredUser(prof.uid)}
+                                  className="px-2.5 py-1.5 rounded bg-red-600 hover:bg-red-700 text-white font-bold text-[11px]"
+                                >
+                                  Eliminar Professor
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -2841,36 +3295,48 @@ export const AdminPortal: React.FC = () => {
               )}
             </div>
 
-            {/* Quick Pending Payments Table */}
+            {/* Quick Pending Payments & Enrolled Students Control Table */}
             <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-bold text-[#061A2D]">
-                  Pagamentos e Comprovativos Recentes (Express Angola, Unitel Money, Africell Money, KWiK)
-                </h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-base font-bold text-[#061A2D]">
+                    Controlo de Todos os Alunos Inscritos, Autorização de Formação Paga & Emissão de Certificado PDF (Máx. 2MB)
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Autorize formações pagas, emita certificados em PDF (máx. 2MB) para os alunos baixarem no seu painel, ou elimine inscrições.
+                  </p>
+                </div>
                 <button
                   onClick={() => setActiveModule('Inscrições & Pagamentos Angola')}
                   className="text-xs font-semibold text-[#0077C8] hover:underline"
                 >
-                  Gerir todos →
+                  Abrir módulo completo →
                 </button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-500">
-                      <th className="py-2.5 px-3">Aluno & Contacto</th>
+                      <th className="py-2.5 px-3">Aluno Inscrito & Contacto</th>
                       <th className="py-2.5 px-3">Formação</th>
                       <th className="py-2.5 px-3 text-right">Valor (Kz)</th>
                       <th className="py-2.5 px-3">Método / Referência</th>
                       <th className="py-2.5 px-3">Estado</th>
-                      <th className="py-2.5 px-3">Validação & Notificação</th>
+                      <th className="py-2.5 px-3">Acções do Administrador Único</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {enrollments.map((enr) => (
                       <tr key={enr.id} className="hover:bg-slate-50">
                         <td className="py-3 px-3">
-                          <p className="font-semibold text-[#061A2D]">{enr.studentName}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-semibold text-[#061A2D]">{enr.studentName}</p>
+                            {enr.certificateRequested && (
+                              <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-extrabold">
+                                Solicitou Certificado PDF
+                              </span>
+                            )}
+                          </div>
                           {enr.studentPhone && (
                             <p className="text-[11px] text-slate-500 font-mono-tabular flex items-center gap-1 mt-0.5">
                               <Phone className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
@@ -2893,7 +3359,16 @@ export const AdminPortal: React.FC = () => {
                         </td>
                         <td className="py-3 px-3 font-bold text-[#0077C8]">{enr.paymentStatus}</td>
                         <td className="py-3 px-3">
-                          <div className="space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {enr.paymentStatus !== 'Pago' && (
+                              <button
+                                type="button"
+                                onClick={() => updateEnrollmentStatus(enr.id, 'Pago')}
+                                className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold"
+                              >
+                                Autorizar Formação Paga
+                              </button>
+                            )}
                             <select
                               value={enr.paymentStatus}
                               onChange={(e) =>
@@ -2902,7 +3377,7 @@ export const AdminPortal: React.FC = () => {
                                   e.target.value as EnrollmentItem['paymentStatus']
                                 )
                               }
-                              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold w-full"
+                              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold"
                             >
                               <option>Pendente</option>
                               <option>Pago</option>
@@ -2910,28 +3385,27 @@ export const AdminPortal: React.FC = () => {
                               <option>Cancelado</option>
                               <option>Reembolsado</option>
                             </select>
-                            {enr.paymentStatus === 'Pago' && (
-                              <div className="flex items-center gap-1">
-                                <a
-                                  href={buildEnrollmentWhatsAppUrl(enr)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold"
-                                  title="Notificar no WhatsApp do Aluno"
-                                >
-                                  <Phone className="w-2.5 h-2.5" />
-                                  <span>WhatsApp</span>
-                                </a>
-                                <a
-                                  href={buildEnrollmentEmailUrl(enr)}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white text-[10px] font-bold"
-                                  title="Notificar por E-mail"
-                                >
-                                  <Mail className="w-2.5 h-2.5" />
-                                  <span>E-mail</span>
-                                </a>
-                              </div>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCertTargetEnrollment(enr);
+                                setEnrCertFileUrl('');
+                                setEnrCertFileName('');
+                                setEnrCertError(null);
+                                setEnrCertSuccess(null);
+                                setActiveModule('Inscrições & Pagamentos Angola');
+                              }}
+                              className="px-2.5 py-1 rounded bg-[#061A2D] hover:bg-[#0077C8] text-white text-[11px] font-bold"
+                            >
+                              Emitir Certificado PDF (≤2MB)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteEnrollment(enr.id)}
+                              className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[11px] font-bold"
+                            >
+                              Eliminar Aluno
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -3152,6 +3626,169 @@ export const AdminPortal: React.FC = () => {
                 </table>
               </div>
             </div>
+
+            {/* Adicionar Material Didático & Videoaula Gravada de Cada Curso */}
+            <div className="bg-white rounded-xl border-2 border-[#0077C8]/30 p-6 space-y-5">
+              <div>
+                <p className="text-xs font-bold text-[#0077C8] uppercase tracking-wider">
+                  Gestão Pedagógica pelo Administrador Único
+                </p>
+                <h2 className="text-base font-extrabold text-[#061A2D] mt-0.5">
+                  Adicionar Material Didático da Formação e Videoaula Gravada por Curso
+                </h2>
+                <p className="text-xs text-slate-600 mt-1">
+                  Seleccione qualquer curso abaixo para adicionar novas videoaulas gravadas e materiais didáticos (apostilas, manuais ISO/SGI e guias técnicos) directamente para os alunos inscritos.
+                </p>
+              </div>
+
+              {matSuccessMsg && (
+                <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-900">
+                  {matSuccessMsg}
+                </div>
+              )}
+
+              <form onSubmit={handleAdminAddMaterialAndVideo} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      1. Seleccionar Curso da Formação *
+                    </label>
+                    <select
+                      value={matCourseId}
+                      onChange={(e) => setMatCourseId(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#061A2D]"
+                    >
+                      {courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title} ({c.modality} · {c.lessonsCount} aulas)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      2. Duração da Videoaula (Minutos) *
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={5}
+                      value={matDuration}
+                      onChange={(e) => setMatDuration(Number(e.target.value))}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      3. Título da Videoaula Gravada *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={matLessonTitle}
+                      onChange={(e) => setMatLessonTitle(e.target.value)}
+                      placeholder="Ex: Aula Prática — Contexto da Organização e Matriz de Riscos SGI"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      4. Link / URL da Videoaula Gravada (MP4 / Stream) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={matVideoUrl}
+                      onChange={(e) => setMatVideoUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      5. Título do Material Didático da Formação (PDF / Manual) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={matTitle}
+                      onChange={(e) => setMatTitle(e.target.value)}
+                      placeholder="Ex: Manual Prático SGI ISO 9001/14001/45001 & Templates (PDF)"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      6. Resumo / Conteúdo do Material Didático *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={matSummary}
+                      onChange={(e) => setMatSummary(e.target.value)}
+                      placeholder="Descrição técnica, cláusulas normativas e orientações de estudo para o aluno..."
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Adicionar Videoaula Gravada & Material Didático ao Curso</span>
+                </button>
+              </form>
+
+              {/* List existing video lessons & materials of the selected course */}
+              {selectedMatCourse && (
+                <div className="pt-4 border-t border-slate-200 space-y-2">
+                  <p className="text-xs font-bold text-[#061A2D]">
+                    Videoaulas Gravadas e Materiais Didáticos Actuais de «{selectedMatCourse.title}»:
+                  </p>
+                  {selectedMatCourse.modules.flatMap((m) =>
+                    m.lessons.map((les) => ({ modId: m.id, modTitle: m.title, les }))
+                  ).length === 0 ? (
+                    <p className="text-xs text-slate-500">Nenhuma aula registada neste curso.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedMatCourse.modules.map((mod) =>
+                        mod.lessons.map((les) => (
+                          <div
+                            key={les.id}
+                            className="p-3 rounded-lg bg-[#F5F9FC] border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                          >
+                            <div>
+                              <span className="font-bold text-[#061A2D]">{les.title}</span>{' '}
+                              <span className="text-slate-500 font-mono-tabular">({les.durationMinutes} min)</span>
+                              <p className="text-[11px] text-[#0077C8] font-semibold mt-0.5">
+                                Material Didático: {les.materialTitle}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleAdminDeleteLesson(selectedMatCourse, mod.id, les.id)
+                              }
+                              className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[11px] shrink-0"
+                            >
+                              Remover Aula/Material
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -3186,15 +3823,119 @@ export const AdminPortal: React.FC = () => {
 
         {/* 3. INSCRIÇÕES E PAGAMENTOS ANGOLA (Section 12) */}
         {activeModule === 'Inscrições & Pagamentos Angola' && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-[#061A2D]">
-                Gestão de Inscrições e Validação Manual de Comprovativos (Secção 12)
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Altere o estado para «Pago» após validar o comprovativo (Express Angola, Unitel Money, Africell Money, KWiK) para libertar o acesso do aluno ao curso.
-              </p>
+          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-bold text-[#061A2D]">
+                  Controlo de Todos os Alunos Inscritos, Autorização de Formação Paga & Emissão de Certificado em PDF (Máx. 2MB)
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Autorize a formação paga («Pago»), emita o certificado dos alunos novos inscritos em PDF (máximo 2MB) para download no Painel do Aluno, ou elimine inscrições.
+                </p>
+              </div>
+              {certRequestsCount > 0 && (
+                <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-extrabold">
+                  {certRequestsCount} Solicitação(ões) de Certificado em PDF
+                </span>
+              )}
             </div>
+
+            {/* Modal / Painel para Emitir Certificado em PDF (<= 2MB) para Aluno Inscrito */}
+            {certTargetEnrollment && (
+              <form
+                onSubmit={handleConfirmEnrollmentCertificatePdf}
+                className="p-5 rounded-xl border-2 border-[#0077C8] bg-[#F5F9FC] space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-[#0077C8] uppercase">
+                      Emissão de Certificado de Aluno Inscrito (PDF até 2MB)
+                    </p>
+                    <h3 className="text-sm font-extrabold text-[#061A2D]">
+                      Aluno: {certTargetEnrollment.studentName} — Curso: {certTargetEnrollment.courseTitle}
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCertTargetEnrollment(null)}
+                    className="text-xs font-bold text-slate-500 hover:text-slate-800"
+                  >
+                    Fechar ✕
+                  </button>
+                </div>
+
+                {enrCertError && (
+                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs font-bold text-red-700">
+                    {enrCertError}
+                  </div>
+                )}
+
+                {enrCertSuccess && (
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-900">
+                    {enrCertSuccess}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      B.I. / NIF do Aluno (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={enrCertBI}
+                      onChange={(e) => setEnrCertBI(e.target.value.toUpperCase())}
+                      placeholder="Ex: 007891234LA042"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      Classificação / Aproveitamento
+                    </label>
+                    <input
+                      type="text"
+                      value={enrCertGrade}
+                      onChange={(e) => setEnrCertGrade(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      Anexar Certificado em PDF (Máximo 2MB) *
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      onChange={handleAdminEnrollmentCertPdfUpload}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-bold file:bg-[#061A2D] file:text-white"
+                    />
+                    {enrCertFileName && (
+                      <p className="text-[11px] text-emerald-700 font-bold mt-1">
+                        ✓ PDF validado (≤ 2MB): {enrCertFileName}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCertTargetEnrollment(null)}
+                    className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shadow-sm"
+                  >
+                    Confirmar e Disponibilizar Certificado PDF no Painel do Aluno
+                  </button>
+                </div>
+              </form>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
@@ -3205,14 +3946,21 @@ export const AdminPortal: React.FC = () => {
                     <th className="py-2.5 px-3">Método / Referência</th>
                     <th className="py-2.5 px-3">Nota do Comprovativo</th>
                     <th className="py-2.5 px-3">Estado</th>
-                    <th className="py-2.5 px-3">Notificação & Certificado</th>
+                    <th className="py-2.5 px-3">Autorização, Certificado PDF (≤2MB) & Eliminação</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {enrollments.map((enr) => (
                     <tr key={enr.id} className="hover:bg-slate-50">
                       <td className="py-3 px-3">
-                        <p className="font-semibold text-[#061A2D]">{enr.studentName}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-semibold text-[#061A2D]">{enr.studentName}</p>
+                          {enr.certificateRequested && (
+                            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-extrabold">
+                              Solicitou Certificado
+                            </span>
+                          )}
+                        </div>
                         {enr.studentPhone && (
                           <p className="text-[11px] text-slate-500 font-mono-tabular flex items-center gap-1 mt-0.5">
                             <Phone className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
@@ -3247,22 +3995,33 @@ export const AdminPortal: React.FC = () => {
                         )}
                       </td>
                       <td className="py-3 px-3">
-                        <select
-                          value={enr.paymentStatus}
-                          onChange={(e) =>
-                            updateEnrollmentStatus(
-                              enr.id,
-                              e.target.value as EnrollmentItem['paymentStatus']
-                            )
-                          }
-                          className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-[#061A2D]"
-                        >
-                          <option>Pendente</option>
-                          <option>Pago</option>
-                          <option>Falhado</option>
-                          <option>Cancelado</option>
-                          <option>Reembolsado</option>
-                        </select>
+                        <div className="space-y-1">
+                          <select
+                            value={enr.paymentStatus}
+                            onChange={(e) =>
+                              updateEnrollmentStatus(
+                                enr.id,
+                                e.target.value as EnrollmentItem['paymentStatus']
+                              )
+                            }
+                            className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-[#061A2D]"
+                          >
+                            <option>Pendente</option>
+                            <option>Pago</option>
+                            <option>Falhado</option>
+                            <option>Cancelado</option>
+                            <option>Reembolsado</option>
+                          </select>
+                          {enr.paymentStatus !== 'Pago' && (
+                            <button
+                              type="button"
+                              onClick={() => updateEnrollmentStatus(enr.id, 'Pago')}
+                              className="block w-full px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold"
+                            >
+                              ✓ Autorizar Pago
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-3">
                         <div className="flex flex-col gap-1.5">
@@ -3289,10 +4048,24 @@ export const AdminPortal: React.FC = () => {
                             </div>
                           )}
                           <button
-                            onClick={() => issueCertificate(enr)}
-                            className="px-2.5 py-1 rounded bg-[#061A2D] text-white font-semibold hover:bg-[#0077C8] text-[11px]"
+                            type="button"
+                            onClick={() => {
+                              setCertTargetEnrollment(enr);
+                              setEnrCertFileUrl('');
+                              setEnrCertFileName('');
+                              setEnrCertError(null);
+                              setEnrCertSuccess(null);
+                            }}
+                            className="px-2.5 py-1.5 rounded bg-[#061A2D] text-white font-bold hover:bg-[#0077C8] text-[11px]"
                           >
-                            Emitir Certificado LMS
+                            Emitir / Anexar Certificado PDF (≤2MB)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteEnrollment(enr.id)}
+                            className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[11px]"
+                          >
+                            Eliminar Aluno Inscrito
                           </button>
                         </div>
                       </td>
@@ -3525,21 +4298,26 @@ export const AdminPortal: React.FC = () => {
 
                       <div className="sm:col-span-2">
                         <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                          Anexar Ficheiro do Certificado (PDF ou Imagem Digitalizada)
+                          Anexar Ficheiro do Certificado em PDF (Tamanho Máximo: 2MB) *
                         </label>
+                        {presFileError && (
+                          <div className="mb-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs font-bold text-red-700">
+                            {presFileError}
+                          </div>
+                        )}
                         <div className="flex items-center gap-3">
                           <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100">
                             <Upload className="w-3.5 h-3.5 text-[#0077C8]" />
-                            <span>Seleccionar Ficheiro</span>
+                            <span>Seleccionar PDF (Máx. 2MB)</span>
                             <input
                               type="file"
-                              accept=".pdf,image/*"
+                              accept=".pdf,application/pdf,image/*"
                               onChange={handlePresencialFileUpload}
                               className="hidden"
                             />
                           </label>
                           <span className="text-xs text-slate-600 truncate max-w-xs font-mono-tabular">
-                            {presFileName ? presFileName : 'Nenhum ficheiro anexado (pode ser emitido sem anexo ou com template ALHAN)'}
+                            {presFileName ? `✓ ${presFileName} (≤ 2MB)` : 'Seleccione um ficheiro PDF até 2MB'}
                           </span>
                         </div>
                       </div>
@@ -4033,11 +4811,160 @@ export const AdminPortal: React.FC = () => {
                                 >
                                   Rejeitar
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setResetTargetEmail(prof.email)}
+                                  className="px-2.5 py-1.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-[11px]"
+                                >
+                                  Redefinir Senha com E-mail
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteRegisteredUser(prof.uid)}
+                                  className="px-2.5 py-1.5 rounded bg-red-600 hover:bg-red-700 text-white font-bold text-[11px]"
+                                >
+                                  Eliminar Professor
+                                </button>
                               </div>
                             </td>
                           </tr>
                         );
                       })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Controlo de Todos os Alunos Cadastrados & Redefinição de Palavra-passe com E-mail */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+              <div>
+                <h2 className="text-base font-bold text-[#061A2D]">
+                  Controlo de Alunos Cadastrados ({registeredStudents.length}) & Redefinição de Palavra-passe com E-mail
+                </h2>
+                <p className="text-xs text-slate-600 mt-1">
+                  O Administrador Único pode redefinir a palavra-passe de qualquer Aluno ou Formador com o respectivo E-mail caso se esqueça, ou eliminar contas de alunos/professores.
+                </p>
+              </div>
+
+              {/* Formulário de Redefinição de Palavra-passe por E-mail pelo Painel Administrativo */}
+              <form
+                onSubmit={handleAdminPasswordReset}
+                className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-3"
+              >
+                <p className="text-xs font-extrabold text-[#061A2D]">
+                  Redefinir Palavra-passe de Aluno ou Formador por E-mail
+                </p>
+                {adminResetError && (
+                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 font-semibold">
+                    {adminResetError}
+                  </div>
+                )}
+                {adminResetFeedback && (
+                  <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-2">
+                    <p className="font-bold">
+                      ✓ Palavra-passe de {adminResetFeedback.fullName} ({adminResetFeedback.email}) redefinida para:{' '}
+                      <code className="bg-white px-2 py-0.5 rounded border border-emerald-300 font-mono-tabular">
+                        {adminResetFeedback.newPass}
+                      </code>
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        href={`mailto:${adminResetFeedback.email}?subject=${encodeURIComponent(
+                          'Redefinição de Palavra-passe - ALHAN Sistema de Gestão Integrado'
+                        )}&body=${encodeURIComponent(
+                          `Prezado(a) ${adminResetFeedback.fullName},\n\nA sua palavra-passe na plataforma ALHAN – Sistema de Gestão Integrado (https://alhan.pro) foi redefinida pelo Painel Administrativo conforme solicitado.\n\nE-mail de Acesso: ${adminResetFeedback.email}\nNova Palavra-passe: ${adminResetFeedback.newPass}\n\nJá pode iniciar sessão em https://alhan.pro/login.\n\nAtenciosamente,\nAdministração ALHAN – SGI`
+                        )}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white font-bold text-[11px]"
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>Enviar Nova Senha por E-mail ({adminResetFeedback.email})</span>
+                      </a>
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#061A2D] mb-1">
+                      E-mail do Aluno ou Formador *
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={resetTargetEmail}
+                      onChange={(e) => setResetTargetEmail(e.target.value)}
+                      placeholder="email@exemplo.ao"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#061A2D] mb-1">
+                      Nova Palavra-passe a Definir *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={resetTargetNewPass}
+                      onChange={(e) => setResetTargetNewPass(e.target.value)}
+                      placeholder="Ex: Alhan2026"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular font-bold text-[#0077C8]"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="py-2 px-4 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold transition-colors"
+                  >
+                    Redefinir Palavra-passe com E-mail
+                  </button>
+                </div>
+              </form>
+
+              {registeredStudents.length === 0 ? (
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 text-xs text-slate-600">
+                  Ainda não existem novas contas de alunos registadas manualmente nesta sessão (os alunos inscritos em cursos podem ser geridos na tabela de Inscrições).
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500">
+                        <th className="py-2.5 px-3">Nome do Aluno</th>
+                        <th className="py-2.5 px-3">Utilizador (User)</th>
+                        <th className="py-2.5 px-3">E-mail & WhatsApp</th>
+                        <th className="py-2.5 px-3">Acções Administrativas</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {registeredStudents.map((stu) => (
+                        <tr key={stu.uid} className="hover:bg-slate-50">
+                          <td className="py-3 px-3 font-bold text-[#061A2D]">{stu.fullName}</td>
+                          <td className="py-3 px-3 font-mono-tabular font-bold text-[#0077C8]">
+                            {stu.username}
+                          </td>
+                          <td className="py-3 px-3">
+                            <p>{stu.email}</p>
+                            <p className="font-mono-tabular text-slate-500">{stu.phone}</p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setResetTargetEmail(stu.email)}
+                                className="px-2.5 py-1.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-[11px]"
+                              >
+                                Redefinir Senha com E-mail
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteRegisteredUser(stu.uid)}
+                                className="px-2.5 py-1.5 rounded bg-red-600 hover:bg-red-700 text-white font-bold text-[11px]"
+                              >
+                                Eliminar Aluno
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>

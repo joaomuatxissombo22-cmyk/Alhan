@@ -1,8 +1,7 @@
 User-agent: *
 Allow: /
+Disallow: /gestao-alhan-sgi
+Disallow: /painel-admin
 Disallow: /admin
-Disallow: /aluno
-Disallow: /professor
-Disallow: /empresa
 
-Sitemap: https://www.alhan.pro/sitemap.xml
+Sitemap: https://alhan.pro/sitemap.xml

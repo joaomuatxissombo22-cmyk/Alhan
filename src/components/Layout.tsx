@@ -10,6 +10,9 @@ import {
   ChevronRight,
   Lock,
   UserPlus,
+  Home,
+  BookOpen,
+  Award,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { COMPANY_INFO, UserRole } from '../data/initialData';
@@ -370,29 +373,43 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </div>
       </div>
 
-      {/* Mobile Drawer */}
+      {/* Mobile Menu Drawer (Full Navigation on Mobile Devices) */}
       {mobileMenuOpen && (
-        <div className="lg:hidden bg-[#061A2D] text-[#F5F9FC] border-b border-white/10 px-4 py-4 space-y-3">
-          <div className="grid grid-cols-2 gap-2 text-xs font-medium">
-            <Link to="/" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Início</Link>
-            <Link to="/quem-somos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Quem Somos</Link>
-            <Link to="/formacoes" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Nossas Formações</Link>
-            <Link to="/consultoria-iso" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Consultoria ISO</Link>
-            <Link to="/normas-iso" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Normas ISO</Link>
-            <Link to="/empresas" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Empresas e Cases</Link>
-            <Link to="/parceiros" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Parceiros</Link>
-            <Link to="/politica-pagamentos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5 text-[#19B5FE] font-semibold">Política de Pagamentos</Link>
-            <Link to="/consultar-certificado" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Validar Certificado</Link>
-            <Link to="/como-funciona" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Como Funciona</Link>
-            <Link to="/contactos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5">Contactos</Link>
-            <Link to="/professor" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg bg-white/5 text-[#19B5FE] font-semibold">Painel do Professor</Link>
+        <div className="lg:hidden bg-[#061A2D] text-[#F5F9FC] border-b border-white/15 px-4 py-4 space-y-3 shadow-2xl">
+          <div className="flex items-center justify-between pb-2 border-b border-white/10">
+            <span className="text-xs font-extrabold text-[#19B5FE] uppercase tracking-wider">
+              Menu Principal ALHAN – SGI (alhan.pro)
+            </span>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              className="p-1.5 rounded-lg bg-white/10 text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs font-semibold">
+            <Link to="/" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Início</Link>
+            <Link to="/formacoes" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-[#0077C8]/30 border border-[#19B5FE]/30 text-white min-h-[42px] flex items-center">Formações SGI & HSE</Link>
+            <Link to="/quem-somos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Quem Somos</Link>
+            <Link to="/consultoria-iso" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Consultoria ISO</Link>
+            <Link to="/normas-iso" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Normas ISO</Link>
+            <Link to="/consultar-certificado" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Validar Certificado</Link>
+            <Link to="/aluno" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 text-[#19B5FE] min-h-[42px] flex items-center">Painel do Aluno</Link>
+            <Link to="/professor" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 text-amber-300 min-h-[42px] flex items-center">Painel do Professor</Link>
+            <Link to="/empresa" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 text-[#19B5FE] min-h-[42px] flex items-center">Painel Empresa ISO</Link>
+            <Link to="/politica-pagamentos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 text-emerald-300 min-h-[42px] flex items-center">Política de Pagamentos</Link>
+            <Link to="/como-funciona" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Como Funciona & FAQ</Link>
+            <Link to="/empresas" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Empresas e Cases</Link>
+            <Link to="/solicitar-diagnostico" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Solicitar Diagnóstico</Link>
+            <Link to="/contactos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Contactos</Link>
           </div>
           <div className="pt-2 border-t border-white/10 flex flex-wrap gap-2">
             {user && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' ? (
               <Link
                 to={ROLE_PORTAL_PATHS[user.role]}
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#0077C8] text-white text-xs font-bold"
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#0077C8] text-white text-xs font-bold min-h-[44px]"
               >
                 <Lock className="w-3.5 h-3.5" />
                 <span>Aceder ao Meu Painel ({ROLE_LABELS[user.role]})</span>
@@ -402,7 +419,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                 <Link
                   to="/login"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-white/10 text-white text-xs font-bold"
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-white/10 text-white text-xs font-bold min-h-[44px]"
                 >
                   <Lock className="w-3.5 h-3.5 text-[#19B5FE]" />
                   <span>Iniciar Sessão</span>
@@ -410,7 +427,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                 <Link
                   to="/registo"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#0077C8] text-white text-xs font-bold"
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#0077C8] text-white text-xs font-bold min-h-[44px]"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
                   <span>Cadastrar Conta</span>
@@ -560,9 +577,9 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             </div>
           </div>
 
-          <div className="mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#9AA6AE]">
+          <div className="mt-10 pt-6 pb-16 lg:pb-0 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#9AA6AE]">
             <p>© {new Date().getFullYear()} {COMPANY_INFO.legalName} · Todos os direitos reservados.</p>
-            <p>Luanda – Angola · NIF {COMPANY_INFO.nif}</p>
+            <p>Luanda – Angola · NIF {COMPANY_INFO.nif} · {COMPANY_INFO.website}</p>
           </div>
         </div>
       </footer>
@@ -574,12 +591,84 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Contactar a Alhan no WhatsApp"
-          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 text-xs font-bold shadow-lg transition-transform hover:scale-105"
+          className="fixed bottom-20 lg:bottom-5 right-4 lg:right-5 z-40 inline-flex items-center gap-2 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 text-xs font-bold shadow-lg transition-transform hover:scale-105"
         >
           <MessageCircle className="w-5 h-5" />
           <span className="hidden sm:inline">WhatsApp Alhan</span>
         </a>
       )}
+
+      {/* Fixed Mobile Bottom Navigation Bar (Thumb-Zone Ergonomics for Smartphones) */}
+      <nav
+        aria-label="Menu rápido para dispositivos móveis"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#061A2D]/95 backdrop-blur-md border-t border-white/15 text-[#F5F9FC]"
+      >
+        <div className="grid grid-cols-5 items-center h-14 px-1">
+          <Link
+            to="/"
+            onClick={() => setMobileMenuOpen(false)}
+            className={`flex flex-col items-center justify-center h-full text-[10px] font-semibold transition-colors ${
+              location.pathname === '/' ? 'text-[#19B5FE]' : 'text-[#9AA6AE] hover:text-white'
+            }`}
+          >
+            <Home className="w-4 h-4" />
+            <span className="mt-0.5 truncate">Início</span>
+          </Link>
+          <Link
+            to="/formacoes"
+            onClick={() => setMobileMenuOpen(false)}
+            className={`flex flex-col items-center justify-center h-full text-[10px] font-semibold transition-colors ${
+              location.pathname.startsWith('/formacoes') ? 'text-[#19B5FE]' : 'text-[#9AA6AE] hover:text-white'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span className="mt-0.5 truncate">Formações</span>
+          </Link>
+          <Link
+            to="/consultar-certificado"
+            onClick={() => setMobileMenuOpen(false)}
+            className={`flex flex-col items-center justify-center h-full text-[10px] font-semibold transition-colors ${
+              location.pathname.startsWith('/consultar-certificado') || location.pathname.startsWith('/certificados')
+                ? 'text-[#19B5FE]'
+                : 'text-[#9AA6AE] hover:text-white'
+            }`}
+          >
+            <Award className="w-4 h-4" />
+            <span className="mt-0.5 truncate">Certificado</span>
+          </Link>
+          <Link
+            to={
+              user && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN'
+                ? ROLE_PORTAL_PATHS[user.role]
+                : '/aluno'
+            }
+            onClick={() => setMobileMenuOpen(false)}
+            className={`flex flex-col items-center justify-center h-full text-[10px] font-semibold transition-colors ${
+              location.pathname.startsWith('/aluno') ||
+              location.pathname.startsWith('/professor') ||
+              location.pathname.startsWith('/empresa')
+                ? 'text-[#19B5FE]'
+                : 'text-[#9AA6AE] hover:text-white'
+            }`}
+          >
+            <Lock className="w-4 h-4" />
+            <span className="mt-0.5 truncate">Painéis</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileMenuOpen((prev) => !prev);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`flex flex-col items-center justify-center h-full text-[10px] font-semibold transition-colors ${
+              mobileMenuOpen ? 'text-[#19B5FE]' : 'text-[#9AA6AE] hover:text-white'
+            }`}
+          >
+            {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+            <span className="mt-0.5 truncate">Menu</span>
+          </button>
+        </div>
+      </nav>
 
       {/* Official Announcement Modal for HSE Training */}
       <SgiAnnouncementModal />

@@ -95,6 +95,10 @@ interface AppContextValue {
   panelCredentials: PanelCredentialItem[];
   updatePanelCredential: (role: UserRole, username: string, email: string, password: string) => void;
   updateUserApprovalStatus: (uid: string, status: 'pendente' | 'aprovado' | 'rejeitado') => void;
+  resetPasswordByEmail: (emailOrUser: string, newPassword: string) => Promise<RegisteredUserAccount>;
+  deleteRegisteredUser: (uid: string) => void;
+  deleteEnrollment: (enrollmentId: string) => Promise<void>;
+  requestCertificate: (enrollmentId: string) => Promise<void>;
   activityLogs: { id: string; action: string; actor: string; timestamp: string }[];
   pushPermission: NotificationPermission | 'unsupported';
   requestPushPermission: () => Promise<void>;
@@ -150,7 +154,15 @@ interface AppContextValue {
   }) => Promise<EnrollmentItem>;
   updateEnrollmentStatus: (enrollmentId: string, status: EnrollmentItem['paymentStatus']) => Promise<void>;
   completeLesson: (enrollmentId: string, lessonId: string, totalLessons: number, quizScore?: number) => Promise<void>;
-  issueCertificate: (enrollment: EnrollmentItem) => Promise<CertificateItem>;
+  issueCertificate: (
+    enrollment: EnrollmentItem,
+    pdfOptions?: {
+      certificateFileUrl?: string;
+      certificateFileName?: string;
+      studentBI?: string;
+      grade?: string;
+    }
+  ) => Promise<CertificateItem>;
   addPresencialCertificate: (item: {
     studentName: string;
     studentBI?: string;
@@ -258,11 +270,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return INITIAL_PANEL_CREDENTIALS.map((initCred) => {
       const existing = stored.find((s) => s.role === initCred.role);
       if (!existing) return initCred;
-      // Ensure the separate admin route (/gestao-alhan-sgi) and updated default admin credentials are synced
-      if (initCred.role === 'SUPER_ADMIN' || initCred.role === 'ADMIN') {
+      // Ensure the single Unified Administrator route (/gestao-alhan-sgi) and credentials (alhan.admin / Alhan@2026) are synced
+      if (initCred.role === 'ADMIN') {
         const isOldDefault =
           existing.username === 'superadmin' ||
           existing.username === 'admin' ||
+          existing.username === 'gestao.alhan' ||
           existing.password === 'user';
         return {
           ...existing,
@@ -555,6 +568,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const resetPasswordByEmail = async (
+    emailOrUser: string,
+    newPassword: string
+  ): Promise<RegisteredUserAccount> => {
+    const cleanTarget = emailOrUser.trim().toLowerCase();
+    const cleanPass = newPassword.trim();
+    if (!cleanTarget) {
+      throw new Error('Por favor, informe o e-mail ou utilizador registado.');
+    }
+    if (cleanPass.length < 4) {
+      throw new Error('A nova palavra-passe deve ter pelo menos 4 caracteres.');
+    }
+
+    const found = registeredUsers.find(
+      (u) =>
+        u.email.toLowerCase() === cleanTarget ||
+        u.username.toLowerCase() === cleanTarget
+    );
+
+    if (!found) {
+      throw new Error(
+        `Nenhuma conta de Aluno ou Formador foi encontrada com o e-mail/utilizador "${emailOrUser}". Verifique se digitou correctamente.`
+      );
+    }
+
+    const updatedAccount: RegisteredUserAccount = {
+      ...found,
+      password: cleanPass,
+    };
+
+    setRegisteredUsers((prev) =>
+      prev.map((u) => (u.uid === found.uid ? updatedAccount : u))
+    );
+
+    triggerNotification(
+      'Novo registo',
+      `Palavra-passe Redefinida (${found.role})`,
+      `A palavra-passe da conta de ${found.fullName} (${found.email}) foi redefinida com sucesso.`,
+      'ADMIN'
+    );
+    logActivity(`Palavra-passe redefinida via e-mail para ${found.fullName} (${found.email})`);
+
+    return updatedAccount;
+  };
+
+  const deleteRegisteredUser = (uid: string) => {
+    const target = registeredUsers.find((u) => u.uid === uid);
+    setRegisteredUsers((prev) => prev.filter((u) => u.uid !== uid));
+    if (target) {
+      // Also clean up any enrollments tied to this deleted student if applicable
+      if (target.role === 'ALUNO') {
+        setEnrollments((prev) =>
+          prev.filter(
+            (e) =>
+              e.studentId !== uid &&
+              e.studentEmail?.toLowerCase() !== target.email.toLowerCase()
+          )
+        );
+      }
+      logActivity(
+        `Conta de ${target.role === 'PROFESSOR' ? 'Professor/Formador' : 'Aluno/Utilizador'} eliminada pelo Administrador: ${target.fullName} (${target.email})`
+      );
+    }
+  };
+
+  const deleteEnrollment = async (enrollmentId: string) => {
+    const target = enrollments.find((e) => e.id === enrollmentId);
+    setEnrollments((prev) => prev.filter((e) => e.id !== enrollmentId));
+    if (target) {
+      logActivity(
+        `Inscrição eliminada pelo Administrador: ${target.studentName} (${target.courseTitle})`
+      );
+    }
+  };
+
+  const requestCertificate = async (enrollmentId: string) => {
+    const target = enrollments.find((e) => e.id === enrollmentId);
+    const nowIso = new Date().toISOString();
+    setEnrollments((prev) =>
+      prev.map((e) =>
+        e.id === enrollmentId
+          ? { ...e, certificateRequested: true, certificateRequestedAt: nowIso }
+          : e
+      )
+    );
+    if (target) {
+      triggerNotification(
+        'Certificado disponível',
+        `Solicitação de Certificado: ${target.studentName}`,
+        `O aluno ${target.studentName} solicitou a emissão do certificado em PDF para o curso "${target.courseTitle}".`,
+        'ADMIN'
+      );
+      logActivity(
+        `Aluno ${target.studentName} solicitou emissão de certificado em PDF (${target.courseTitle})`,
+        target.studentName
+      );
+    }
+  };
+
   const loginWithCredentials = async (
     identifier: string,
     password: string,
@@ -576,7 +688,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (registeredMatch) {
       if (registeredMatch.password !== cleanPass) {
-        throw new Error('Palavra-passe incorrecta para esta conta registada.');
+        throw new Error('Palavra-passe incorrecta para esta conta registada. Se esqueceu a senha, utilize a opção «Redefinir Palavra-passe com E-mail».');
       }
       const approvalStatus =
         registeredMatch.approvalStatus ||
@@ -598,42 +710,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return active.role;
     }
 
-    // 2. Check Dedicated Separate Administrative Credentials (alhan.admin / gestao.alhan / Alhan@2026) & Internal Panel Credentials
+    // 2. Check Single Unified Administrator Credentials (alhan.admin / admin@alhan.pro / Alhan@2026)
     if (
-      (cleanId === 'alhan.admin' || cleanId === 'admin@alhan.pro' || cleanId === 'superadmin') &&
+      (cleanId === 'alhan.admin' ||
+        cleanId === 'admin@alhan.pro' ||
+        cleanId === 'gestao.alhan' ||
+        cleanId === 'gestao@alhan.pro' ||
+        cleanId === 'admin' ||
+        cleanId === 'superadmin') &&
       (cleanPass === 'Alhan@2026' || cleanPass === 'Alhan@SGI2026')
     ) {
       const active: ActiveUser = {
-        uid: 'staff-super_admin',
-        fullName: 'Super Administrador ALHAN',
+        uid: 'staff-admin-unico',
+        fullName: 'Administrador Geral ALHAN – SGI',
         username: 'alhan.admin',
         email: 'admin@alhan.pro',
-        phone: '+244 922 021 211',
-        role: 'SUPER_ADMIN',
-        companyId: 'alhan-sgi',
-        approvalStatus: 'aprovado',
-      };
-      setUser(active);
-      logActivity('Acesso privado autorizado ao Painel Administrativo Central (SUPER_ADMIN)', active.fullName);
-      return 'SUPER_ADMIN';
-    }
-
-    if (
-      (cleanId === 'gestao.alhan' || cleanId === 'gestao@alhan.pro' || cleanId === 'admin') &&
-      (cleanPass === 'Alhan@2026' || cleanPass === 'Alhan@SGI2026')
-    ) {
-      const active: ActiveUser = {
-        uid: 'staff-admin',
-        fullName: 'Gestor Operacional ALHAN',
-        username: 'gestao.alhan',
-        email: 'gestao@alhan.pro',
         phone: '+244 922 021 211',
         role: 'ADMIN',
         companyId: 'alhan-sgi',
         approvalStatus: 'aprovado',
       };
       setUser(active);
-      logActivity('Acesso privado autorizado ao Painel Administrativo Operacional (ADMIN)', active.fullName);
+      logActivity('Acesso total autorizado ao Painel do Administrador Único ALHAN (ADMIN)', active.fullName);
       return 'ADMIN';
     }
 
@@ -1082,11 +1180,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logActivity(`Progresso de aula registado (${lessonId})`);
   };
 
-  const issueCertificate = async (enrollment: EnrollmentItem) => {
+  const issueCertificate = async (
+    enrollment: EnrollmentItem,
+    pdfOptions?: {
+      certificateFileUrl?: string;
+      certificateFileName?: string;
+      studentBI?: string;
+      grade?: string;
+    }
+  ) => {
     const existingCert = certificates.find(
-      (c) => c.studentId === enrollment.studentId && c.courseId === enrollment.courseId
+      (c) =>
+        (c.studentId === enrollment.studentId && c.courseId === enrollment.courseId) ||
+        (enrollment.certificateId && c.id === enrollment.certificateId)
     );
-    if (existingCert) return existingCert;
+
+    if (existingCert) {
+      if (pdfOptions?.certificateFileUrl || pdfOptions?.studentBI || pdfOptions?.grade) {
+        const updatedCert: CertificateItem = {
+          ...existingCert,
+          certificateFileUrl: pdfOptions.certificateFileUrl || existingCert.certificateFileUrl,
+          certificateFileName:
+            pdfOptions.certificateFileName ||
+            existingCert.certificateFileName ||
+            `Certificado_${enrollment.studentName.replace(/\s+/g, '_')}.pdf`,
+          studentBI: pdfOptions.studentBI || existingCert.studentBI,
+          grade: pdfOptions.grade || existingCert.grade || 'Aprovado',
+          status: 'valido',
+        };
+        setCertificates((prev) => prev.map((c) => (c.id === existingCert.id ? updatedCert : c)));
+        setEnrollments((prev) =>
+          prev.map((e) =>
+            e.id === enrollment.id
+              ? { ...e, completed: true, progressPercent: 100, certificateId: updatedCert.id }
+              : e
+          )
+        );
+        triggerNotification(
+          'Certificado disponível',
+          `Certificado PDF Actualizado: ${updatedCert.code}`,
+          `O Administrador anexou o certificado em PDF para "${enrollment.courseTitle}" (${enrollment.studentName}). Já disponível para download no Painel do Aluno.`,
+          'ALUNO'
+        );
+        logActivity(`Certificado PDF anexado/actualizado (${updatedCert.code}) para ${enrollment.studentName}`);
+        return updatedCert;
+      }
+      return existingCert;
+    }
 
     const course = courses.find((c) => c.id === enrollment.courseId);
     const code = `ALHAN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -1095,25 +1235,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       code,
       studentId: enrollment.studentId,
       studentName: enrollment.studentName,
+      studentBI: pdfOptions?.studentBI || '',
       studentPhone: enrollment.studentPhone,
       studentEmail: enrollment.studentEmail,
       courseId: enrollment.courseId,
       courseTitle: enrollment.courseTitle,
       modality: enrollment.modality || 'Online',
       workloadHours: course?.durationHours || 24,
+      grade: pdfOptions?.grade || 'Aprovado',
       issuedDate: new Date().toISOString().split('T')[0],
       responsibleName: 'Direcção Pedagógica – ALHAN SGI',
       responsibleRole: 'Coordenação de Formação Profissional',
       status: 'valido',
+      certificateFileUrl: pdfOptions?.certificateFileUrl || '',
+      certificateFileName:
+        pdfOptions?.certificateFileName ||
+        (pdfOptions?.certificateFileUrl
+          ? `Certificado_${enrollment.studentName.replace(/\s+/g, '_')}.pdf`
+          : undefined),
       isDemo: false,
       createdAt: new Date().toISOString(),
     };
 
     setCertificates((prev) => [newCert, ...prev]);
+    setEnrollments((prev) =>
+      prev.map((e) =>
+        e.id === enrollment.id
+          ? { ...e, completed: true, progressPercent: 100, certificateId: newCert.id }
+          : e
+      )
+    );
     triggerNotification(
       'Certificado disponível',
       `Certificado Emitido: ${code}`,
-      `O certificado de conclusão da formação "${enrollment.courseTitle}" encontra-se disponível.`,
+      `O certificado de conclusão da formação "${enrollment.courseTitle}" encontra-se disponível em PDF no Painel do Aluno.`,
       'ALUNO'
     );
     logActivity(`Certificado emitido (${code}) para ${enrollment.studentName}`);
@@ -1302,6 +1457,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         panelCredentials,
         updatePanelCredential,
         updateUserApprovalStatus,
+        resetPasswordByEmail,
+        deleteRegisteredUser,
+        deleteEnrollment,
+        requestCertificate,
         activityLogs,
         pushPermission,
         requestPushPermission,

@@ -1629,7 +1629,7 @@ export const DiagnosticAndContactPage: React.FC<{ mode: 'diagnostico' | 'contact
 };
 
 export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ initialMode }) => {
-  const { loginWithGoogle, loginWithCredentials, registerAccount } = useApp();
+  const { loginWithGoogle, loginWithCredentials, registerAccount, resetPasswordByEmail } = useApp();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<'login' | 'registo' | 'recuperar'>(initialMode);
@@ -1643,6 +1643,7 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [recoverySent, setRecoverySent] = useState(false);
+  const [recoveredAccountName, setRecoveredAccountName] = useState('');
 
   const [specialty, setSpecialty] = useState('Sistemas de Gestão Integrado (ISO 9001, ISO 14001, ISO 45001) & HSE');
 
@@ -1658,7 +1659,17 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
     setErrorMsg(null);
 
     if (mode === 'recuperar') {
-      setRecoverySent(true);
+      try {
+        if (password !== confirmPassword) {
+          setErrorMsg('A nova palavra-passe e a confirmação não coincidem.');
+          return;
+        }
+        const updated = await resetPasswordByEmail(email, password);
+        setRecoveredAccountName(updated.fullName);
+        setRecoverySent(true);
+      } catch (err) {
+        setErrorMsg(err instanceof Error ? err.message : 'Erro ao redefinir a palavra-passe por e-mail.');
+      }
       return;
     }
 
@@ -1695,10 +1706,10 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
   };
 
   return (
-    <div className="py-14 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="py-10 sm:py-14 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left: Login / Register Form */}
-        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
+        {/* Left: Login / Register / Reset Password Form */}
+        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 sm:p-8 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
             <img
               src={COMPANY_INFO.logoPath}
@@ -1708,34 +1719,36 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
             />
             <div>
               <p className="text-xs font-bold text-[#0077C8]">Controlo de Acesso · ALHAN SGI</p>
-              <h1 className="text-xl font-extrabold text-[#061A2D]">
+              <h1 className="text-lg sm:text-xl font-extrabold text-[#061A2D]">
                 {mode === 'login'
                   ? 'Iniciar Sessão no Seu Painel'
                   : mode === 'registo'
                   ? 'Cadastro de Aluno, Professor ou Cliente Empresarial'
-                  : 'Recuperar Palavra-passe'}
+                  : 'Redefinir Palavra-passe com E-mail (Aluno / Formador)'}
               </h1>
             </div>
           </div>
 
           {/* Mode Switcher */}
-          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg mb-6">
+          <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-lg mb-6">
             <button
               type="button"
               onClick={() => {
                 setMode('login');
+                setRecoverySent(false);
                 setErrorMsg(null);
               }}
               className={`py-2 text-xs font-bold rounded-md ${
                 mode === 'login' ? 'bg-white text-[#061A2D] shadow-sm' : 'text-slate-600'
               }`}
             >
-              Iniciar Sessão (Login)
+              Iniciar Sessão
             </button>
             <button
               type="button"
               onClick={() => {
                 setMode('registo');
+                setRecoverySent(false);
                 if (role !== 'ALUNO' && role !== 'CLIENTE_EMPRESARIAL' && role !== 'PROFESSOR') {
                   setRole('ALUNO');
                 }
@@ -1745,7 +1758,22 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                 mode === 'registo' ? 'bg-white text-[#061A2D] shadow-sm' : 'text-slate-600'
               }`}
             >
-              Criar Conta / Cadastrar
+              Criar Conta
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('recuperar');
+                setRecoverySent(false);
+                setPassword('');
+                setConfirmPassword('');
+                setErrorMsg(null);
+              }}
+              className={`py-2 text-xs font-bold rounded-md ${
+                mode === 'recuperar' ? 'bg-white text-[#0077C8] shadow-sm' : 'text-slate-600'
+              }`}
+            >
+              Redefinir Senha
             </button>
           </div>
 
@@ -1756,223 +1784,280 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
           )}
 
           {mode === 'recuperar' && recoverySent ? (
-            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-3">
-              <p>
-                Instruções de recuperação de palavra-passe registadas para <strong>{email}</strong>.
+            <div className="p-5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-3">
+              <p className="font-extrabold text-sm text-emerald-900">
+                Palavra-passe redefinida com sucesso!
               </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('login');
-                  setRecoverySent(false);
-                }}
-                className="px-4 py-2 rounded-lg bg-[#061A2D] text-white font-semibold"
-              >
-                Voltar ao Login
-              </button>
+              <p className="leading-relaxed">
+                A palavra-passe da conta de <strong>{recoveredAccountName || email}</strong> (E-mail: <strong>{email}</strong>) foi actualizada no sistema ALHAN – SGI. Já pode iniciar sessão com a sua nova palavra-passe.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('login');
+                    setRecoverySent(false);
+                  }}
+                  className="px-4 py-2.5 rounded-lg bg-[#061A2D] hover:bg-[#0c2742] text-white font-bold"
+                >
+                  Iniciar Sessão Agora com a Nova Senha →
+                </button>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                  {mode === 'registo'
-                    ? 'Tipo de Conta a Cadastrar *'
-                    : 'Painel de Destino *'}
-                </label>
-                {mode === 'registo' ? (
-                  <select
-                    value={
-                      role === 'CLIENTE_EMPRESARIAL'
-                        ? 'CLIENTE_EMPRESARIAL'
-                        : role === 'PROFESSOR'
-                        ? 'PROFESSOR'
-                        : 'ALUNO'
-                    }
-                    onChange={(e) => setRole(e.target.value as UserRole)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs bg-white focus:border-[#0077C8] focus:outline-none font-bold text-[#061A2D]"
-                  >
-                    <option value="ALUNO">ALUNO (Activar Painel do Aluno / Academia LMS)</option>
-                    <option value="PROFESSOR">
-                      PROFESSOR / FORMADOR (Inscrever-se e Aguardar Autorização Administrativa)
-                    </option>
-                    <option value="CLIENTE_EMPRESARIAL">
-                      CLIENTE EMPRESARIAL (Activar Painel de Consultoria ISO da Empresa)
-                    </option>
-                  </select>
-                ) : (
-                  <select
-                    value={role === 'ADMIN' || role === 'SUPER_ADMIN' ? 'ALUNO' : role}
-                    onChange={(e) => setRole(e.target.value as UserRole)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs bg-white focus:border-[#0077C8] focus:outline-none font-bold text-[#061A2D]"
-                  >
-                    <option value="ALUNO">Painel do Aluno (Academia LMS)</option>
-                    <option value="PROFESSOR">Painel do Professor / Formador</option>
-                    <option value="CLIENTE_EMPRESARIAL">
-                      Painel do Cliente Empresarial (Consultoria ISO)
-                    </option>
-                  </select>
-                )}
-              </div>
-
-              {mode === 'registo' && role === 'PROFESSOR' && (
-                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
-                  <strong>Nota para Professores e Formadores:</strong> O Painel do Professor é aberto para inscrição pública. Contudo, após concluir a sua inscrição abaixo, a sua conta ficará em estado <strong>«Aguardando Autorização»</strong> até que a Direcção valide o seu registo no Painel Administrativo.
-                </div>
-              )}
-
-              {mode === 'registo' && (
+              {mode === 'recuperar' ? (
                 <>
+                  <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-200 text-xs text-slate-700 leading-relaxed">
+                    <strong>Redefinição de Palavra-passe por E-mail (Aluno ou Formador):</strong> Caso tenha esquecido a sua palavra-passe, introduza abaixo o seu <strong>E-mail registado</strong> na plataforma e defina a sua nova palavra-passe.
+                  </div>
                   <div>
                     <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                      1.{' '}
-                      {role === 'CLIENTE_EMPRESARIAL'
-                        ? 'Nome do Responsável / Representante *'
-                        : role === 'PROFESSOR'
-                        ? 'Nome Completo do Professor / Formador *'
-                        : 'Nome Completo do Aluno *'}
+                      1. E-mail Registado do Aluno ou Formador *
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Introduza o seu nome completo"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
-                    />
-                  </div>
-
-                  {role === 'CLIENTE_EMPRESARIAL' && (
-                    <div>
-                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                        Designação Social da Empresa / Organização *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={companyName}
-                        onChange={(e) => setCompanyName(e.target.value)}
-                        placeholder="Ex: Empresa Industrial de Luanda, Lda"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
-                      />
-                    </div>
-                  )}
-
-                  {role === 'PROFESSOR' && (
-                    <div>
-                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                        Especialidade Técnica / Normas e Áreas que Leciona *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={specialty}
-                        onChange={(e) => setSpecialty(e.target.value)}
-                        placeholder="Ex: Auditor Líder ISO 9001, HSE, Segurança no Trabalho, ISO 14001..."
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#061A2D] mb-1">2. E-mail *</label>
                     <input
                       type="email"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="utilizador@empresa.ao"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                      placeholder="Ex: joao.mateus@email.ao"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                      3. Telefone / WhatsApp *
+                      2. Nova Palavra-passe *
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Crie a sua nova palavra-passe (mín. 4 caracteres)"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      3. Confirmar Nova Palavra-passe *
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Repita a nova palavra-passe"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      {mode === 'registo'
+                        ? 'Tipo de Conta a Cadastrar *'
+                        : 'Painel de Destino *'}
+                    </label>
+                    {mode === 'registo' ? (
+                      <select
+                        value={
+                          role === 'CLIENTE_EMPRESARIAL'
+                            ? 'CLIENTE_EMPRESARIAL'
+                            : role === 'PROFESSOR'
+                            ? 'PROFESSOR'
+                            : 'ALUNO'
+                        }
+                        onChange={(e) => setRole(e.target.value as UserRole)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs bg-white focus:border-[#0077C8] focus:outline-none font-bold text-[#061A2D]"
+                      >
+                        <option value="ALUNO">ALUNO (Activar Painel do Aluno / Academia LMS)</option>
+                        <option value="PROFESSOR">
+                          PROFESSOR / FORMADOR (Inscrever-se e Aguardar Autorização Administrativa)
+                        </option>
+                        <option value="CLIENTE_EMPRESARIAL">
+                          CLIENTE EMPRESARIAL (Activar Painel de Consultoria ISO da Empresa)
+                        </option>
+                      </select>
+                    ) : (
+                      <select
+                        value={role === 'ADMIN' || role === 'SUPER_ADMIN' ? 'ALUNO' : role}
+                        onChange={(e) => setRole(e.target.value as UserRole)}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs bg-white focus:border-[#0077C8] focus:outline-none font-bold text-[#061A2D]"
+                      >
+                        <option value="ALUNO">Painel do Aluno (Academia LMS)</option>
+                        <option value="PROFESSOR">Painel do Professor / Formador</option>
+                        <option value="CLIENTE_EMPRESARIAL">
+                          Painel do Cliente Empresarial (Consultoria ISO)
+                        </option>
+                      </select>
+                    )}
+                  </div>
+
+                  {mode === 'registo' && role === 'PROFESSOR' && (
+                    <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
+                      <strong>Nota para Professores e Formadores:</strong> O Painel do Professor é aberto para inscrição pública. Contudo, após concluir a sua inscrição abaixo, a sua conta ficará em estado <strong>«Aguardando Autorização»</strong> até que o Administrador valide o seu registo no Painel Administrativo.
+                    </div>
+                  )}
+
+                  {mode === 'registo' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          1.{' '}
+                          {role === 'CLIENTE_EMPRESARIAL'
+                            ? 'Nome do Responsável / Representante *'
+                            : role === 'PROFESSOR'
+                            ? 'Nome Completo do Professor / Formador *'
+                            : 'Nome Completo do Aluno *'}
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                          placeholder="Introduza o seu nome completo"
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                        />
+                      </div>
+
+                      {role === 'CLIENTE_EMPRESARIAL' && (
+                        <div>
+                          <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                            Designação Social da Empresa / Organização *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={companyName}
+                            onChange={(e) => setCompanyName(e.target.value)}
+                            placeholder="Ex: Empresa Industrial de Luanda, Lda"
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                          />
+                        </div>
+                      )}
+
+                      {role === 'PROFESSOR' && (
+                        <div>
+                          <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                            Especialidade Técnica / Normas e Áreas que Leciona *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={specialty}
+                            onChange={(e) => setSpecialty(e.target.value)}
+                            placeholder="Ex: Auditor Líder ISO 9001, HSE, Segurança no Trabalho, ISO 14001..."
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                          />
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">2. E-mail *</label>
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="utilizador@empresa.ao"
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          3. Telefone / WhatsApp *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      {mode === 'registo' ? '4. Nome de Utilizador (User) *' : 'Utilizador (User) ou E-mail *'}
                     </label>
                     <input
                       type="text"
                       required
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      value={mode === 'registo' ? username : email}
+                      onChange={(e) =>
+                        mode === 'registo' ? setUsername(e.target.value) : setEmail(e.target.value)
+                      }
+                      placeholder={
+                        mode === 'registo'
+                          ? 'Ex: joao.mateus'
+                          : 'Introduza o seu utilizador ou e-mail'
+                      }
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      {mode === 'registo' ? '5. Criar Palavra-passe *' : 'Palavra-passe (Senha) *'}
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Introduza a sua palavra-passe"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
+                    />
+                  </div>
+
+                  {mode === 'registo' && (
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        6. Confirmar Palavra-passe *
+                      </label>
+                      <input
+                        type="password"
+                        required
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Repita a palavra-passe"
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  {mode === 'login' && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setMode('registo')}
+                        className="text-[11px] font-bold text-[#0077C8] hover:underline"
+                      >
+                        Ainda não tem conta? Cadastrar →
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMode('recuperar');
+                          setPassword('');
+                          setConfirmPassword('');
+                          setErrorMsg(null);
+                        }}
+                        className="text-[11px] font-bold text-amber-700 hover:underline"
+                      >
+                        Esqueceu a palavra-passe? Redefinir com E-mail
+                      </button>
+                    </div>
+                  )}
                 </>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                  {mode === 'registo' ? '4. Nome de Utilizador (User) *' : 'Utilizador (User) ou E-mail *'}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={mode === 'registo' ? username : email}
-                  onChange={(e) =>
-                    mode === 'registo' ? setUsername(e.target.value) : setEmail(e.target.value)
-                  }
-                  placeholder={
-                    mode === 'registo'
-                      ? 'Ex: joao.mateus'
-                      : 'Introduza o seu utilizador ou e-mail'
-                  }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
-                />
-              </div>
-
-              {mode !== 'recuperar' && (
-                <div>
-                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                    {mode === 'registo' ? '5. Criar Palavra-passe *' : 'Palavra-passe (Senha) *'}
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Introduza a sua palavra-passe"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular focus:border-[#0077C8] focus:outline-none"
-                  />
-                </div>
-              )}
-
-              {mode === 'registo' && (
-                <div>
-                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                    6. Confirmar Palavra-passe *
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repita a palavra-passe"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
-                  />
-                </div>
-              )}
-
-              {mode === 'login' && (
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setMode('registo')}
-                    className="text-[11px] font-bold text-[#0077C8] hover:underline"
-                  >
-                    Ainda não tem conta? Cadastrar Aluno / Professor / Empresa →
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMode('recuperar')}
-                    className="text-[11px] font-semibold text-slate-500 hover:underline"
-                  >
-                    Esqueceu a palavra-passe?
-                  </button>
-                </div>
               )}
 
               <button
                 type="submit"
-                className="w-full py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
+                className="w-full py-3 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors"
               >
                 {mode === 'login'
                   ? 'Autenticar e Entrar no Painel'
@@ -1980,7 +2065,7 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                   ? role === 'PROFESSOR'
                     ? 'Submeter Inscrição de Professor para Autorização'
                     : 'Concluir Cadastro e Activar Meu Painel'
-                  : 'Enviar Instruções'}
+                  : 'Redefinir Palavra-passe com E-mail'}
               </button>
             </form>
           )}
