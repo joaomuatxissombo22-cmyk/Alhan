@@ -44,6 +44,9 @@ export interface CourseItem {
   livePlatform?: 'Microsoft Teams' | 'Zoom' | 'Google Meet' | 'Jitsi';
   featured?: boolean;
   featuredBadge?: string;
+  firstInstallmentKz?: number;
+  secondInstallmentKz?: number;
+  courseStartDate?: string;
   createdAt: string;
 }
 
@@ -58,12 +61,47 @@ export interface IsoStandardItem {
   sectorsInAngola: string[];
 }
 
+export type InstallmentStatus = 'Pendente' | 'Pago' | 'Em atraso';
+
+export interface PaymentHistoryEntry {
+  id: string;
+  installment: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
+  installmentLabel?: string;
+  amountKz: number;
+  dueDate: string;
+  paidAt?: string;
+  recordedAt?: string;
+  method: string;
+  reference: string;
+  status: InstallmentStatus;
+  confirmedBy?: string;
+  note?: string;
+}
+
+export interface DataAuditCandidateItem {
+  id: string;
+  category: 'FORMANDO' | 'INSCRICAO' | 'CERTIFICADO' | 'SOLICITACAO_CERTIFICADO';
+  title: string;
+  subtitle?: string;
+  identifier: string;
+  reason: string;
+  classification:
+    | 'REGISTO_TESTE_INICIAL'
+    | 'DUPLICADO'
+    | 'SEM_VALIDADE_REAL'
+    | 'DADO_LEGITIMO_PRESERVADO';
+  recommendedAction: 'ELIMINAR_APOS_CONFIRMACAO' | 'PRESERVAR';
+  suggestedForDeletion?: boolean;
+  createdAt: string;
+}
+
 export interface EnrollmentItem {
   id: string;
   studentId: string;
   studentName: string;
   studentPhone?: string;
   studentEmail?: string;
+  studentBI?: string;
   courseId: string;
   courseTitle: string;
   modality: 'Online' | 'Presencial' | 'Híbrida';
@@ -80,6 +118,20 @@ export interface EnrollmentItem {
   receiptFileUrl?: string;
   receiptFileName?: string;
   paymentStatus: 'Pendente' | 'Pago' | 'Falhado' | 'Cancelado' | 'Reembolsado';
+  enrollmentApprovalStatus?: 'pendente' | 'aprovado' | 'rejeitado';
+  courseStartDate?: string;
+  firstInstallmentAmountKz?: number;
+  firstInstallmentDueDate?: string;
+  firstInstallmentStatus?: InstallmentStatus;
+  firstInstallmentPaidAt?: string;
+  firstInstallmentReference?: string;
+  secondInstallmentAmountKz?: number;
+  secondInstallmentDueDate?: string;
+  secondInstallmentStatus?: InstallmentStatus;
+  secondInstallmentPaidAt?: string;
+  secondInstallmentReference?: string;
+  secondInstallmentNotifiedAt?: string;
+  paymentHistory?: PaymentHistoryEntry[];
   progressPercent: number;
   completedLessons: string[];
   quizScore?: number;
@@ -93,6 +145,7 @@ export interface EnrollmentItem {
   certificateRequestNotes?: string;
   certificateSentAt?: string;
   certificateId?: string;
+  enrolledAt?: string;
   createdAt: string;
 }
 
@@ -185,6 +238,7 @@ export interface CertificateItem {
   workloadHours: number;
   grade?: string;
   issuedDate: string;
+  issuedAt?: string;
   responsibleName: string;
   responsibleRole: string;
   status: 'valido' | 'cancelado' | 'expirado';
@@ -1572,6 +1626,7 @@ export const INITIAL_ENROLLMENTS: EnrollmentItem[] = [
     studentName: 'Manuel João Mateus',
     studentPhone: '+244 923 456 789',
     studentEmail: 'manuel.mateus@empresa.ao',
+    studentBI: '005432198LA031',
     courseId: 'curso-sgi-01',
     courseTitle: 'Sistema de Gestão Integrado – SGI',
     modality: 'Híbrida',
@@ -1580,6 +1635,44 @@ export const INITIAL_ENROLLMENTS: EnrollmentItem[] = [
     paymentReference: 'EXP-992817',
     receiptNote: 'Comprovativo Multicaixa Express validado pela administração.',
     paymentStatus: 'Pago',
+    enrollmentApprovalStatus: 'aprovado',
+    courseStartDate: '2026-02-01',
+    firstInstallmentAmountKz: 72500,
+    firstInstallmentDueDate: '2026-02-01',
+    firstInstallmentStatus: 'Pago',
+    firstInstallmentPaidAt: '2026-02-01',
+    firstInstallmentReference: 'EXP-992817-P1',
+    secondInstallmentAmountKz: 72500,
+    secondInstallmentDueDate: '2026-02-08',
+    secondInstallmentStatus: 'Pago',
+    secondInstallmentPaidAt: '2026-02-07',
+    secondInstallmentReference: 'EXP-992817-P2',
+    paymentHistory: [
+      {
+        id: 'pay-hist-01',
+        installment: '1ª Parcela',
+        amountKz: 72500,
+        dueDate: '2026-02-01',
+        paidAt: '2026-02-01',
+        method: 'Express Angola',
+        reference: 'EXP-992817-P1',
+        status: 'Pago',
+        confirmedBy: 'Direcção Geral ALHAN',
+        note: 'Primeira parcela paga no acto da inscrição para confirmar a vaga.',
+      },
+      {
+        id: 'pay-hist-02',
+        installment: '2ª Parcela',
+        amountKz: 72500,
+        dueDate: '2026-02-08',
+        paidAt: '2026-02-07',
+        method: 'Express Angola',
+        reference: 'EXP-992817-P2',
+        status: 'Pago',
+        confirmedBy: 'Direcção Geral ALHAN',
+        note: 'Segunda parcela paga 1 semana após o início da formação.',
+      },
+    ],
     progressPercent: 100,
     completedLessons: ['les-sgi-1', 'les-sgi-2', 'les-sgi-3'],
     quizScore: 100,

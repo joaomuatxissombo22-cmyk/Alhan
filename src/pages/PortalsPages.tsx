@@ -45,7 +45,7 @@ import {
   History,
   RefreshCw,
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp, computeCourseInstallments, AccountApprovalState } from '../context/AppContext';
 import { downloadCertificatePdf } from '../utils/pdfCertificateGenerator';
 import {
   COMPANY_INFO,
@@ -54,6 +54,7 @@ import {
   CertificateRequestItem,
   CertificateRequestStatus,
   EnrollmentItem,
+  InstallmentStatus,
   IsoDocumentItem,
   IsoAuditItem,
   NonConformityItem,
@@ -100,14 +101,26 @@ const PanelAccessGate: React.FC<{
   const [forceLocked, setForceLocked] = useState(false);
 
   const isRoleMatch = !forceLocked && user && allowedRoles.includes(user.role);
-  const isPendingOrRejectedProfessor =
+  const isUnapprovedAccount =
     isRoleMatch &&
-    user.role === 'PROFESSOR' &&
+    (user.role === 'PROFESSOR' || user.role === 'ALUNO') &&
     user.approvalStatus !== undefined &&
     user.approvalStatus !== 'aprovado';
 
-  if (isPendingOrRejectedProfessor && user) {
-    const isRejected = user.approvalStatus === 'rejeitado';
+  if (isUnapprovedAccount && user) {
+    const status = user.approvalStatus || 'pendente';
+    const isRejectedOrBlocked =
+      status === 'rejeitado' || status === 'suspenso' || status === 'bloqueado';
+    const isProfessor = user.role === 'PROFESSOR';
+    const statusLabel =
+      status === 'bloqueado'
+        ? 'Conta Bloqueada pela Administração'
+        : status === 'suspenso'
+        ? 'Conta Suspensa pela Administração'
+        : status === 'rejeitado'
+        ? 'Solicitação Rejeitada pela Administração'
+        : 'PENDENTE — Aguardando Aprovação do Administrador';
+
     return (
       <div className="py-14 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white rounded-2xl border-2 border-amber-300 shadow-sm overflow-hidden">
@@ -118,17 +131,15 @@ const PanelAccessGate: React.FC<{
               </div>
               <div>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-400/20 text-amber-300 text-[11px] font-bold">
-                  {isRejected
-                    ? 'Inscrição Docente Não Autorizada / Suspensa'
-                    : 'Aguardando Autorização do Painel Administrativo'}
+                  {statusLabel}
                 </span>
                 <h1 className="text-xl sm:text-2xl font-extrabold text-white mt-1.5">
-                  {isRejected
-                    ? 'Acesso Docente Não Autorizado pela Administração'
-                    : 'Inscrição de Professor / Formador Recebida com Sucesso!'}
+                  {isRejectedOrBlocked
+                    ? `Acesso ao ${isProfessor ? 'Painel do Professor' : 'Painel do Formando'} Indisponível (${status.toUpperCase()})`
+                    : `Solicitação de ${isProfessor ? 'Professor / Formador' : 'Novo Formando'} Recebida — Estado PENDENTE`}
                 </h1>
                 <p className="text-xs text-slate-300 mt-1">
-                  Painel do Professor · ALHAN – Sistema de Gestão Integrado
+                  {isProfessor ? 'Painel do Professor' : 'Painel do Formando'} · ALHAN – Sistema de Gestão Integrado
                 </p>
               </div>
             </div>
@@ -137,29 +148,34 @@ const PanelAccessGate: React.FC<{
           <div className="p-6 sm:p-8 space-y-6">
             <div
               className={`p-4 rounded-xl border text-xs leading-relaxed ${
-                isRejected
+                isRejectedOrBlocked
                   ? 'bg-rose-50 border-rose-200 text-rose-900'
                   : 'bg-amber-50 border-amber-200 text-amber-950'
               }`}
             >
-              {isRejected ? (
+              {isRejectedOrBlocked ? (
                 <p>
-                  Prezado(a) <strong>{user.fullName}</strong>, a sua inscrição como Professor / Formador encontra-se marcada como <strong>Não Autorizada / Suspensa</strong> pelo Painel Administrativo. Para esclarecimentos adicionais, contacte a Coordenação Pedagógica da ALHAN.
+                  Prezado(a) <strong>{user.fullName}</strong>, a sua conta encontra-se com o estado{' '}
+                  <strong>{status.toUpperCase()}</strong> pelo Administrador Principal da ALHAN. Para esclarecimentos adicionais, contacte a Direcção da ALHAN.
+                </p>
+              ) : isProfessor ? (
+                <p>
+                  Prezado(a) <strong>{user.fullName}</strong>, a sua solicitação de acesso ao <strong>Painel do Professor</strong> foi registada com o estado <strong>PENDENTE</strong>. O professor só poderá aceder ao painel depois da autorização do Administrador Principal da ALHAN.
                 </p>
               ) : (
                 <p>
-                  Prezado(a) <strong>{user.fullName}</strong>, a sua inscrição como Professor / Formador foi registada na plataforma! Conforme as normas de segurança institucional da ALHAN, <strong>após qualquer professor ou formador se inscrever, deve aguardar até que o Painel Administrativo autorize a sua inscrição</strong> para ter acesso às ferramentas internas de gestão de cursos, aulas e pautas.
+                  Prezado(a) <strong>{user.fullName}</strong>, a sua inscrição foi registada com o estado <strong>PENDENTE</strong> até à aprovação do Administrador Principal da ALHAN. <strong>Apenas após aprovação o formando poderá aceder ao painel e aos cursos.</strong>
                 </p>
               )}
             </div>
 
             <div className="bg-[#F5F9FC] rounded-xl border border-slate-200 p-5 space-y-3 text-xs">
               <p className="font-extrabold text-[#061A2D] uppercase tracking-wider text-[11px]">
-                Dados da Sua Inscrição Docente Registada
+                Dados da Sua Conta Registada ({isProfessor ? 'Professor / Formador' : 'Formando'})
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <span className="text-slate-500 block">Professor / Formador:</span>
+                  <span className="text-slate-500 block">Nome Completo:</span>
                   <strong className="text-[#061A2D]">{user.fullName}</strong>
                 </div>
                 <div>
@@ -167,33 +183,37 @@ const PanelAccessGate: React.FC<{
                   <strong className="font-mono-tabular text-[#0077C8]">{user.username}</strong>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">E-mail Institucional / Pessoal:</span>
+                  <span className="text-slate-500 block">E-mail Registado:</span>
                   <strong className="font-mono-tabular text-[#061A2D]">{user.email}</strong>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Telefone / WhatsApp:</span>
                   <strong className="font-mono-tabular text-[#061A2D]">{user.phone}</strong>
                 </div>
-                <div className="sm:col-span-2">
-                  <span className="text-slate-500 block">Especialidade / Normas e Áreas que Leciona:</span>
-                  <strong className="text-[#061A2D]">
-                    {user.specialty || 'Consultoria e Formação SGI / Normas ISO & HSE'}
-                  </strong>
-                </div>
+                {isProfessor && (
+                  <div className="sm:col-span-2">
+                    <span className="text-slate-500 block">Especialidade / Normas e Áreas que Leciona:</span>
+                    <strong className="text-[#061A2D]">
+                      {user.specialty || 'Consultoria e Formação SGI / Normas ISO & HSE'}
+                    </strong>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200">
               <a
                 href={`https://wa.me/${COMPANY_INFO.whatsappNumber}?text=${encodeURIComponent(
-                  `Olá Coordenação ALHAN! Realizei a minha inscrição como Professor/Formador (${user.fullName} · User: ${user.username}) no Painel do Professor e aguardo a autorização do Painel Administrativo.`
+                  `Olá Administração ALHAN! Realizei a minha inscrição como ${
+                    isProfessor ? 'Professor/Formador' : 'Formando'
+                  } (${user.fullName} · E-mail: ${user.email}) e aguardo a aprovação administrativa.`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>Comunicar Inscrição no WhatsApp da Coordenação</span>
+                <span>Solicitar Aprovação via WhatsApp da Coordenação</span>
               </a>
 
               <button
@@ -802,6 +822,9 @@ export const StudentPortal: React.FC = () => {
   const [payCourseId, setPayCourseId] = useState<string>(
     activeEnrollment?.courseId || courses[0]?.id || ''
   );
+  const [payInstallmentTarget, setPayInstallmentTarget] = useState<
+    '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral'
+  >('1ª Parcela');
   const [payMethod, setPayMethod] = useState<EnrollmentItem['paymentMethod']>('Express Angola');
   const [payReference, setPayReference] = useState('');
   const [payReceiptNote, setPayReceiptNote] = useState('');
@@ -846,17 +869,16 @@ export const StudentPortal: React.FC = () => {
       paymentReference: payReference.trim() || `REF-${Date.now().toString().slice(-6)}`,
       receiptNote:
         payReceiptNote.trim() ||
-        `Comprovativo via ${payMethod} submetido pelo aluno no Painel do Aluno para liberar a formação.`,
+        `Comprovativo (${payInstallmentTarget}) via ${payMethod} submetido pelo formando no Painel do Aluno.`,
       receiptFileUrl: payReceiptFileUrl || undefined,
       receiptFileName: payReceiptFileName || undefined,
       studentPhone: payStudentPhone.trim(),
       studentEmail: payStudentEmail.trim(),
+      installmentTarget: payInstallmentTarget,
     });
     setSelectedEnrollmentId(saved.id);
     setPaymentSubmittedMsg(
-      `Comprovativo da formação «${selectedPayCourse.title}» (${selectedPayCourse.priceKz.toLocaleString(
-        'pt-AO'
-      )} Kz via ${payMethod}) registado com sucesso! Assim que a Direcção Operacional confirmar o comprovativo (no mesmo dia para BANCO SOL / Express ou em 24h para outros bancos), a sua formação será imediatamente liberada e receberá notificação no WhatsApp (${payStudentPhone}) e E-mail (${payStudentEmail}).`
+      `Comprovativo referente a «${payInstallmentTarget}» da formação «${selectedPayCourse.title}» via ${payMethod} registado com sucesso no histórico de pagamentos! Assim que o Administrador Principal confirmar o pagamento, o estado da parcela será actualizado para PAGO.`
     );
   };
 
@@ -1387,22 +1409,20 @@ export const StudentPortal: React.FC = () => {
           </div>
         )}
 
-        {/* MODO DE PAGAMENTO E CANAIS OFICIAIS PARA LIBERAR A FORMAÇÃO NO PAINEL DO ALUNO */}
-        {(activeTab === 'Pagamentos' ||
-          (activeTab === 'Dashboard' &&
-            (myEnrollments.length === 0 ||
-              myEnrollments.some((e) => e.paymentStatus !== 'Pago')))) && (
+        {/* PLANO DE PAGAMENTO EM DUAS PARCELAS, VENCIMENTOS E CANAIS OFICIAIS NO PAINEL DO FORMANDO */}
+        {(activeTab === 'Pagamentos' || activeTab === 'Dashboard') && (
           <div className="bg-white rounded-2xl border-2 border-[#0077C8] p-6 sm:p-8 shadow-sm space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
               <div>
                 <p className="text-xs font-bold text-[#0077C8] uppercase tracking-wider">
-                  Modo de Pagamento no Painel do Aluno · Liberação de Formação
+                  Plano de Pagamento das Formações em Duas Parcelas · Painel do Formando
                 </p>
                 <h2 className="text-xl sm:text-2xl font-extrabold text-[#061A2D] mt-1">
-                  Canais de Pagamento Oficiais para Liberar a sua Formação
+                  Acompanhamento de Parcelas, Datas de Vencimento e Histórico de Pagamentos
                 </h2>
                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                  Realize o pagamento através de um dos canais oficiais abaixo e submeta o comprovativo directamente neste painel (ou envie pelo WhatsApp / E-mail) para liberar o acesso às vídeo-aulas, materiais e avaliação.
+                  <strong>1.ª Parcela:</strong> pagamento obrigatório no acto da inscrição para confirmar a vaga do formando ·{' '}
+                  <strong>2.ª Parcela:</strong> pagamento do valor restante, uma semana (7 dias) após o início da formação.
                 </p>
               </div>
               <Link
@@ -1412,6 +1432,280 @@ export const StudentPortal: React.FC = () => {
                 Ver Política de Pagamentos Completa →
               </Link>
             </div>
+
+            {/* Notificações ao Formando sobre a Data de Vencimento da 2.ª Parcela */}
+            {myEnrollments
+              .filter((enr) => enr.secondInstallmentStatus !== 'Pago')
+              .map((enr) => {
+                const isOverdue = enr.secondInstallmentStatus === 'Em atraso';
+                return (
+                  <div
+                    key={`due-banner-${enr.id}`}
+                    className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                      isOverdue
+                        ? 'bg-rose-50 border-rose-300 text-rose-950'
+                        : 'bg-amber-50 border-amber-300 text-amber-950'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Bell
+                        className={`w-5 h-5 shrink-0 mt-0.5 ${
+                          isOverdue ? 'text-rose-600 animate-bounce' : 'text-amber-600'
+                        }`}
+                      />
+                      <div className="text-xs space-y-1">
+                        <p className="font-extrabold">
+                          {isOverdue
+                            ? `⚠️ ALERTA DE VENCIMENTO EM ATRASO — 2.ª Parcela de «${enr.courseTitle}»`
+                            : `📅 Aviso de Vencimento da 2.ª Parcela — «${enr.courseTitle}»`}
+                        </p>
+                        <p className="leading-relaxed">
+                          O valor restante da <strong>2.ª Parcela ({(enr.secondInstallmentAmountKz || 0).toLocaleString('pt-AO')} Kz)</strong> tem data de vencimento em{' '}
+                          <strong className="font-mono-tabular">{enr.secondInstallmentDueDate || '—'}</strong> (1 semana após o início da formação em{' '}
+                          <span className="font-mono-tabular">{enr.courseStartDate || '—'}</span>). Estado actual:{' '}
+                          <strong>{enr.secondInstallmentStatus || 'Pendente'}</strong>.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPayCourseId(enr.courseId);
+                        setPayInstallmentTarget('2ª Parcela');
+                        setActiveTab('Pagamentos');
+                      }}
+                      className="px-3.5 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold shrink-0"
+                    >
+                      Liquidar 2.ª Parcela Agora →
+                    </button>
+                  </div>
+                );
+              })}
+
+            {/* Cartões Detalhados de Valor Total, 1.ª Parcela, 2.ª Parcela, Vencimentos e Estados por Inscrição */}
+            {myEnrollments.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="text-sm font-extrabold text-[#061A2D]">
+                  Resumo Financeiro das Suas Inscrições (Valor Total, 1.ª Parcela e 2.ª Parcela)
+                </h3>
+                <div className="grid grid-cols-1 gap-4">
+                  {myEnrollments.map((enr) => {
+                    const courseObj = courses.find((c) => c.id === enr.courseId);
+                    const calc = computeCourseInstallments(
+                      courseObj || { priceKz: enr.amountKz },
+                      enr.enrolledAt
+                    );
+                    const firstAmt = enr.firstInstallmentAmountKz ?? calc.firstKz;
+                    const secondAmt = enr.secondInstallmentAmountKz ?? calc.secondKz;
+                    const firstDue = enr.firstInstallmentDueDate || calc.firstDueDate;
+                    const secondDue = enr.secondInstallmentDueDate || calc.secondDueDate;
+                    const firstSt: InstallmentStatus = enr.firstInstallmentStatus || 'Pendente';
+                    const secondSt: InstallmentStatus = enr.secondInstallmentStatus || 'Pendente';
+                    const approvalSt = enr.enrollmentApprovalStatus || 'aprovado';
+
+                    const badgeStyle = (st: InstallmentStatus) =>
+                      st === 'Pago'
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : st === 'Em atraso'
+                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                        : 'bg-amber-100 text-amber-800 border-amber-300';
+
+                    return (
+                      <div
+                        key={`fin-card-${enr.id}`}
+                        className="p-5 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-4"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-extrabold text-[#061A2D]">
+                                {enr.courseTitle}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                  approvalSt === 'aprovado'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : approvalSt === 'rejeitado'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                Inscrição: {approvalSt.toUpperCase()}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Inscrição #{enr.id} · Data de Inscrição: {enr.enrolledAt} · Início da Formação:{' '}
+                              <strong>{enr.courseStartDate || calc.startDate}</strong>
+                            </p>
+                          </div>
+                          <div className="text-left sm:text-right">
+                            <p className="text-[10px] uppercase font-bold text-slate-500">
+                              Valor Total da Formação
+                            </p>
+                            <p className="text-lg font-extrabold font-mono-tabular text-[#061A2D]">
+                              {enr.amountKz.toLocaleString('pt-AO')} Kz
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                          {/* Valor Total */}
+                          <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1">
+                            <p className="text-[10px] font-bold uppercase text-slate-500">
+                              Valor Total do Curso
+                            </p>
+                            <p className="text-base font-extrabold font-mono-tabular text-[#061A2D]">
+                              {enr.amountKz.toLocaleString('pt-AO')} Kz
+                            </p>
+                            <p className="text-[11px] text-slate-600">
+                              Pago até agora:{' '}
+                              <strong className="font-mono-tabular text-emerald-700">
+                                {(
+                                  (firstSt === 'Pago' ? firstAmt : 0) +
+                                  (secondSt === 'Pago' ? secondAmt : 0)
+                                ).toLocaleString('pt-AO')}{' '}
+                                Kz
+                              </strong>
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              Restante a liquidar:{' '}
+                              <strong className="font-mono-tabular text-[#061A2D]">
+                                {(
+                                  (firstSt !== 'Pago' ? firstAmt : 0) +
+                                  (secondSt !== 'Pago' ? secondAmt : 0)
+                                ).toLocaleString('pt-AO')}{' '}
+                                Kz
+                              </strong>
+                            </p>
+                          </div>
+
+                          {/* 1.ª Parcela */}
+                          <div className="p-3.5 rounded-xl bg-white border border-[#0077C8]/30 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold uppercase text-[#0077C8]">
+                                1.ª Parcela (Acto da Inscrição)
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded border text-[10px] font-extrabold ${badgeStyle(
+                                  firstSt
+                                )}`}
+                              >
+                                {firstSt}
+                              </span>
+                            </div>
+                            <p className="text-base font-extrabold font-mono-tabular text-[#061A2D]">
+                              {firstAmt.toLocaleString('pt-AO')} Kz
+                            </p>
+                            <p className="text-[11px] text-slate-600">
+                              Vencimento: <strong className="font-mono-tabular">{firstDue}</strong> (Confirmação da vaga)
+                            </p>
+                            {firstSt !== 'Pago' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPayCourseId(enr.courseId);
+                                  setPayInstallmentTarget('1ª Parcela');
+                                }}
+                                className="mt-1 w-full py-1.5 px-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold"
+                              >
+                                Pagar 1.ª Parcela ({firstAmt.toLocaleString('pt-AO')} Kz)
+                              </button>
+                            )}
+                          </div>
+
+                          {/* 2.ª Parcela */}
+                          <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold uppercase text-slate-700">
+                                2.ª Parcela (1 Semana Após Início)
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded border text-[10px] font-extrabold ${badgeStyle(
+                                  secondSt
+                                )}`}
+                              >
+                                {secondSt}
+                              </span>
+                            </div>
+                            <p className="text-base font-extrabold font-mono-tabular text-[#061A2D]">
+                              {secondAmt.toLocaleString('pt-AO')} Kz
+                            </p>
+                            <p className="text-[11px] text-slate-600">
+                              Vencimento: <strong className="font-mono-tabular">{secondDue}</strong> (+7 dias do início)
+                            </p>
+                            {secondSt !== 'Pago' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPayCourseId(enr.courseId);
+                                  setPayInstallmentTarget('2ª Parcela');
+                                }}
+                                className="mt-1 w-full py-1.5 px-2.5 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-[11px] font-bold"
+                              >
+                                Pagar 2.ª Parcela ({secondAmt.toLocaleString('pt-AO')} Kz)
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Histórico de Pagamentos desta Inscrição */}
+                        {enr.paymentHistory && enr.paymentHistory.length > 0 && (
+                          <div className="pt-2 border-t border-slate-200/80">
+                            <p className="text-[11px] font-bold text-[#061A2D] mb-2">
+                              Histórico de Pagamentos Registados:
+                            </p>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse text-[11px]">
+                                <thead>
+                                  <tr className="border-b border-slate-200 text-slate-500">
+                                    <th className="py-1.5 px-2">Parcela</th>
+                                    <th className="py-1.5 px-2">Valor</th>
+                                    <th className="py-1.5 px-2">Canal / Método</th>
+                                    <th className="py-1.5 px-2">Referência</th>
+                                    <th className="py-1.5 px-2">Estado</th>
+                                    <th className="py-1.5 px-2">Data</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {enr.paymentHistory.map((ph) => (
+                                    <tr key={ph.id}>
+                                      <td className="py-1.5 px-2 font-bold text-[#061A2D]">
+                                        {ph.installmentLabel}
+                                      </td>
+                                      <td className="py-1.5 px-2 font-mono-tabular font-bold">
+                                        {ph.amountKz.toLocaleString('pt-AO')} Kz
+                                      </td>
+                                      <td className="py-1.5 px-2">{ph.method}</td>
+                                      <td className="py-1.5 px-2 font-mono-tabular">{ph.reference}</td>
+                                      <td className="py-1.5 px-2">
+                                        <span
+                                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                            ph.status === 'Pago'
+                                              ? 'bg-emerald-100 text-emerald-800'
+                                              : ph.status === 'Em atraso'
+                                              ? 'bg-rose-100 text-rose-800'
+                                              : 'bg-amber-100 text-amber-800'
+                                          }`}
+                                        >
+                                          {ph.status}
+                                        </span>
+                                      </td>
+                                      <td className="py-1.5 px-2 font-mono-tabular text-slate-500">
+                                        {new Date(ph.recordedAt || ph.paidAt || ph.dueDate).toLocaleDateString('pt-AO')}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Official Payment Channels Cards inside Student Portal */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1542,10 +1836,10 @@ export const StudentPortal: React.FC = () => {
                 Registar Pagamento e Anexar Comprovativo para Liberar Formação
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                    1. Seleccionar Formação a Liberar *
+                    1. Seleccionar Formação *
                   </label>
                   <select
                     value={selectedPayCourse?.id || ''}
@@ -1571,7 +1865,42 @@ export const StudentPortal: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                    2. Canal / Modo de Pagamento Utilizado *
+                    2. Parcela a Pagar *
+                  </label>
+                  <select
+                    value={payInstallmentTarget}
+                    onChange={(e) =>
+                      setPayInstallmentTarget(
+                        e.target.value as '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral'
+                      )
+                    }
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs font-bold text-[#0077C8] focus:border-[#0077C8] focus:outline-none"
+                  >
+                    {(() => {
+                      const inst = computeCourseInstallments(
+                        selectedPayCourse,
+                        matchingPayEnrollment?.enrolledAt
+                      );
+                      return (
+                        <>
+                          <option value="1ª Parcela">
+                            1.ª Parcela (Confirmar Vaga) — {inst.firstKz.toLocaleString('pt-AO')} Kz
+                          </option>
+                          <option value="2ª Parcela">
+                            2.ª Parcela (1 Semana Após Início) — {inst.secondKz.toLocaleString('pt-AO')} Kz
+                          </option>
+                          <option value="Pagamento Integral">
+                            Pagamento Integral (100%) — {inst.totalKz.toLocaleString('pt-AO')} Kz
+                          </option>
+                        </>
+                      );
+                    })()}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                    3. Canal / Modo de Pagamento Utilizado *
                   </label>
                   <select
                     value={payMethod}
@@ -1749,16 +2078,23 @@ export const StudentPortal: React.FC = () => {
                 )}
               </div>
 
-              {activeEnrollment.paymentStatus !== 'Pago' ? (
+              {activeEnrollment.enrollmentApprovalStatus === 'pendente' ||
+              activeEnrollment.enrollmentApprovalStatus === 'rejeitado' ||
+              (activeEnrollment.paymentStatus !== 'Pago' &&
+                activeEnrollment.firstInstallmentStatus !== 'Pago') ? (
                 <div className="p-6 rounded-xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex items-start gap-3">
                     <Lock className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
                     <div className="space-y-1.5">
                       <h3 className="text-sm font-bold text-amber-950">
-                        Conteúdo Reservado — Realize o Pagamento para Liberar a Formação
+                        {activeEnrollment.enrollmentApprovalStatus === 'pendente'
+                          ? 'Inscrição PENDENTE — Aguardando Aprovação do Administrador'
+                          : 'Conteúdo Reservado — Confirme a 1.ª Parcela para Liberar a Formação'}
                       </h3>
                       <p className="text-xs text-amber-900 leading-relaxed">
-                        A sua inscrição no curso <strong>{activeEnrollment.courseTitle}</strong> encontra-se com estado <strong>«{activeEnrollment.paymentStatus}»</strong>. Efectue o pagamento via <strong>Express (927496287 / 927099484)</strong> ou <strong>BANCO SOL (IBAN 0044 0000 56903729141 08 - Graciete Garcia)</strong> e submeta o comprovativo para liberar imediatamente as suas aulas.
+                        A sua inscrição no curso <strong>{activeEnrollment.courseTitle}</strong> encontra-se com aprovação{' '}
+                        <strong>«{(activeEnrollment.enrollmentApprovalStatus || 'aprovado').toUpperCase()}»</strong> e 1.ª Parcela{' '}
+                        <strong>«{activeEnrollment.firstInstallmentStatus || activeEnrollment.paymentStatus}»</strong>. Apenas após aprovação do Administrador e pagamento da 1.ª Parcela (no acto da inscrição) o acesso às aulas é libertado.
                       </p>
                     </div>
                   </div>
@@ -1766,12 +2102,13 @@ export const StudentPortal: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setPayCourseId(activeEnrollment.courseId);
+                      setPayInstallmentTarget('1ª Parcela');
                       setPaymentSubmittedMsg(null);
                       setActiveTab('Pagamentos');
                     }}
                     className="px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shrink-0"
                   >
-                    Canais de Pagamento & Enviar Comprovativo →
+                    Plano de Parcelas & Enviar Comprovativo →
                   </button>
                 </div>
               ) : (
@@ -3344,6 +3681,8 @@ export const AdminPortal: React.FC = () => {
   const {
     registeredUsers,
     updateUserApprovalStatus,
+    updateStudentAccountDetails,
+    requestSecurePasswordResetLink,
     resetPasswordByEmail,
     deleteRegisteredUser,
     deleteEnrollment,
@@ -3370,6 +3709,9 @@ export const AdminPortal: React.FC = () => {
     deleteCourse,
     addIsoStandard,
     updateEnrollmentStatus,
+    updateInstallmentPaymentStatus,
+    updateEnrollmentApprovalStatus,
+    notifySecondInstallmentDue,
     issueCertificate,
     updateCertificateStatus,
     deleteCertificate,
@@ -3383,6 +3725,11 @@ export const AdminPortal: React.FC = () => {
     emailNotifications,
     panelCredentials,
     updatePanelCredential,
+    auditCandidates,
+    lastSystemBackup,
+    createDataSafetyBackup,
+    executeAdminConfirmedDataCleanup,
+    restoreDataSafetyBackup,
   } = useApp();
 
   // MÓDULO 2 & 5 — Estado para "GESTÃO DE CERTIFICADOS" no Painel Administrativo
@@ -3572,14 +3919,15 @@ export const AdminPortal: React.FC = () => {
       )
   ).length;
 
-  // Admin Password Reset by Email state (for any Student or Professor)
+  // Admin Secure Password Reset state (without exposing current passwords)
   const [resetTargetEmail, setResetTargetEmail] = useState('');
-  const [resetTargetNewPass, setResetTargetNewPass] = useState('Alhan2026');
+  const [resetTargetNewPass, setResetTargetNewPass] = useState('');
   const [adminResetFeedback, setAdminResetFeedback] = useState<{
     fullName: string;
     email: string;
     phone: string;
-    newPass: string;
+    resetTokenUrl: string;
+    dispatchedViaFirebase: boolean;
   } | null>(null);
   const [adminResetError, setAdminResetError] = useState<string | null>(null);
 
@@ -3588,16 +3936,72 @@ export const AdminPortal: React.FC = () => {
     setAdminResetError(null);
     setAdminResetFeedback(null);
     try {
-      const updated = await resetPasswordByEmail(resetTargetEmail, resetTargetNewPass);
-      setAdminResetFeedback({
-        fullName: updated.fullName,
-        email: updated.email,
-        phone: updated.phone,
-        newPass: resetTargetNewPass,
-      });
+      const res = await requestSecurePasswordResetLink(resetTargetEmail);
+      if (resetTargetNewPass.trim().length >= 4) {
+        await resetPasswordByEmail(resetTargetEmail, resetTargetNewPass.trim());
+      }
+      setAdminResetFeedback(res);
     } catch (err) {
-      setAdminResetError(err instanceof Error ? err.message : 'Erro ao redefinir palavra-passe.');
+      setAdminResetError(
+        err instanceof Error ? err.message : 'Erro ao solicitar redefinição segura de palavra-passe.'
+      );
     }
+  };
+
+  // Gestão de Contas dos Formandos (Edição de Dados Pessoais + Inscrição + Histórico)
+  const [editingStudentModal, setEditingStudentModal] = useState<{
+    uid?: string;
+    enrollmentId?: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    studentBI: string;
+    approvalStatus: AccountApprovalState;
+    courseTitle: string;
+    modality: 'Online' | 'Presencial' | 'Híbrida';
+    amountKz: number;
+    firstInstallmentAmountKz: number;
+    secondInstallmentAmountKz: number;
+  } | null>(null);
+  const [studentHistoryModalEmail, setStudentHistoryModalEmail] = useState<string | null>(null);
+  const [studentMgmtFeedback, setStudentMgmtFeedback] = useState<string | null>(null);
+
+  const handleSaveStudentAccountEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStudentModal) return;
+    await updateStudentAccountDetails({
+      uid: editingStudentModal.uid,
+      enrollmentId: editingStudentModal.enrollmentId,
+      fullName: editingStudentModal.fullName,
+      email: editingStudentModal.email,
+      phone: editingStudentModal.phone,
+      studentBI: editingStudentModal.studentBI,
+      approvalStatus: editingStudentModal.approvalStatus,
+      courseTitle: editingStudentModal.courseTitle,
+      modality: editingStudentModal.modality,
+      amountKz: Number(editingStudentModal.amountKz),
+      firstInstallmentAmountKz: Number(editingStudentModal.firstInstallmentAmountKz),
+      secondInstallmentAmountKz: Number(editingStudentModal.secondInstallmentAmountKz),
+    });
+    setStudentMgmtFeedback(
+      `Dados pessoais e de inscrição do formando «${editingStudentModal.fullName}» actualizados com sucesso!`
+    );
+    setEditingStudentModal(null);
+    setTimeout(() => setStudentMgmtFeedback(null), 4500);
+  };
+
+  // Auditoria, Backup & Limpeza de Dados (Requer Confirmação Explícita do Administrador)
+  const [selectedCleanupIds, setSelectedCleanupIds] = useState<string[]>(() =>
+    auditCandidates.filter((c) => c.suggestedForDeletion).map((c) => c.id)
+  );
+  const [cleanupConfirmedCheckbox, setCleanupConfirmedCheckbox] = useState(false);
+  const [cleanupResultMsg, setCleanupResultMsg] = useState<string | null>(null);
+  const [dueNotifFeedback, setDueNotifFeedback] = useState<string | null>(null);
+
+  const toggleCleanupCandidate = (id: string) => {
+    setSelectedCleanupIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
   };
 
   // Admin Course Material Didático & Recorded Video Lesson state
@@ -3745,6 +4149,7 @@ export const AdminPortal: React.FC = () => {
     | 'GESTÃO DE CERTIFICADOS'
     | 'Cursos & Academia LMS'
     | 'Inscrições & Pagamentos Angola'
+    | 'Auditoria, Backup & Limpeza de Dados'
     | 'Certificados QR'
     | 'Pedidos de Diagnóstico & Presenciais'
     | 'Projectos & Gestão Documental ISO'
@@ -3850,7 +4255,7 @@ export const AdminPortal: React.FC = () => {
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
   };
 
-  // Course creation / edit state
+  // Course creation / edit state (with 2-installment configuration)
   const [editingCourse, setEditingCourse] = useState<CourseItem | null>(null);
   const [courseToDelete, setCourseToDelete] = useState<CourseItem | null>(null);
 
@@ -3858,6 +4263,9 @@ export const AdminPortal: React.FC = () => {
   const [cCategory, setCCategory] = useState('Sistemas Integrados');
   const [cModality, setCModality] = useState<'Online' | 'Presencial' | 'Híbrida'>('Online');
   const [cPrice, setCPrice] = useState(95000);
+  const [cFirstInstallment, setCFirstInstallment] = useState(47500);
+  const [cSecondInstallment, setCSecondInstallment] = useState(47500);
+  const [cStartDate, setCStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [cHours, setCHours] = useState(24);
   const [cInstructor, setCInstructor] = useState('Equipa Técnica ALHAN');
   const [cImageUrl, setCImageUrl] = useState('/assets/aistudio/iso_a9fe34ed.jpg');
@@ -3881,11 +4289,15 @@ export const AdminPortal: React.FC = () => {
 
   const startEditCourse = (c?: CourseItem) => {
     if (c) {
+      const calc = computeCourseInstallments(c);
       setEditingCourse(c);
       setCTitle(c.title);
       setCCategory(c.category);
       setCModality(c.modality);
       setCPrice(c.priceKz);
+      setCFirstInstallment(calc.firstKz);
+      setCSecondInstallment(calc.secondKz);
+      setCStartDate(calc.startDate);
       setCHours(c.durationHours);
       setCInstructor(c.instructorName);
       setCImageUrl(c.imageUrl || '/assets/aistudio/iso_a9fe34ed.jpg');
@@ -3893,12 +4305,16 @@ export const AdminPortal: React.FC = () => {
       setCObj(c.objectives);
       setCSyl(c.syllabus);
     } else {
+      const todayIso = new Date().toISOString().slice(0, 10);
       setEditingCourse({
         id: `curso-${Date.now()}`,
         title: '',
         category: 'Qualidade',
         modality: 'Online',
         priceKz: 95000,
+        firstInstallmentKz: 47500,
+        secondInstallmentKz: 47500,
+        courseStartDate: todayIso,
         durationHours: 24,
         lessonsCount: 8,
         instructorName: 'Equipa Técnica ALHAN',
@@ -3912,6 +4328,10 @@ export const AdminPortal: React.FC = () => {
         createdAt: new Date().toISOString(),
       });
       setCTitle('');
+      setCPrice(95000);
+      setCFirstInstallment(47500);
+      setCSecondInstallment(47500);
+      setCStartDate(todayIso);
       setCImageUrl('/assets/aistudio/iso_a9fe34ed.jpg');
       setCDesc('');
       setCObj('');
@@ -3922,12 +4342,18 @@ export const AdminPortal: React.FC = () => {
   const handleSaveCourseForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCourse) return;
+    const total = Math.max(0, Number(cPrice) || 0);
+    const first = Math.min(total, Math.max(0, Number(cFirstInstallment) || Math.round(total * 0.5)));
+    const second = Math.max(0, total - first);
     await saveCourse({
       ...editingCourse,
       title: cTitle,
       category: cCategory,
       modality: cModality,
-      priceKz: Number(cPrice),
+      priceKz: total,
+      firstInstallmentKz: first,
+      secondInstallmentKz: second,
+      courseStartDate: cStartDate || new Date().toISOString().slice(0, 10),
       durationHours: Number(cHours),
       instructorName: cInstructor,
       imageUrl: cImageUrl || '/assets/aistudio/iso_a9fe34ed.jpg',
@@ -3944,6 +4370,7 @@ export const AdminPortal: React.FC = () => {
       'GESTÃO DE CERTIFICADOS',
       'Cursos & Academia LMS',
       'Inscrições & Pagamentos Angola',
+      'Auditoria, Backup & Limpeza de Dados',
       !hideSec13Panel ? 'Certificados QR' : null,
       'Pedidos de Diagnóstico & Presenciais',
       'Projectos & Gestão Documental ISO',
@@ -5363,9 +5790,14 @@ export const AdminPortal: React.FC = () => {
                 className="bg-white rounded-xl border-2 border-[#0077C8] p-6 space-y-4"
               >
                 <div className="flex items-center justify-between">
-                  <h2 className="text-base font-bold text-[#061A2D]">
-                    {courses.some((c) => c.id === editingCourse.id) ? 'Editar Curso' : 'Criar Novo Curso'}
-                  </h2>
+                  <div>
+                    <h2 className="text-base font-bold text-[#061A2D]">
+                      {courses.some((c) => c.id === editingCourse.id) ? 'Editar Curso & Parcelas' : 'Criar Novo Curso & Configurar 2 Parcelas'}
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Configure o preço total, o valor da 1.ª parcela (acto da inscrição), a 2.ª parcela (1 semana após o início) e a data de início da formação.
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setEditingCourse(null)}
@@ -5409,16 +5841,6 @@ export const AdminPortal: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-[#061A2D] mb-1">Preço em Kz *</label>
-                    <input
-                      type="number"
-                      required
-                      value={cPrice}
-                      onChange={(e) => setCPrice(Number(e.target.value))}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular"
-                    />
-                  </div>
-                  <div>
                     <label className="block text-xs font-bold text-[#061A2D] mb-1">Carga Horária (Horas) *</label>
                     <input
                       type="number"
@@ -5427,6 +5849,88 @@ export const AdminPortal: React.FC = () => {
                       onChange={(e) => setCHours(Number(e.target.value))}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                      Data de Início da Formação *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={cStartDate}
+                      onChange={(e) => setCStartDate(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular"
+                    />
+                  </div>
+                </div>
+
+                {/* Configuração de Preço Total e Duas Parcelas */}
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-[#0077C8]/30 space-y-3">
+                  <p className="text-xs font-extrabold text-[#061A2D]">
+                    Configuração Financeira em Duas Parcelas (Cálculo Automático Garantido)
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Preço Total da Formação (Kz) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min={0}
+                        value={cPrice}
+                        onChange={(e) => {
+                          const total = Math.max(0, Number(e.target.value) || 0);
+                          const first = Math.round(total * 0.5);
+                          setCPrice(total);
+                          setCFirstInstallment(first);
+                          setCSecondInstallment(Math.max(0, total - first));
+                        }}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular font-bold text-[#061A2D]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#0077C8] mb-1">
+                        1.ª Parcela — Acto da Inscrição (Kz) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min={0}
+                        max={cPrice}
+                        value={cFirstInstallment}
+                        onChange={(e) => {
+                          const first = Math.min(cPrice, Math.max(0, Number(e.target.value) || 0));
+                          setCFirstInstallment(first);
+                          setCSecondInstallment(Math.max(0, cPrice - first));
+                        }}
+                        className="w-full rounded-lg border border-[#0077C8] bg-white px-3 py-2 text-xs font-mono-tabular font-bold text-[#0077C8]"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Obrigatória na inscrição para confirmar vaga
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        2.ª Parcela — 1 Semana Após Início (Kz) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min={0}
+                        max={cPrice}
+                        value={cSecondInstallment}
+                        onChange={(e) => {
+                          const second = Math.min(cPrice, Math.max(0, Number(e.target.value) || 0));
+                          setCSecondInstallment(second);
+                          setCFirstInstallment(Math.max(0, cPrice - second));
+                        }}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular font-bold text-[#061A2D]"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Vencimento automático: +7 dias após {cStartDate || 'início'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -5491,7 +5995,7 @@ export const AdminPortal: React.FC = () => {
                   type="submit"
                   className="px-5 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold"
                 >
-                  Guardar Curso na Base de Dados
+                  Guardar Curso e Plano de 2 Parcelas na Base de Dados
                 </button>
               </form>
             )}
@@ -5502,63 +6006,80 @@ export const AdminPortal: React.FC = () => {
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-500">
                       <th className="py-2.5 px-3">Curso</th>
-                      <th className="py-2.5 px-3">Modalidade</th>
+                      <th className="py-2.5 px-3">Modalidade & Início</th>
                       <th className="py-2.5 px-3 text-right">Duração</th>
-                      <th className="py-2.5 px-3 text-right">Preço (Kz)</th>
+                      <th className="py-2.5 px-3 text-right">Preço Total (Kz)</th>
+                      <th className="py-2.5 px-3 text-right">1.ª / 2.ª Parcelas</th>
                       <th className="py-2.5 px-3">Estado</th>
                       <th className="py-2.5 px-3">Operações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {courses.map((c) => (
-                      <tr key={c.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-3">
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={c.imageUrl}
-                              alt={c.title}
-                              referrerPolicy="no-referrer"
-                              className="h-10 w-14 rounded object-cover object-top border border-slate-200 shrink-0"
-                            />
-                            <div>
-                              <p className="font-bold text-[#061A2D]">{c.title}</p>
-                              <p className="text-[11px] text-slate-500">{c.instructorName}</p>
+                    {courses.map((c) => {
+                      const inst = computeCourseInstallments(c);
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-50">
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={c.imageUrl}
+                                alt={c.title}
+                                referrerPolicy="no-referrer"
+                                className="h-10 w-14 rounded object-cover object-top border border-slate-200 shrink-0"
+                              />
+                              <div>
+                                <p className="font-bold text-[#061A2D]">{c.title}</p>
+                                <p className="text-[11px] text-slate-500">{c.instructorName}</p>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-3">{c.modality}</td>
-                        <td className="py-3 px-3 text-right font-mono-tabular">{c.durationHours}h</td>
-                        <td className="py-3 px-3 text-right font-mono-tabular font-bold">
-                          {c.priceKz.toLocaleString('pt-AO')} Kz
-                        </td>
-                        <td className="py-3 px-3">
-                          <button
-                            onClick={() => saveCourse({ ...c, published: !c.published })}
-                            className={`font-bold underline ${
-                              c.published ? 'text-emerald-700' : 'text-amber-700'
-                            }`}
-                          >
-                            {c.published ? 'Publicado' : 'Rascunho (Oculto)'}
-                          </button>
-                        </td>
-                        <td className="py-3 px-3">
-                          <div className="flex items-center gap-2">
+                          </td>
+                          <td className="py-3 px-3">
+                            <p className="font-semibold">{c.modality}</p>
+                            <p className="text-[11px] text-slate-500 font-mono-tabular">
+                              Início: {inst.startDate}
+                            </p>
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono-tabular">{c.durationHours}h</td>
+                          <td className="py-3 px-3 text-right font-mono-tabular font-bold text-[#061A2D]">
+                            {c.priceKz.toLocaleString('pt-AO')} Kz
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono-tabular text-[11px]">
+                            <p className="text-[#0077C8] font-bold">
+                              1.ª: {inst.firstKz.toLocaleString('pt-AO')} Kz
+                            </p>
+                            <p className="text-slate-600 font-semibold">
+                              2.ª: {inst.secondKz.toLocaleString('pt-AO')} Kz
+                            </p>
+                          </td>
+                          <td className="py-3 px-3">
                             <button
-                              onClick={() => startEditCourse(c)}
-                              className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-[#061A2D] font-semibold"
+                              onClick={() => saveCourse({ ...c, published: !c.published })}
+                              className={`font-bold underline ${
+                                c.published ? 'text-emerald-700' : 'text-amber-700'
+                              }`}
                             >
-                              Editar
+                              {c.published ? 'Publicado' : 'Rascunho (Oculto)'}
                             </button>
-                            <button
-                              onClick={() => setCourseToDelete(c)}
-                              className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 font-semibold"
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => startEditCourse(c)}
+                                className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-[#061A2D] font-semibold"
+                              >
+                                Editar Preço / Parcelas
+                              </button>
+                              <button
+                                onClick={() => setCourseToDelete(c)}
+                                className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 font-semibold"
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -5884,141 +6405,286 @@ export const AdminPortal: React.FC = () => {
               </form>
             )}
 
+            {dueNotifFeedback && (
+              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-950">
+                {dueNotifFeedback}
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-500">
-                    <th className="py-2.5 px-3">Formando & Contacto</th>
-                    <th className="py-2.5 px-3">Curso</th>
-                    <th className="py-2.5 px-3 text-right">Valor</th>
-                    <th className="py-2.5 px-3">Método / Referência</th>
-                    <th className="py-2.5 px-3">Nota do Comprovativo</th>
-                    <th className="py-2.5 px-3">Estado</th>
-                    <th className="py-2.5 px-3">Autorização, Certificado PDF (≤2MB) & Eliminação</th>
+                    <th className="py-2.5 px-3">Formando & Aprovação</th>
+                    <th className="py-2.5 px-3">Curso & Valor Total</th>
+                    <th className="py-2.5 px-3">1.ª Parcela (Acto Inscrição)</th>
+                    <th className="py-2.5 px-3">2.ª Parcela (+7 Dias Início)</th>
+                    <th className="py-2.5 px-3">Comprovativo & Histórico</th>
+                    <th className="py-2.5 px-3">Acções do Administrador Principal</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {enrollments.map((enr) => (
-                    <tr key={enr.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-3">
-                        <div className="flex items-center gap-1.5">
-                          <p className="font-semibold text-[#061A2D]">{enr.studentName}</p>
-                          {enr.certificateRequested && (
-                            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-extrabold">
-                              Solicitou Certificado
+                  {enrollments.map((enr) => {
+                    const courseObj = courses.find((c) => c.id === enr.courseId);
+                    const calc = computeCourseInstallments(
+                      courseObj || { priceKz: enr.amountKz },
+                      enr.enrolledAt
+                    );
+                    const firstAmt = enr.firstInstallmentAmountKz ?? calc.firstKz;
+                    const secondAmt = enr.secondInstallmentAmountKz ?? calc.secondKz;
+                    const firstDue = enr.firstInstallmentDueDate || calc.firstDueDate;
+                    const secondDue = enr.secondInstallmentDueDate || calc.secondDueDate;
+                    const firstSt: InstallmentStatus = enr.firstInstallmentStatus || 'Pendente';
+                    const secondSt: InstallmentStatus = enr.secondInstallmentStatus || 'Pendente';
+                    const approvalSt = enr.enrollmentApprovalStatus || 'aprovado';
+
+                    return (
+                      <tr key={enr.id} className="hover:bg-slate-50 align-top">
+                        <td className="py-3 px-3 space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <p className="font-bold text-[#061A2D]">{enr.studentName}</p>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                approvalSt === 'aprovado'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : approvalSt === 'rejeitado'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-amber-100 text-amber-900'
+                              }`}
+                            >
+                              {approvalSt}
                             </span>
+                          </div>
+                          {enr.studentPhone && (
+                            <p className="text-[11px] text-slate-500 font-mono-tabular flex items-center gap-1">
+                              <Phone className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                              <span>{enr.studentPhone}</span>
+                            </p>
                           )}
-                        </div>
-                        {enr.studentPhone && (
-                          <p className="text-[11px] text-slate-500 font-mono-tabular flex items-center gap-1 mt-0.5">
-                            <Phone className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
-                            <span>{enr.studentPhone}</span>
+                          {enr.studentEmail && (
+                            <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                              <Mail className="w-2.5 h-2.5 text-[#0077C8] shrink-0" />
+                              <span>{enr.studentEmail}</span>
+                            </p>
+                          )}
+                          <div className="flex flex-wrap gap-1 pt-1">
+                            {approvalSt !== 'aprovado' && (
+                              <button
+                                type="button"
+                                onClick={() => updateEnrollmentApprovalStatus(enr.id, 'aprovado')}
+                                className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold"
+                              >
+                                ✓ Aprovar Inscrição
+                              </button>
+                            )}
+                            {approvalSt !== 'rejeitado' && (
+                              <button
+                                type="button"
+                                onClick={() => updateEnrollmentApprovalStatus(enr.id, 'rejeitado')}
+                                className="px-2 py-1 rounded bg-rose-100 hover:bg-rose-200 text-rose-800 text-[10px] font-bold"
+                              >
+                                Rejeitar
+                              </button>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3 space-y-1">
+                          <p className="font-bold text-[#061A2D]">{enr.courseTitle}</p>
+                          <p className="font-mono-tabular font-extrabold text-[#0077C8]">
+                            Total: {enr.amountKz.toLocaleString('pt-AO')} Kz
                           </p>
-                        )}
-                        {enr.studentEmail && (
-                          <p className="text-[11px] text-slate-500 flex items-center gap-1">
-                            <Mail className="w-2.5 h-2.5 text-[#0077C8] shrink-0" />
-                            <span>{enr.studentEmail}</span>
+                          <p className="text-[11px] text-slate-500 font-mono-tabular">
+                            Início: {enr.courseStartDate || calc.startDate}
                           </p>
-                        )}
-                      </td>
-                      <td className="py-3 px-3">{enr.courseTitle}</td>
-                      <td className="py-3 px-3 text-right font-mono-tabular font-bold">
-                        {enr.amountKz.toLocaleString('pt-AO')} Kz
-                      </td>
-                      <td className="py-3 px-3">
-                        {enr.paymentMethod} · <span className="font-mono-tabular">{enr.paymentReference}</span>
-                      </td>
-                      <td className="py-3 px-3 text-slate-600">
-                        <p>{enr.receiptNote}</p>
-                        {enr.receiptFileUrl && (
-                          <a
-                            href={enr.receiptFileUrl}
-                            download={enr.receiptFileName || `Comprovativo_${enr.id}.pdf`}
-                            className="inline-flex items-center gap-1 mt-1 text-[11px] font-bold text-[#0077C8] hover:underline"
-                          >
-                            <Download className="w-3 h-3" />
-                            <span>Baixar Comprovativo ({enr.receiptFileName || 'Anexo'})</span>
-                          </a>
-                        )}
-                      </td>
-                      <td className="py-3 px-3">
-                        <div className="space-y-1">
+                        </td>
+
+                        {/* 1.ª Parcela */}
+                        <td className="py-3 px-3 space-y-1.5">
+                          <p className="font-mono-tabular font-extrabold text-[#061A2D]">
+                            {firstAmt.toLocaleString('pt-AO')} Kz
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-mono-tabular">
+                            Vence: {firstDue}
+                          </p>
                           <select
-                            value={enr.paymentStatus}
+                            value={firstSt}
                             onChange={(e) =>
-                              updateEnrollmentStatus(
+                              updateInstallmentPaymentStatus(
                                 enr.id,
-                                e.target.value as EnrollmentItem['paymentStatus']
+                                '1ª Parcela',
+                                e.target.value as InstallmentStatus
                               )
                             }
-                            className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-[#061A2D]"
+                            className={`rounded border px-2 py-1 text-[11px] font-bold ${
+                              firstSt === 'Pago'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                : firstSt === 'Em atraso'
+                                ? 'bg-rose-50 text-rose-800 border-rose-300'
+                                : 'bg-amber-50 text-amber-800 border-amber-300'
+                            }`}
                           >
-                            <option>Pendente</option>
-                            <option>Pago</option>
-                            <option>Falhado</option>
-                            <option>Cancelado</option>
-                            <option>Reembolsado</option>
+                            <option value="Pendente">Pendente</option>
+                            <option value="Pago">Pago</option>
+                            <option value="Em atraso">Em atraso</option>
                           </select>
-                          {enr.paymentStatus !== 'Pago' && (
+                          {firstSt !== 'Pago' && (
                             <button
                               type="button"
-                              onClick={() => updateEnrollmentStatus(enr.id, 'Pago')}
-                              className="block w-full px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold"
+                              onClick={() => updateInstallmentPaymentStatus(enr.id, '1ª Parcela', 'Pago')}
+                              className="block w-full px-2 py-1 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white text-[10px] font-bold"
                             >
-                              ✓ Autorizar Pago
+                              ✓ Confirmar 1.ª Parcela
                             </button>
                           )}
-                        </div>
-                      </td>
-                      <td className="py-3 px-3">
-                        <div className="flex flex-col gap-1.5">
-                          {enr.paymentStatus === 'Pago' && (
+                        </td>
+
+                        {/* 2.ª Parcela */}
+                        <td className="py-3 px-3 space-y-1.5">
+                          <p className="font-mono-tabular font-extrabold text-[#061A2D]">
+                            {secondAmt.toLocaleString('pt-AO')} Kz
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-mono-tabular">
+                            Vence: {secondDue}
+                          </p>
+                          <select
+                            value={secondSt}
+                            onChange={(e) =>
+                              updateInstallmentPaymentStatus(
+                                enr.id,
+                                '2ª Parcela',
+                                e.target.value as InstallmentStatus
+                              )
+                            }
+                            className={`rounded border px-2 py-1 text-[11px] font-bold ${
+                              secondSt === 'Pago'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                : secondSt === 'Em atraso'
+                                ? 'bg-rose-50 text-rose-800 border-rose-300'
+                                : 'bg-amber-50 text-amber-800 border-amber-300'
+                            }`}
+                          >
+                            <option value="Pendente">Pendente</option>
+                            <option value="Pago">Pago</option>
+                            <option value="Em atraso">Em atraso</option>
+                          </select>
+                          <div className="flex flex-col gap-1">
+                            {secondSt !== 'Pago' && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateInstallmentPaymentStatus(enr.id, '2ª Parcela', 'Pago')
+                                  }
+                                  className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold"
+                                >
+                                  ✓ Confirmar 2.ª Parcela
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await notifySecondInstallmentDue(enr.id);
+                                    setDueNotifFeedback(
+                                      `Notificação de vencimento da 2.ª Parcela (${secondAmt.toLocaleString(
+                                        'pt-AO'
+                                      )} Kz · Vence: ${secondDue}) enviada ao formando ${enr.studentName}!`
+                                    );
+                                    setTimeout(() => setDueNotifFeedback(null), 5000);
+                                  }}
+                                  className="px-2 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-950 text-[10px] font-bold"
+                                >
+                                  🔔 Notificar Vencimento 2.ª Parcela
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Comprovativo & Histórico */}
+                        <td className="py-3 px-3 text-slate-600 space-y-1.5">
+                          <p className="font-semibold text-[#061A2D]">
+                            {enr.paymentMethod} · <span className="font-mono-tabular">{enr.paymentReference}</span>
+                          </p>
+                          <p className="text-[11px]">{enr.receiptNote}</p>
+                          {enr.receiptFileUrl && (
+                            <a
+                              href={enr.receiptFileUrl}
+                              download={enr.receiptFileName || `Comprovativo_${enr.id}.pdf`}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0077C8] hover:underline"
+                            >
+                              <Download className="w-3 h-3" />
+                              <span>Baixar Comprovativo ({enr.receiptFileName || 'Anexo'})</span>
+                            </a>
+                          )}
+                          {enr.paymentHistory && enr.paymentHistory.length > 0 && (
+                            <div className="pt-1 border-t border-slate-200/80 space-y-0.5 text-[10px]">
+                              <p className="font-bold text-slate-700">
+                                Histórico ({enr.paymentHistory.length}):
+                              </p>
+                              {enr.paymentHistory.slice(0, 3).map((ph) => (
+                                <p key={ph.id} className="font-mono-tabular text-slate-500">
+                                  • {ph.installmentLabel}: {ph.amountKz.toLocaleString('pt-AO')} Kz [{ph.status}]
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Acções Administrativas */}
+                        <td className="py-3 px-3">
+                          <div className="flex flex-col gap-1.5">
+                            {enr.paymentStatus !== 'Pago' && (
+                              <button
+                                type="button"
+                                onClick={() => updateInstallmentPaymentStatus(enr.id, 'Ambas', 'Pago')}
+                                className="px-2.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold"
+                              >
+                                ✓ Liquidar Total (1.ª + 2.ª)
+                              </button>
+                            )}
                             <div className="flex items-center gap-1">
                               <a
                                 href={buildEnrollmentWhatsAppUrl(enr)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold"
-                                title="Notificar confirmação no WhatsApp"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold"
                               >
                                 <Phone className="w-3 h-3" />
                                 <span>WhatsApp</span>
                               </a>
                               <a
                                 href={buildEnrollmentEmailUrl(enr)}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold"
-                                title="Notificar por E-mail"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white text-[10px] font-bold"
                               >
                                 <Mail className="w-3 h-3" />
                                 <span>E-mail</span>
                               </a>
                             </div>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCertTargetEnrollment(enr);
-                              setEnrCertFileUrl('');
-                              setEnrCertFileName('');
-                              setEnrCertError(null);
-                              setEnrCertSuccess(null);
-                            }}
-                            className="px-2.5 py-1.5 rounded bg-[#061A2D] text-white font-bold hover:bg-[#0077C8] text-[11px]"
-                          >
-                            Emitir / Anexar Certificado PDF (≤2MB)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteEnrollment(enr.id)}
-                            className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[11px]"
-                          >
-                            Eliminar Aluno Inscrito
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCertTargetEnrollment(enr);
+                                setEnrCertFileUrl('');
+                                setEnrCertFileName('');
+                                setEnrCertError(null);
+                                setEnrCertSuccess(null);
+                              }}
+                              className="px-2.5 py-1.5 rounded bg-[#061A2D] text-white font-bold hover:bg-[#0077C8] text-[11px]"
+                            >
+                              Emitir / Anexar Certificado PDF
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteEnrollment(enr.id)}
+                              className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[11px]"
+                            >
+                              Eliminar Inscrição
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -6718,17 +7384,17 @@ export const AdminPortal: React.FC = () => {
           </div>
         )}
 
-        {/* 9. UTILIZADORES, PARCEIROS & CONFIGURAÇÕES (Autorização de Professores + Credenciais por Painel + Integrações) */}
+        {/* 9. UTILIZADORES, PARCEIROS & CONFIGURAÇÕES (Gestão de Professores, Gestão de Contas dos Formandos & Segurança de Administrador Único) */}
         {activeModule === 'Utilizadores, Parceiros & Configurações' && (
           <div className="space-y-6">
-            {/* Autorização de Professores / Formadores Inscritos */}
+            {/* 3. Gestão de Professores (Aprovar, Rejeitar, Suspender ou Eliminar) */}
             <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
               <div>
                 <h2 className="text-base font-bold text-[#061A2D]">
-                  Autorização de Professores e Formadores Inscritos ({registeredProfessors.length})
+                  Gestão de Professores e Solicitações de Acesso ao Painel do Professor ({registeredProfessors.length})
                 </h2>
                 <p className="text-xs text-slate-600 mt-1">
-                  Gerencie abaixo os professores e formadores que se inscreveram no Painel do Professor (<code>/professor</code>). O acesso ao painel docente só é libertado após clicar em <strong>«Autorizar Inscrição»</strong>.
+                  O professor só pode aceder ao painel (<code>/professor</code>) depois da autorização do Administrador Principal. Abaixo pode <strong>aprovar</strong>, <strong>rejeitar</strong>, <strong>suspender</strong> ou <strong>eliminar</strong> contas de professores.
                 </p>
               </div>
 
@@ -6746,7 +7412,7 @@ export const AdminPortal: React.FC = () => {
                         <th className="py-2.5 px-3">E-mail & Telefone</th>
                         <th className="py-2.5 px-3">Especialidade</th>
                         <th className="py-2.5 px-3">Estado</th>
-                        <th className="py-2.5 px-3">Decisão Administrativa</th>
+                        <th className="py-2.5 px-3">Acções do Administrador Principal</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -6763,19 +7429,15 @@ export const AdminPortal: React.FC = () => {
                             <td className="py-3 px-3">{prof.specialty || 'Formação SGI & Normas ISO'}</td>
                             <td className="py-3 px-3">
                               <span
-                                className={`inline-flex px-2.5 py-1 rounded-md font-bold text-[11px] ${
+                                className={`inline-flex px-2.5 py-1 rounded-md font-bold text-[11px] uppercase ${
                                   status === 'aprovado'
                                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                    : status === 'rejeitado'
+                                    : status === 'rejeitado' || status === 'suspenso'
                                     ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                     : 'bg-amber-50 text-amber-800 border border-amber-200'
                                 }`}
                               >
-                                {status === 'aprovado'
-                                  ? 'Autorizado'
-                                  : status === 'rejeitado'
-                                  ? 'Não Autorizado'
-                                  : 'Pendente'}
+                                {status}
                               </span>
                             </td>
                             <td className="py-3 px-3">
@@ -6785,7 +7447,14 @@ export const AdminPortal: React.FC = () => {
                                   onClick={() => updateUserApprovalStatus(prof.uid, 'aprovado')}
                                   className="px-2.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px]"
                                 >
-                                  Autorizar Inscrição
+                                  Aprovar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateUserApprovalStatus(prof.uid, 'suspenso')}
+                                  className="px-2.5 py-1.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px]"
+                                >
+                                  Suspender
                                 </button>
                                 <button
                                   type="button"
@@ -6797,16 +7466,16 @@ export const AdminPortal: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => setResetTargetEmail(prof.email)}
-                                  className="px-2.5 py-1.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-[11px]"
+                                  className="px-2.5 py-1.5 rounded bg-sky-50 hover:bg-sky-100 text-[#0077C8] border border-sky-200 font-bold text-[11px]"
                                 >
-                                  Redefinir Senha com E-mail
+                                  Redefinir Senha Segura
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => deleteRegisteredUser(prof.uid)}
                                   className="px-2.5 py-1.5 rounded bg-red-600 hover:bg-red-700 text-white font-bold text-[11px]"
                                 >
-                                  Eliminar Professor
+                                  Eliminar
                                 </button>
                               </div>
                             </td>
@@ -6819,24 +7488,272 @@ export const AdminPortal: React.FC = () => {
               )}
             </div>
 
-            {/* Controlo de Todos os Alunos Cadastrados & Redefinição de Palavra-passe com E-mail */}
+            {/* 4. Gestão Completa de Contas dos Formandos (Consultar, Editar, Bloquear/Eliminar, Redefinir Senha Segura e Histórico) */}
             <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
               <div>
                 <h2 className="text-base font-bold text-[#061A2D]">
-                  Controlo de Alunos Cadastrados ({registeredStudents.length}) & Redefinição de Palavra-passe com E-mail
+                  Gestão de Contas dos Formandos (Consulta, Edição de Dados, Bloqueio, Redefinição Segura & Histórico)
                 </h2>
                 <p className="text-xs text-slate-600 mt-1">
-                  O Administrador Único pode redefinir a palavra-passe de qualquer Aluno ou Formador com o respectivo E-mail caso se esqueça, ou eliminar contas de alunos/professores.
+                  Consulte todos os formandos registados e inscritos, edite os dados pessoais e informações de inscrição, aprove/bloqueie/elimine contas, solicite redefinição de senha através de mecanismo seguro (sem exposição de senhas actuais) e consulte o histórico completo de inscrições, pagamentos e certificados.
                 </p>
               </div>
 
-              {/* Formulário de Redefinição de Palavra-passe por E-mail pelo Painel Administrativo */}
+              {studentMgmtFeedback && (
+                <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-900">
+                  {studentMgmtFeedback}
+                </div>
+              )}
+
+              {/* Modal de Edição de Dados Pessoais e de Inscrição do Formando */}
+              {editingStudentModal && (
+                <form
+                  onSubmit={handleSaveStudentAccountEdit}
+                  className="p-5 rounded-xl bg-[#F5F9FC] border-2 border-[#0077C8] space-y-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-extrabold text-[#061A2D]">
+                      Editar Dados Pessoais e Informações de Inscrição — {editingStudentModal.fullName}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setEditingStudentModal(null)}
+                      className="text-xs font-bold text-slate-500 hover:text-slate-800"
+                    >
+                      Fechar ✕
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <label className="block font-bold text-[#061A2D] mb-1">Nome Completo *</label>
+                      <input
+                        type="text"
+                        required
+                        value={editingStudentModal.fullName}
+                        onChange={(e) =>
+                          setEditingStudentModal({ ...editingStudentModal, fullName: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-[#061A2D] mb-1">E-mail *</label>
+                      <input
+                        type="email"
+                        required
+                        value={editingStudentModal.email}
+                        onChange={(e) =>
+                          setEditingStudentModal({ ...editingStudentModal, email: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono-tabular"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-[#061A2D] mb-1">Telefone / WhatsApp *</label>
+                      <input
+                        type="text"
+                        required
+                        value={editingStudentModal.phone}
+                        onChange={(e) =>
+                          setEditingStudentModal({ ...editingStudentModal, phone: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono-tabular"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-[#061A2D] mb-1">B.I. / NIF</label>
+                      <input
+                        type="text"
+                        value={editingStudentModal.studentBI}
+                        onChange={(e) =>
+                          setEditingStudentModal({ ...editingStudentModal, studentBI: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono-tabular"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <label className="block font-bold text-[#061A2D] mb-1">Estado da Conta / Inscrição</label>
+                      <select
+                        value={editingStudentModal.approvalStatus}
+                        onChange={(e) =>
+                          setEditingStudentModal({
+                            ...editingStudentModal,
+                            approvalStatus: e.target.value as AccountApprovalState,
+                          })
+                        }
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-bold"
+                      >
+                        <option value="pendente">PENDENTE</option>
+                        <option value="aprovado">APROVADO</option>
+                        <option value="bloqueado">BLOQUEADO</option>
+                        <option value="rejeitado">REJEITADO</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-[#061A2D] mb-1">Valor Total (Kz)</label>
+                      <input
+                        type="number"
+                        value={editingStudentModal.amountKz}
+                        onChange={(e) =>
+                          setEditingStudentModal({
+                            ...editingStudentModal,
+                            amountKz: Number(e.target.value),
+                          })
+                        }
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono-tabular"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-[#0077C8] mb-1">1.ª Parcela (Kz)</label>
+                      <input
+                        type="number"
+                        value={editingStudentModal.firstInstallmentAmountKz}
+                        onChange={(e) =>
+                          setEditingStudentModal({
+                            ...editingStudentModal,
+                            firstInstallmentAmountKz: Number(e.target.value),
+                          })
+                        }
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono-tabular"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-[#061A2D] mb-1">2.ª Parcela (Kz)</label>
+                      <input
+                        type="number"
+                        value={editingStudentModal.secondInstallmentAmountKz}
+                        onChange={(e) =>
+                          setEditingStudentModal({
+                            ...editingStudentModal,
+                            secondInstallmentAmountKz: Number(e.target.value),
+                          })
+                        }
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono-tabular"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingStudentModal(null)}
+                      className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold"
+                    >
+                      Guardar Alterações do Formando
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Modal de Histórico de Inscrições, Pagamentos e Certificados do Formando */}
+              {studentHistoryModalEmail && (
+                <div className="p-5 rounded-xl bg-[#061A2D] text-white space-y-4 border border-[#0077C8]">
+                  <div className="flex items-center justify-between border-b border-white/15 pb-3">
+                    <div>
+                      <p className="text-[11px] font-bold text-[#19B5FE] uppercase">
+                        Histórico Consolidado do Formando
+                      </p>
+                      <h3 className="text-sm font-extrabold">
+                        E-mail / Identificador: {studentHistoryModalEmail}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStudentHistoryModalEmail(null)}
+                      className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 text-xs font-bold"
+                    >
+                      Fechar Histórico ✕
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                    <div className="p-3.5 rounded-lg bg-white/5 border border-white/10 space-y-2">
+                      <p className="font-bold text-[#19B5FE]">1. Histórico de Inscrições</p>
+                      {enrollments
+                        .filter(
+                          (e) =>
+                            e.studentEmail?.toLowerCase() === studentHistoryModalEmail.toLowerCase() ||
+                            e.studentName.toLowerCase() === studentHistoryModalEmail.toLowerCase()
+                        )
+                        .map((e) => (
+                          <div key={e.id} className="p-2 rounded bg-black/25 space-y-0.5">
+                            <p className="font-bold">{e.courseTitle}</p>
+                            <p className="text-[11px] text-slate-300">
+                              Inscrição #{e.id} · Data: {e.enrolledAt} · Estado: {e.enrollmentApprovalStatus || 'aprovado'}
+                            </p>
+                          </div>
+                        ))}
+                    </div>
+
+                    <div className="p-3.5 rounded-lg bg-white/5 border border-white/10 space-y-2">
+                      <p className="font-bold text-emerald-400">2. Histórico de Pagamentos (2 Parcelas)</p>
+                      {enrollments
+                        .filter(
+                          (e) =>
+                            e.studentEmail?.toLowerCase() === studentHistoryModalEmail.toLowerCase() ||
+                            e.studentName.toLowerCase() === studentHistoryModalEmail.toLowerCase()
+                        )
+                        .map((e) => (
+                          <div key={`pay-${e.id}`} className="p-2 rounded bg-black/25 space-y-1">
+                            <p className="font-bold">
+                              Total: {e.amountKz.toLocaleString('pt-AO')} Kz
+                            </p>
+                            <p className="text-[11px] text-slate-300">
+                              1.ª Parcela: {(e.firstInstallmentAmountKz || 0).toLocaleString('pt-AO')} Kz [{e.firstInstallmentStatus || 'Pendente'}]
+                            </p>
+                            <p className="text-[11px] text-slate-300">
+                              2.ª Parcela: {(e.secondInstallmentAmountKz || 0).toLocaleString('pt-AO')} Kz [{e.secondInstallmentStatus || 'Pendente'}]
+                            </p>
+                          </div>
+                        ))}
+                    </div>
+
+                    <div className="p-3.5 rounded-lg bg-white/5 border border-white/10 space-y-2">
+                      <p className="font-bold text-amber-300">3. Histórico de Certificados</p>
+                      {certificates
+                        .filter(
+                          (c) =>
+                            c.studentEmail?.toLowerCase() === studentHistoryModalEmail.toLowerCase() ||
+                            c.studentName.toLowerCase() === studentHistoryModalEmail.toLowerCase()
+                        )
+                        .map((c) => (
+                          <div key={c.id} className="p-2 rounded bg-black/25 space-y-0.5">
+                            <p className="font-mono-tabular font-bold text-[#19B5FE]">{c.code}</p>
+                            <p className="text-[11px] text-slate-300">
+                              {c.courseTitle} · Emitido: {c.issuedAt} [{c.status}]
+                            </p>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Formulário de Solicitação de Redefinição de Senha através de Mecanismo Seguro (Sem Expor Senhas Actuais) */}
               <form
                 onSubmit={handleAdminPasswordReset}
                 className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-3"
               >
-                <p className="text-xs font-extrabold text-[#061A2D]">
-                  Redefinir Palavra-passe de Aluno ou Formador por E-mail
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-extrabold text-[#061A2D]">
+                    Mecanismo Seguro de Redefinição de Palavra-passe (Sem Exposição de Senhas Actuais)
+                  </p>
+                  <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                    Firebase Auth Reset + Token Seguro
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  Por segurança institucional, o sistema <strong>nunca expõe nem permite consultar senhas actuais</strong>. Utilize o formulário abaixo para enviar um link de redefinição segura ao formando ou professor.
                 </p>
                 {adminResetError && (
                   <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 font-semibold">
@@ -6846,22 +7763,22 @@ export const AdminPortal: React.FC = () => {
                 {adminResetFeedback && (
                   <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-2">
                     <p className="font-bold">
-                      ✓ Palavra-passe de {adminResetFeedback.fullName} ({adminResetFeedback.email}) redefinida para:{' '}
-                      <code className="bg-white px-2 py-0.5 rounded border border-emerald-300 font-mono-tabular">
-                        {adminResetFeedback.newPass}
-                      </code>
+                      ✓ Solicitação de redefinição segura gerada para {adminResetFeedback.fullName} ({adminResetFeedback.email}).
+                    </p>
+                    <p className="text-[11px] font-mono-tabular break-all text-slate-700">
+                      Link Seguro de Redefinição: {adminResetFeedback.resetTokenUrl}
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <a
                         href={`mailto:${adminResetFeedback.email}?subject=${encodeURIComponent(
-                          'Redefinição de Palavra-passe - ALHAN Sistema de Gestão Integrado'
+                          'Redefinição Segura de Palavra-passe - ALHAN Sistema de Gestão Integrado'
                         )}&body=${encodeURIComponent(
-                          `Prezado(a) ${adminResetFeedback.fullName},\n\nA sua palavra-passe na plataforma ALHAN – Sistema de Gestão Integrado (https://alhan.pro) foi redefinida pelo Painel Administrativo conforme solicitado.\n\nE-mail de Acesso: ${adminResetFeedback.email}\nNova Palavra-passe: ${adminResetFeedback.newPass}\n\nJá pode iniciar sessão em https://alhan.pro/login.\n\nAtenciosamente,\nAdministração ALHAN – SGI`
+                          `Prezado(a) ${adminResetFeedback.fullName},\n\nFoi solicitada a redefinição segura da sua palavra-passe na plataforma ALHAN – Sistema de Gestão Integrado.\n\nLink Seguro de Redefinição: ${adminResetFeedback.resetTokenUrl}\n\nAtenciosamente,\nAdministração Principal ALHAN – SGI`
                         )}`}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white font-bold text-[11px]"
                       >
                         <Mail className="w-3.5 h-3.5" />
-                        <span>Enviar Nova Senha por E-mail ({adminResetFeedback.email})</span>
+                        <span>Enviar Link Seguro por E-mail ({adminResetFeedback.email})</span>
                       </a>
                     </div>
                   </div>
@@ -6869,7 +7786,7 @@ export const AdminPortal: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                   <div>
                     <label className="block text-[11px] font-bold text-[#061A2D] mb-1">
-                      E-mail do Aluno ou Formador *
+                      E-mail do Formando ou Professor *
                     </label>
                     <input
                       type="email"
@@ -6882,87 +7799,179 @@ export const AdminPortal: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-[#061A2D] mb-1">
-                      Nova Palavra-passe a Definir *
+                       Senha Temporária de Recuperação (Opcional — Oculta)
                     </label>
                     <input
-                      type="text"
-                      required
+                      type="password"
                       value={resetTargetNewPass}
                       onChange={(e) => setResetTargetNewPass(e.target.value)}
-                      placeholder="Ex: Alhan2026"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular font-bold text-[#0077C8]"
+                      placeholder="Deixe em branco para apenas enviar link seguro"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono-tabular"
                     />
                   </div>
                   <button
                     type="submit"
                     className="py-2 px-4 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold transition-colors"
                   >
-                    Redefinir Palavra-passe com E-mail
+                    Enviar Redefinição Segura de Senha
                   </button>
                 </div>
               </form>
 
-              {registeredStudents.length === 0 ? (
-                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 text-xs text-slate-600">
-                  Ainda não existem novas contas de alunos registadas manualmente nesta sessão (os alunos inscritos em cursos podem ser geridos na tabela de Inscrições).
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-slate-500">
-                        <th className="py-2.5 px-3">Nome do Aluno</th>
-                        <th className="py-2.5 px-3">Utilizador (User)</th>
-                        <th className="py-2.5 px-3">E-mail & WhatsApp</th>
-                        <th className="py-2.5 px-3">Acções Administrativas</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {registeredStudents.map((stu) => (
-                        <tr key={stu.uid} className="hover:bg-slate-50">
-                          <td className="py-3 px-3 font-bold text-[#061A2D]">{stu.fullName}</td>
-                          <td className="py-3 px-3 font-mono-tabular font-bold text-[#0077C8]">
-                            {stu.username}
+              {/* Tabela Consolidada de Todos os Formandos (Contas Registadas + Inscrições) */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500">
+                      <th className="py-2.5 px-3">Formando</th>
+                      <th className="py-2.5 px-3">E-mail & Telefone</th>
+                      <th className="py-2.5 px-3">Inscrição / Curso</th>
+                      <th className="py-2.5 px-3">Estado da Conta</th>
+                      <th className="py-2.5 px-3">Gestão da Conta, Edição, Bloqueio & Histórico</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {enrollments.map((enr) => {
+                      const linkedUser = registeredStudents.find(
+                        (u) =>
+                          u.uid === enr.studentId ||
+                          (enr.studentEmail && u.email.toLowerCase() === enr.studentEmail.toLowerCase())
+                      );
+                      const status: AccountApprovalState =
+                        linkedUser?.approvalStatus || enr.enrollmentApprovalStatus || 'aprovado';
+
+                      return (
+                        <tr key={`stu-row-${enr.id}`} className="hover:bg-slate-50">
+                          <td className="py-3 px-3">
+                            <p className="font-bold text-[#061A2D]">{enr.studentName}</p>
+                            <p className="text-[11px] text-slate-500 font-mono-tabular">
+                              ID: {enr.studentId} {enr.studentBI ? `· B.I.: ${enr.studentBI}` : ''}
+                            </p>
                           </td>
                           <td className="py-3 px-3">
-                            <p>{stu.email}</p>
-                            <p className="font-mono-tabular text-slate-500">{stu.phone}</p>
+                            <p className="font-mono-tabular">{enr.studentEmail || linkedUser?.email || '—'}</p>
+                            <p className="font-mono-tabular text-slate-500">
+                              {enr.studentPhone || linkedUser?.phone || '—'}
+                            </p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <p className="font-semibold text-[#061A2D]">{enr.courseTitle}</p>
+                            <p className="text-[11px] text-slate-500 font-mono-tabular">
+                              1.ª: {enr.firstInstallmentStatus || 'Pendente'} · 2.ª: {enr.secondInstallmentStatus || 'Pendente'}
+                            </p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`inline-flex px-2.5 py-1 rounded-md font-bold text-[10px] uppercase ${
+                                status === 'aprovado'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : status === 'bloqueado' || status === 'rejeitado'
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : 'bg-amber-50 text-amber-800 border border-amber-200'
+                              }`}
+                            >
+                              {status}
+                            </span>
                           </td>
                           <td className="py-3 px-3">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => setResetTargetEmail(stu.email)}
-                                className="px-2.5 py-1.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-[11px]"
+                                onClick={() =>
+                                  setEditingStudentModal({
+                                    uid: linkedUser?.uid,
+                                    enrollmentId: enr.id,
+                                    fullName: enr.studentName,
+                                    email: enr.studentEmail || linkedUser?.email || '',
+                                    phone: enr.studentPhone || linkedUser?.phone || '',
+                                    studentBI: enr.studentBI || enr.certificateRequestBI || '',
+                                    approvalStatus: status,
+                                    courseTitle: enr.courseTitle,
+                                    modality: enr.modality,
+                                    amountKz: enr.amountKz,
+                                    firstInstallmentAmountKz:
+                                      enr.firstInstallmentAmountKz || Math.round(enr.amountKz * 0.5),
+                                    secondInstallmentAmountKz:
+                                      enr.secondInstallmentAmountKz ||
+                                      enr.amountKz - Math.round(enr.amountKz * 0.5),
+                                  })
+                                }
+                                className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-[#061A2D] font-bold text-[11px]"
                               >
-                                Redefinir Senha com E-mail
+                                Editar Dados
                               </button>
                               <button
                                 type="button"
-                                onClick={() => deleteRegisteredUser(stu.uid)}
-                                className="px-2.5 py-1.5 rounded bg-red-600 hover:bg-red-700 text-white font-bold text-[11px]"
+                                onClick={() =>
+                                  setStudentHistoryModalEmail(enr.studentEmail || enr.studentName)
+                                }
+                                className="px-2.5 py-1 rounded bg-sky-50 hover:bg-sky-100 text-[#0077C8] border border-sky-200 font-bold text-[11px]"
                               >
-                                Eliminar Aluno
+                                Histórico Completo
+                              </button>
+                              {status !== 'aprovado' && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    updateEnrollmentApprovalStatus(enr.id, 'aprovado');
+                                    if (linkedUser) updateUserApprovalStatus(linkedUser.uid, 'aprovado');
+                                  }}
+                                  className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px]"
+                                >
+                                  Aprovar
+                                </button>
+                              )}
+                              {status !== 'bloqueado' && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    updateEnrollmentApprovalStatus(enr.id, 'rejeitado');
+                                    if (linkedUser) updateUserApprovalStatus(linkedUser.uid, 'bloqueado');
+                                  }}
+                                  className="px-2.5 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[11px]"
+                                >
+                                  Bloquear Conta
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setResetTargetEmail(enr.studentEmail || '')}
+                                className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px]"
+                              >
+                                Redefinir Senha
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  deleteEnrollment(enr.id);
+                                  if (linkedUser) deleteRegisteredUser(linkedUser.uid);
+                                }}
+                                className="px-2.5 py-1 rounded bg-red-600 hover:bg-red-700 text-white font-bold text-[11px]"
+                              >
+                                Eliminar
                               </button>
                             </div>
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            {/* Gestão de Credenciais de Acesso por Painel (User & Senha) */}
-            <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+            {/* 6. Segurança e Preservação — Exclusivamente UM ADMINISTRADOR PRINCIPAL (Sem Exposição de Senhas) */}
+            <div className="bg-white rounded-xl border-2 border-[#061A2D] p-6 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-base font-bold text-[#061A2D]">
-                    Gestão de Acesso e Credenciais Privadas (Utilizador & Senha)
+                  <span className="inline-block px-2.5 py-0.5 rounded bg-[#061A2D] text-[#19B5FE] text-[10px] font-extrabold uppercase tracking-wider">
+                    Política de Segurança RBAC · Administrador Principal Único
+                  </span>
+                  <h2 className="text-base font-bold text-[#061A2D] mt-1">
+                    Controlo Exclusivo do Único Administrador Principal (Sem Criação de Novos Administradores)
                   </h2>
                   <p className="text-xs text-slate-600 mt-1">
-                    Configure abaixo o <strong>Utilizador (User)</strong> e a <strong>Senha</strong> de acesso directo do Painel Administrativo Separado (<code>/gestao-alhan-sgi</code>) e dos restantes painéis.
+                    A plataforma mantém <strong>exactamente UM ADMINISTRADOR PRINCIPAL</strong>. A criação de outros administradores está bloqueada no Firebase Authentication, Firestore, Storage e Backend. As senhas actuais nunca são expostas em texto visível.
                   </p>
                 </div>
                 {credSavedMsg && (
@@ -6976,136 +7985,235 @@ export const AdminPortal: React.FC = () => {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-500">
-                      <th className="py-2.5 px-3">Painel / Perfil RBAC</th>
-                      <th className="py-2.5 px-3">Rota</th>
-                      <th className="py-2.5 px-3">Utilizador (User)</th>
-                      <th className="py-2.5 px-3">E-mail de Acesso</th>
-                      <th className="py-2.5 px-3">Senha</th>
+                      <th className="py-2.5 px-3">Perfil Exclusivo</th>
+                      <th className="py-2.5 px-3">Rota Privada</th>
+                      <th className="py-2.5 px-3">Utilizador Principal</th>
+                      <th className="py-2.5 px-3">E-mail Oficial</th>
+                      <th className="py-2.5 px-3">Senha Protegida (Oculta)</th>
                       <th className="py-2.5 px-3">Acção</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {panelCredentials.map((cred) => (
-                      <tr key={cred.role} className="hover:bg-slate-50">
-                        <td className="py-3 px-3">
-                          <p className="font-bold text-[#061A2D]">{cred.panelName}</p>
-                          <p className="text-[11px] text-slate-500">{cred.description}</p>
-                        </td>
-                        <td className="py-3 px-3 font-mono-tabular text-[#0077C8] font-bold">{cred.route}</td>
-                        <td className="py-3 px-3">
-                          <input
-                            type="text"
-                            value={cred.username}
-                            onChange={(e) =>
-                              updatePanelCredential(cred.role, e.target.value, cred.email, cred.password)
-                            }
-                            className="w-32 rounded border border-slate-300 px-2.5 py-1.5 font-mono-tabular font-bold text-[#061A2D]"
-                          />
-                        </td>
-                        <td className="py-3 px-3">
-                          <input
-                            type="email"
-                            value={cred.email}
-                            onChange={(e) =>
-                              updatePanelCredential(cred.role, cred.username, e.target.value, cred.password)
-                            }
-                            className="w-44 rounded border border-slate-300 px-2.5 py-1.5 font-mono-tabular text-slate-700"
-                          />
-                        </td>
-                        <td className="py-3 px-3">
-                          <input
-                            type="text"
-                            value={cred.password}
-                            onChange={(e) =>
-                              updatePanelCredential(cred.role, cred.username, cred.email, e.target.value)
-                            }
-                            className="w-28 rounded border border-slate-300 px-2.5 py-1.5 font-mono-tabular font-bold text-emerald-700"
-                          />
-                        </td>
-                        <td className="py-3 px-3">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCredSavedMsg(`Credenciais do painel ${cred.role} guardadas!`);
-                              setTimeout(() => setCredSavedMsg(null), 2500);
-                            }}
-                            className="px-3 py-1.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white font-bold text-[11px]"
-                          >
-                            Guardar
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {panelCredentials
+                      .filter((cred) => cred.role === 'ADMIN')
+                      .map((cred) => (
+                        <tr key={cred.role} className="hover:bg-slate-50">
+                          <td className="py-3 px-3">
+                            <p className="font-bold text-[#061A2D]">Administrador Principal Único</p>
+                            <p className="text-[11px] text-slate-500">
+                              Acesso exclusivo de aprovação e gestão (Bloqueada criação de outros admins)
+                            </p>
+                          </td>
+                          <td className="py-3 px-3 font-mono-tabular text-[#0077C8] font-bold">
+                            {cred.route}
+                          </td>
+                          <td className="py-3 px-3 font-mono-tabular font-bold text-[#061A2D]">
+                            {cred.username}
+                          </td>
+                          <td className="py-3 px-3 font-mono-tabular text-slate-700">
+                            {cred.email}
+                          </td>
+                          <td className="py-3 px-3">
+                            <input
+                              type="password"
+                              value={cred.password}
+                              onChange={(e) =>
+                                updatePanelCredential(
+                                  cred.role,
+                                  cred.username,
+                                  cred.email,
+                                  e.target.value
+                                )
+                              }
+                              aria-label="Senha protegida do Administrador Principal"
+                              className="w-32 rounded border border-slate-300 px-2.5 py-1.5 font-mono-tabular font-bold text-[#061A2D]"
+                            />
+                          </td>
+                          <td className="py-3 px-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCredSavedMsg('Credenciais do Administrador Principal actualizadas!');
+                                setTimeout(() => setCredSavedMsg(null), 2500);
+                              }}
+                              className="px-3 py-1.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white font-bold text-[11px]"
+                            >
+                              Actualizar Senha Admin
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
             </div>
+          </div>
+        )}
 
-            <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">
-              <div>
-                <h2 className="text-base font-bold text-[#061A2D]">
-                  Estado das Integrações Externas e Credenciais de Comerciante
-                </h2>
-                <p className="text-xs text-slate-600 mt-1">
-                  Conforme a instrução principal do projecto, serviços externos que aguardam chaves de comerciante estão estruturados e identificados de forma transparente como «Configuração pendente», sem simular chamadas automáticas falsas.
-                </p>
+        {/* MÓDULO DE AUDITORIA, CÓPIA DE SEGURANÇA & LIMPEZA DE DADOS CONFIRMADA PELO ADMINISTRADOR */}
+        {activeModule === 'Auditoria, Backup & Limpeza de Dados' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl border-2 border-[#0077C8] p-6 space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+                <div>
+                  <span className="inline-block px-2.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-extrabold uppercase tracking-wider">
+                    Auditoria de Registos · Protecção Anti-Eliminação Automática
+                  </span>
+                  <h2 className="text-lg font-extrabold text-[#061A2D] mt-1">
+                    Relatório de Auditoria de Formandos, Inscrições e Certificados (Confirmação Obrigatória)
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    <strong>IMPORTANTE:</strong> Nenhum dado foi apagado automaticamente. Abaixo encontra-se a lista de todos os registos auditados na plataforma, identificando os registos iniciais de demonstração/teste sugeridos para eliminação e os dados legítimos preservados. Efectue uma <strong>cópia de segurança</strong> antes de confirmar qualquer eliminação.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const snap = createDataSafetyBackup();
+                      const blob = new Blob([JSON.stringify(snap, null, 2)], {
+                        type: 'application/json',
+                      });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `ALHAN_Backup_Seguranca_${snap.createdAt.slice(0, 10)}.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      setCleanupResultMsg(
+                        `✓ Cópia de segurança criada com sucesso em ${new Date(
+                          snap.createdAt
+                        ).toLocaleString('pt-AO')} e descarregada em JSON!`
+                      );
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold shadow-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>1.º Fazer Cópia de Segurança Agora (JSON)</span>
+                  </button>
+
+                  {lastSystemBackup && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ok = restoreDataSafetyBackup();
+                        if (ok) {
+                          setCleanupResultMsg(
+                            `✓ Cópia de segurança de ${new Date(
+                              lastSystemBackup.createdAt
+                            ).toLocaleString('pt-AO')} restaurada integralmente!`
+                          );
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-xs font-bold text-[#061A2D]"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Restaurar Último Backup</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-[#061A2D]">Base de Dados & Autenticação (Firebase Cloud)</p>
-                    <p className="text-slate-500 mt-0.5">Persistência Firestore, OAuth e Regras RBAC</p>
-                  </div>
-                  <span className="font-bold text-emerald-700">Operacional</span>
+              {cleanupResultMsg && (
+                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-950">
+                  {cleanupResultMsg}
                 </div>
-                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-[#061A2D]">Canais Express (927496287/927099484) & BANCO SOL (Graciete Garcia)</p>
-                    <p className="text-slate-500 mt-0.5">Validação no mesmo dia (Banco Sol/Express) ou 24h (outros bancos)</p>
-                  </div>
-                  <span className="font-bold text-emerald-700">Operacional</span>
-                </div>
-                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-[#061A2D]">API Unitel Money / Africell Money / KWiK</p>
-                    <p className="text-slate-500 mt-0.5">Validação manual de comprovativo activa</p>
-                  </div>
-                  <span className="font-bold text-amber-700">Configuração pendente</span>
-                </div>
-                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-[#061A2D]">Servidor SMTP Externo / SMS Gateway Angola</p>
-                    <p className="text-slate-500 mt-0.5">Notificações WhatsApp/E-mail 1-clique e Push Web activas</p>
-                  </div>
-                  <span className="font-bold text-amber-700">Configuração pendente</span>
-                </div>
-                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-[#061A2D]">Domínio alhan.pro & Hospedagem Hostinger (`public_html` + `.htaccess`)</p>
-                    <p className="text-slate-500 mt-0.5">Domínio principal `alhan.pro` e sublinks administrativos (`/gestao-alhan-sgi`, `/painel-admin`, `admin.alhan.pro`)</p>
-                  </div>
-                  <span className="font-bold text-emerald-700">Configurado & Activo</span>
-                </div>
-                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-[#061A2D]">Redes Sociais Oficiais (Facebook & Instagram @alhan.sgi)</p>
-                    <p className="text-slate-500 mt-0.5">Links directos e Feed integrados na plataforma</p>
-                  </div>
-                  <span className="font-bold text-emerald-700">Operacional</span>
-                </div>
+              )}
+
+              {/* Tabela de Registos Auditados */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500">
+                      <th className="py-2.5 px-3">Seleccionar</th>
+                      <th className="py-2.5 px-3">Tipo de Registo</th>
+                      <th className="py-2.5 px-3">ID & Identificação</th>
+                      <th className="py-2.5 px-3">Detalhe / Curso / Código</th>
+                      <th className="py-2.5 px-3">Classificação da Auditoria</th>
+                      <th className="py-2.5 px-3">Motivo Técnico</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {auditCandidates.map((cand) => {
+                      const isChecked = selectedCleanupIds.includes(cand.id);
+                      return (
+                        <tr
+                          key={`${cand.category}-${cand.id}`}
+                          className={
+                            cand.suggestedForDeletion ? 'bg-amber-50/60 hover:bg-amber-50' : 'hover:bg-slate-50'
+                          }
+                        >
+                          <td className="py-3 px-3">
+                            {cand.suggestedForDeletion ? (
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleCleanupCandidate(cand.id)}
+                                className="h-4 w-4 rounded border-slate-300 text-[#0077C8]"
+                              />
+                            ) : (
+                              <span className="text-[10px] font-bold text-emerald-700">Protegido</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 font-mono-tabular font-bold uppercase text-[#061A2D]">
+                            {cand.category}
+                          </td>
+                          <td className="py-3 px-3">
+                            <p className="font-bold text-[#061A2D]">{cand.title}</p>
+                            <p className="text-[11px] font-mono-tabular text-slate-500">ID: {cand.id}</p>
+                          </td>
+                          <td className="py-3 px-3 text-slate-700">{cand.subtitle}</td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                cand.suggestedForDeletion
+                                  ? 'bg-amber-200 text-amber-950'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {cand.suggestedForDeletion
+                                ? 'Identificado (Demo / Teste)'
+                                : 'Registo Legítimo'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-slate-600">{cand.reason}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
 
-              <div className="p-5 rounded-xl bg-[#061A2D] text-[#F5F9FC] space-y-2.5 text-xs">
-                <p className="font-bold text-[#19B5FE]">
-                  Configuração Oficial do Domínio <code>alhan.pro</code> e Sublinks do Painel Administrativo na Hostinger:
-                </p>
-                <ol className="list-decimal list-inside space-y-1.5 text-[#F5F9FC]/85 leading-relaxed">
-                  <li><strong>Domínio Público Oficial:</strong> <code>https://alhan.pro</code> (e <code>https://www.alhan.pro</code>) com certificado SSL/HTTPS forçado automaticamente via <code>.htaccess</code>.</li>
-                  <li><strong>Sublinks Privados do Painel Administrativo (Ocultos do Site Público):</strong> <code>https://alhan.pro/gestao-alhan-sgi</code> e <code>https://alhan.pro/painel-admin</code>.</li>
-                  <li><strong>Subdomínio Administrativo Hostinger (Opcional):</strong> Se criar o subdomínio <code>admin.alhan.pro</code> no hPanel da Hostinger apontando para a mesma pasta <code>public_html</code>, ao abrir <code>https://admin.alhan.pro</code> o sistema carrega directamente este Painel Administrativo separado!</li>
-                  <li><strong>Publicação no hPanel Hostinger:</strong> Execute <code>npm run build</code> e envie o conteúdo da pasta <code>dist/</code> (incluindo o ficheiro <code>.htaccess</code>) para <code>public_html</code> do domínio <code>alhan.pro</code>.</li>
-                </ol>
+              <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <label className="flex items-start gap-2.5 text-xs text-[#061A2D] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cleanupConfirmedCheckbox}
+                    onChange={(e) => setCleanupConfirmedCheckbox(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0077C8]"
+                  />
+                  <span>
+                    <strong>Confirmação do Administrador Principal:</strong> Confirmo que revistei a lista de auditoria acima ({selectedCleanupIds.length} registo(s) seleccionado(s)) e autorizo a geração automática de cópia de segurança seguida da eliminação apenas dos registos de demonstração/teste seleccionados.
+                  </span>
+                </label>
+
+                <button
+                  type="button"
+                  disabled={!cleanupConfirmedCheckbox || selectedCleanupIds.length === 0}
+                  onClick={async () => {
+                    const res = await executeAdminConfirmedDataCleanup(selectedCleanupIds);
+                    setCleanupResultMsg(
+                      `✓ Limpeza confirmada concluída com sucesso! Foram eliminados ${res.deletedCount} registo(s) de teste/demonstração após criação da cópia de segurança automática (${new Date(
+                        res.backup.createdAt
+                      ).toLocaleTimeString('pt-AO')}).`
+                    );
+                    setCleanupConfirmedCheckbox(false);
+                  }}
+                  className="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white text-xs font-bold shrink-0 transition-colors"
+                >
+                  2.º Confirmar e Eliminar Seleccionados ({selectedCleanupIds.length})
+                </button>
               </div>
             </div>
           </div>

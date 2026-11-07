@@ -24,7 +24,7 @@ import {
   ExternalLink,
   Check,
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp, computeCourseInstallments } from '../context/AppContext';
 import { COMPANY_INFO, CourseItem, EnrollmentItem, UserRole } from '../data/initialData';
 
 export const CoursesCatalogPage: React.FC = () => {
@@ -58,6 +58,7 @@ export const CoursesCatalogPage: React.FC = () => {
   const [presNotes, setPresNotes] = useState('');
 
   // Payment Form State (Step 2 - after direct enrollment)
+  const [installmentTarget, setInstallmentTarget] = useState<'1ª Parcela' | '2ª Parcela' | 'Pagamento Integral'>('1ª Parcela');
   const [paymentMethod, setPaymentMethod] = useState<EnrollmentItem['paymentMethod']>('Express Angola');
   const [paymentRef, setPaymentRef] = useState('');
   const [receiptNote, setReceiptNote] = useState('');
@@ -94,6 +95,7 @@ export const CoursesCatalogPage: React.FC = () => {
     setSelectedCourse(course);
     setChosenModality(course.modality);
     setEnrollStep('inscricao_directa');
+    setInstallmentTarget('1ª Parcela');
     setCreatedEnrollment(null);
     setPaymentCompletedMsg(null);
     setPaymentRef('');
@@ -186,16 +188,17 @@ export const CoursesCatalogPage: React.FC = () => {
       paymentReference: paymentRef.trim() || `REF-${Date.now().toString().slice(-6)}`,
       receiptNote:
         receiptNote.trim() ||
-        `Comprovativo via ${paymentMethod} enviado pelo formando após inscrição directa.`,
+        `Comprovativo (${installmentTarget}) via ${paymentMethod} enviado pelo formando após inscrição directa.`,
       receiptFileUrl: receiptFileUrl || undefined,
       receiptFileName: receiptFileName || undefined,
       studentPhone: studentWhatsapp.trim(),
       studentEmail: studentEmailInput.trim(),
+      installmentTarget,
     });
 
     setCreatedEnrollment(updated);
     setPaymentCompletedMsg(
-      `Comprovativo da inscrição #${updated.id} submetido com sucesso! Assim que o pagamento for validado pelo Painel Administrativo (no mesmo dia para BANCO SOL / Express ou em 24h para outros bancos), receberá notificação no seu WhatsApp (${studentWhatsapp}) ou E-mail (${studentEmailInput}) e a formação será liberada no seu Painel do Aluno.`
+      `Comprovativo (${installmentTarget}) da inscrição #${updated.id} submetido com sucesso! A sua inscrição encontra-se com estado PENDENTE até aprovação e confirmação do pagamento pelo Administrador Principal da ALHAN.`
     );
   };
 
@@ -304,24 +307,45 @@ export const CoursesCatalogPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="px-6 pb-6 pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] text-slate-500">1.º Inscreva-se · 2.º Pague a formação</p>
-                <p className="text-lg font-extrabold font-mono-tabular text-[#061A2D]">
-                  {course.priceKz.toLocaleString('pt-AO')} Kz
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openDirectEnrollment(course);
-                  }}
-                  className="px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors whitespace-nowrap shadow-sm"
-                >
-                  Inscrever-se Directo
-                </button>
+            <div className="px-6 pb-6 pt-4 border-t border-slate-200 space-y-2.5">
+              {(() => {
+                const inst = computeCourseInstallments(course);
+                return (
+                  <div className="p-2.5 rounded-lg bg-[#F5F9FC] border border-slate-200/80 grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <p className="text-slate-500 font-semibold">1.ª Parcela (Acto Inscrição)</p>
+                      <p className="font-mono-tabular font-extrabold text-[#0077C8]">
+                        {inst.firstKz.toLocaleString('pt-AO')} Kz
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500 font-semibold">2.ª Parcela (+7 dias início)</p>
+                      <p className="font-mono-tabular font-extrabold text-[#061A2D]">
+                        {inst.secondKz.toLocaleString('pt-AO')} Kz
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] text-slate-500">Valor Total (ou em 2 Parcelas)</p>
+                  <p className="text-lg font-extrabold font-mono-tabular text-[#061A2D]">
+                    {course.priceKz.toLocaleString('pt-AO')} Kz
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDirectEnrollment(course);
+                    }}
+                    className="px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors whitespace-nowrap shadow-sm"
+                  >
+                    Inscrever-se Directo
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -393,16 +417,46 @@ export const CoursesCatalogPage: React.FC = () => {
               {enrollStep === 'inscricao_directa' ? (
                 /* PASSO 1: INSCRIÇÃO DIRECTA (Sem exigir pagamento prévio) */
                 <form onSubmit={handleDirectEnrollmentSubmit} className="space-y-4">
-                  <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex items-start gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-[#0077C8] shrink-0 mt-0.5" />
-                    <div className="space-y-1 text-xs">
-                      <p className="font-bold text-[#061A2D]">
-                        Inscrição Directa Rápida — Inscreva-se já e pague no passo seguinte!
-                      </p>
-                      <p className="text-slate-600 leading-relaxed">
-                        Confirme abaixo os seus dados de aluno para garantir imediatamente a sua inscrição na formação. Logo a seguir à confirmação, serão apresentados os canais de pagamento (Express ou BANCO SOL) ou poderá pagar directamente no seu <strong>Painel do Aluno</strong>.
-                      </p>
+                  <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 space-y-2.5">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-[#0077C8] shrink-0 mt-0.5" />
+                      <div className="space-y-1 text-xs">
+                        <p className="font-bold text-[#061A2D]">
+                          Inscrição Directa & Plano de Pagamento em Duas Parcelas
+                        </p>
+                        <p className="text-slate-600 leading-relaxed">
+                          Qualquer formando pode preencher o formulário de inscrição abaixo. A inscrição fica com o estado <strong>PENDENTE</strong> até aprovação do Administrador. Para confirmar a vaga, o pagamento da <strong>1.ª Parcela</strong> é obrigatório no acto da inscrição, sendo a <strong>2.ª Parcela</strong> paga 1 semana após o início da formação.
+                        </p>
+                      </div>
                     </div>
+                    {(() => {
+                      const inst = computeCourseInstallments(selectedCourse);
+                      return (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-sky-200/80 text-xs">
+                          <div className="p-2.5 rounded-lg bg-white border border-sky-200">
+                            <p className="text-[10px] font-bold uppercase text-slate-500">Valor Total</p>
+                            <p className="text-sm font-extrabold font-mono-tabular text-[#061A2D]">
+                              {inst.totalKz.toLocaleString('pt-AO')} Kz
+                            </p>
+                            <p className="text-[10px] text-slate-500">Início: {inst.startDate}</p>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-white border border-[#0077C8]/40">
+                            <p className="text-[10px] font-bold uppercase text-[#0077C8]">1.ª Parcela (Acto Inscrição)</p>
+                            <p className="text-sm font-extrabold font-mono-tabular text-[#0077C8]">
+                              {inst.firstKz.toLocaleString('pt-AO')} Kz
+                            </p>
+                            <p className="text-[10px] text-slate-500">Confirmação obrigatória da vaga</p>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-white border border-slate-200">
+                            <p className="text-[10px] font-bold uppercase text-slate-600">2.ª Parcela (Restante)</p>
+                            <p className="text-sm font-extrabold font-mono-tabular text-[#061A2D]">
+                              {inst.secondKz.toLocaleString('pt-AO')} Kz
+                            </p>
+                            <p className="text-[10px] text-slate-500">Vence: {inst.secondDueDate} (+7 dias)</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -620,17 +674,70 @@ export const CoursesCatalogPage: React.FC = () => {
                     </div>
                   ) : (
                     <form onSubmit={handlePaymentAfterEnrollmentSubmit} className="space-y-4">
+                      {/* Selector of 1st Installment, 2nd Installment or Full Payment */}
+                      {(() => {
+                        const inst = computeCourseInstallments(selectedCourse, createdEnrollment?.enrolledAt);
+                        return (
+                          <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-200 space-y-2.5">
+                            <p className="text-xs font-extrabold text-[#061A2D]">
+                              Seleccione a Modalidade de Pagamento / Parcela a Liquidar:
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                              {(
+                                [
+                                  {
+                                    key: '1ª Parcela',
+                                    title: '1.ª Parcela (Confirmar Vaga)',
+                                    amount: inst.firstKz,
+                                    sub: `Obrigatória na inscrição · Vence: ${inst.firstDueDate}`,
+                                  },
+                                  {
+                                    key: '2ª Parcela',
+                                    title: '2.ª Parcela (Valor Restante)',
+                                    amount: inst.secondKz,
+                                    sub: `1 semana após início · Vence: ${inst.secondDueDate}`,
+                                  },
+                                  {
+                                    key: 'Pagamento Integral',
+                                    title: 'Pagamento Integral (100%)',
+                                    amount: inst.totalKz,
+                                    sub: 'Liquida 1.ª + 2.ª Parcelas',
+                                  },
+                                ] as const
+                              ).map((opt) => (
+                                <button
+                                  key={opt.key}
+                                  type="button"
+                                  onClick={() => setInstallmentTarget(opt.key)}
+                                  className={`p-2.5 rounded-lg border text-left transition-all ${
+                                    installmentTarget === opt.key
+                                      ? 'border-[#0077C8] bg-white ring-2 ring-[#0077C8]/20 shadow-sm'
+                                      : 'border-slate-200 bg-white/70 hover:bg-white'
+                                  }`}
+                                >
+                                  <p className="text-xs font-extrabold text-[#061A2D]">{opt.title}</p>
+                                  <p className="text-sm font-mono-tabular font-extrabold text-[#0077C8] mt-0.5">
+                                    {opt.amount.toLocaleString('pt-AO')} Kz
+                                  </p>
+                                  <p className="text-[10px] text-slate-500 mt-0.5">{opt.sub}</p>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Official Payment Channels Box */}
                       <div className="p-4 rounded-xl bg-[#061A2D] text-white space-y-3.5 border border-[#0077C8]/40 shadow-sm">
                         <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
                           <div className="flex items-center gap-2">
                             <CreditCard className="w-4 h-4 text-[#19B5FE]" />
                             <span className="text-xs font-bold text-white uppercase tracking-wider">
-                              Canais de Pagamento Oficiais para Liberar a Formação
+                              Canais de Pagamento Oficiais ({installmentTarget})
                             </span>
                           </div>
                           <span className="text-[11px] font-mono-tabular font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
-                            Valor: {selectedCourse.priceKz.toLocaleString('pt-AO')} Kz
+                            Total Curso: {selectedCourse.priceKz.toLocaleString('pt-AO')} Kz
                           </span>
                         </div>
 
@@ -1894,9 +2001,17 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                     )}
                   </div>
 
-                  {mode === 'registo' && role === 'PROFESSOR' && (
+                  {mode === 'registo' && (role === 'PROFESSOR' || role === 'ALUNO') && (
                     <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
-                      <strong>Nota para Professores e Formadores:</strong> O Painel do Professor é aberto para inscrição pública. Contudo, após concluir a sua inscrição abaixo, a sua conta ficará em estado <strong>«Aguardando Autorização»</strong> até que o Administrador valide o seu registo no Painel Administrativo.
+                      {role === 'PROFESSOR' ? (
+                        <>
+                          <strong>Nota para Professores e Formadores:</strong> Qualquer professor pode solicitar acesso ao Painel do Professor. Contudo, após submeter a inscrição, a conta fica em estado <strong>«PENDENTE»</strong> e o professor só poderá aceder ao painel depois da autorização exclusiva do Administrador Principal.
+                        </>
+                      ) : (
+                        <>
+                          <strong>Nota para Novos Formandos:</strong> Qualquer pessoa pode preencher o formulário de inscrição. A sua inscrição e conta ficam com o estado <strong>«PENDENTE»</strong> até à aprovação do Administrador Principal. Apenas após aprovação poderá aceder ao painel e aos cursos.
+                        </>
+                      )}
                     </div>
                   )}
 

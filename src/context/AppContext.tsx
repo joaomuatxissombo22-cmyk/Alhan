@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import {
+   onAuthStateChanged,
+  signInWithPopup,
+  signOut,
+  sendPasswordResetEmail,
+} from 'firebase/auth';
 import {
   collection,
   doc,
@@ -30,6 +35,9 @@ import {
   CourseItem,
   IsoStandardItem,
   EnrollmentItem,
+  InstallmentStatus,
+  PaymentHistoryEntry,
+  DataAuditCandidateItem,
   CertificateItem,
   CertificateRequestItem,
   CertificateRequestStatus,
@@ -61,17 +69,20 @@ import {
 } from '../data/initialData';
 import { generateOfficialCertificatePdfDataUrl } from '../utils/pdfCertificateGenerator';
 
+export type AccountApprovalState = 'pendente' | 'aprovado' | 'rejeitado' | 'suspenso' | 'bloqueado';
+
 export interface ActiveUser {
   uid: string;
   fullName: string;
   username: string;
   email: string;
   phone: string;
+  studentBI?: string;
   role: UserRole;
   companyId: string;
   companyName?: string;
   specialty?: string;
-  approvalStatus?: 'pendente' | 'aprovado' | 'rejeitado';
+  approvalStatus?: AccountApprovalState;
 }
 
 export interface RegisteredUserAccount {
@@ -80,13 +91,53 @@ export interface RegisteredUserAccount {
   username: string;
   email: string;
   phone: string;
+  studentBI?: string;
   password: string;
   role: 'ALUNO' | 'CLIENTE_EMPRESARIAL' | 'PROFESSOR';
   companyId: string;
   companyName?: string;
   specialty?: string;
-  approvalStatus?: 'pendente' | 'aprovado' | 'rejeitado';
+  approvalStatus?: AccountApprovalState;
   createdAt: string;
+}
+
+export interface SystemBackupSnapshot {
+  backupId: string;
+  createdAt: string;
+  createdBy: string;
+  registeredUsers: RegisteredUserAccount[];
+  enrollments: EnrollmentItem[];
+  certificates: CertificateItem[];
+  certificateRequests: CertificateRequestItem[];
+}
+
+export function computeCourseInstallments(course?: Partial<CourseItem>, enrollmentDateIso?: string) {
+  const totalKz = Number(course?.priceKz) || 0;
+  const firstKz =
+    course?.firstInstallmentKz !== undefined && course.firstInstallmentKz > 0
+      ? Number(course.firstInstallmentKz)
+      : Math.round(totalKz * 0.5);
+  const secondKz =
+    course?.secondInstallmentKz !== undefined && course.secondInstallmentKz >= 0
+      ? Number(course.secondInstallmentKz)
+      : Math.max(0, totalKz - firstKz);
+  const enrollDate = (enrollmentDateIso || new Date().toISOString()).slice(0, 10);
+  const startDate =
+    course?.courseStartDate ||
+    new Date(new Date(enrollDate).getTime() + 3 * 86400000).toISOString().slice(0, 10);
+  const secondDueDate = new Date(new Date(startDate).getTime() + 7 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+
+  return {
+    totalKz,
+    firstKz,
+    secondKz,
+    firstDueDate: enrollDate,
+    courseStartDate: startDate,
+    startDate,
+    secondDueDate,
+  };
 }
 
 interface AppContextValue {
@@ -111,10 +162,70 @@ interface AppContextValue {
   testimonials: TestimonialItem[];
   panelCredentials: PanelCredentialItem[];
   updatePanelCredential: (role: UserRole, username: string, email: string, password: string) => void;
-  updateUserApprovalStatus: (uid: string, status: 'pendente' | 'aprovado' | 'rejeitado') => void;
+  updateUserApprovalStatus: (uid: string, status: AccountApprovalState) => void;
+  updateStudentAccountDetails: (
+    uidOrPayload:
+      | string
+      | {
+          uid?: string;
+          enrollmentId?: string;
+          fullName?: string;
+          email?: string;
+          phone?: string;
+          studentBI?: string;
+          companyName?: string;
+          approvalStatus?: AccountApprovalState;
+          courseTitle?: string;
+          modality?: 'Online' | 'Presencial' | 'Híbrida';
+          amountKz?: number;
+          firstInstallmentAmountKz?: number;
+          secondInstallmentAmountKz?: number;
+        },
+    updates?: {
+      fullName?: string;
+      email?: string;
+      phone?: string;
+      studentBI?: string;
+      companyName?: string;
+      approvalStatus?: AccountApprovalState;
+    }
+  ) => void;
+  requestSecurePasswordResetLink: (
+    emailOrUser: string,
+    phoneHint?: string
+  ) => Promise<{
+    fullName: string;
+    email: string;
+    phone: string;
+    resetToken: string;
+    resetLink: string;
+    resetTokenUrl: string;
+    dispatchedViaFirebase: boolean;
+  }>;
   resetPasswordByEmail: (emailOrUser: string, newPassword: string) => Promise<RegisteredUserAccount>;
   deleteRegisteredUser: (uid: string) => void;
   deleteEnrollment: (enrollmentId: string) => Promise<void>;
+  updateInstallmentPaymentStatus: (
+    enrollmentId: string,
+    target: 'FIRST' | 'SECOND' | 'BOTH' | '1ª Parcela' | '2ª Parcela' | 'Ambas',
+    status: InstallmentStatus,
+    adminNote?: string
+  ) => Promise<void>;
+  updateEnrollmentApprovalStatus: (
+    enrollmentId: string,
+    approvalStatus: 'pendente' | 'aprovado' | 'rejeitado'
+  ) => Promise<void>;
+  notifySecondInstallmentDue: (enrollmentId: string) => void;
+  auditCandidates: DataAuditCandidateItem[];
+  lastSystemBackup: SystemBackupSnapshot | null;
+  createDataSafetyBackup: () => SystemBackupSnapshot;
+  executeAdminConfirmedDataCleanup: (selectedIds: string[]) => {
+    removedCount: number;
+    deletedCount: number;
+    backupId: string;
+    backup: SystemBackupSnapshot;
+  };
+  restoreDataSafetyBackup: () => boolean;
   requestCertificate: (
     enrollmentId: string,
     requestDetails?: {
@@ -173,6 +284,7 @@ interface AppContextValue {
     fullName: string;
     email: string;
     phone: string;
+    studentBI?: string;
     username: string;
     password: string;
     role: UserRole;
@@ -204,6 +316,9 @@ interface AppContextValue {
     studentName?: string;
     studentPhone?: string;
     studentEmail?: string;
+    studentBI?: string;
+    installmentOption?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
+    installmentTarget?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
   }) => Promise<EnrollmentItem>;
   submitStudentPaymentProof: (payload: {
     enrollmentId?: string;
@@ -216,6 +331,8 @@ interface AppContextValue {
     receiptFileName?: string;
     studentPhone?: string;
     studentEmail?: string;
+    installmentOption?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
+    installmentTarget?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
   }) => Promise<EnrollmentItem>;
   updateEnrollmentStatus: (enrollmentId: string, status: EnrollmentItem['paymentStatus']) => Promise<void>;
   completeLesson: (enrollmentId: string, lessonId: string, totalLessons: number, quizScore?: number) => Promise<void>;
@@ -303,11 +420,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isoStandards, setIsoStandards] = useState<IsoStandardItem[]>(() => loadLocal('alhan_iso_standards', INITIAL_ISO_STANDARDS));
   const [enrollments, setEnrollments] = useState<EnrollmentItem[]>(() => {
     const stored = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
-    return stored.map((e) => ({
-      ...e,
-      studentName: e.studentName.replace('[DEMO] ', ''),
-    }));
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return stored.map((e) => {
+      const matchedCourse = INITIAL_COURSES.find((c) => c.id === e.courseId);
+      const calc = computeCourseInstallments(matchedCourse, e.createdAt);
+      const firstStatus: InstallmentStatus =
+        e.firstInstallmentStatus || (e.paymentStatus === 'Pago' ? 'Pago' : 'Pendente');
+      const secondDue = e.secondInstallmentDueDate || calc.secondDueDate;
+      let secondStatus: InstallmentStatus =
+        e.secondInstallmentStatus || (e.paymentStatus === 'Pago' ? 'Pago' : 'Pendente');
+      if (secondStatus === 'Pendente' && secondDue < todayStr) {
+        secondStatus = 'Em atraso';
+      }
+      return {
+        ...e,
+        studentName: e.studentName.replace('[DEMO] ', ''),
+        enrollmentApprovalStatus: e.enrollmentApprovalStatus || 'aprovado',
+        courseStartDate: e.courseStartDate || calc.courseStartDate,
+        firstInstallmentAmountKz: e.firstInstallmentAmountKz ?? calc.firstKz,
+        firstInstallmentDueDate: e.firstInstallmentDueDate || calc.firstDueDate,
+        firstInstallmentStatus: firstStatus,
+        secondInstallmentAmountKz: e.secondInstallmentAmountKz ?? calc.secondKz,
+        secondInstallmentDueDate: secondDue,
+        secondInstallmentStatus: secondStatus,
+        paymentHistory:
+          e.paymentHistory && e.paymentHistory.length > 0
+            ? e.paymentHistory
+            : [
+                {
+                  id: `hist-p1-${e.id}`,
+                  installment: '1ª Parcela',
+                  amountKz: e.firstInstallmentAmountKz ?? calc.firstKz,
+                  dueDate: e.firstInstallmentDueDate || calc.firstDueDate,
+                  paidAt: firstStatus === 'Pago' ? (e.createdAt || todayStr).slice(0, 10) : undefined,
+                  method: e.paymentMethod,
+                  reference: `${e.paymentReference}-P1`,
+                  status: firstStatus,
+                  note: '1ª Parcela obrigatória no acto da inscrição para confirmar a vaga.',
+                },
+                {
+                  id: `hist-p2-${e.id}`,
+                  installment: '2ª Parcela',
+                  amountKz: e.secondInstallmentAmountKz ?? calc.secondKz,
+                  dueDate: secondDue,
+                  paidAt: secondStatus === 'Pago' ? secondDue : undefined,
+                  method: e.paymentMethod,
+                  reference: `${e.paymentReference}-P2`,
+                  status: secondStatus,
+                  note: '2ª Parcela (restante valor) com vencimento 1 semana após o início da formação.',
+                },
+              ],
+      };
+    });
   });
+  const [lastSystemBackup, setLastSystemBackup] = useState<SystemBackupSnapshot | null>(() =>
+    loadLocal<SystemBackupSnapshot | null>('alhan_safety_backup_v1', null)
+  );
   const [certificates, setCertificates] = useState<CertificateItem[]>(() => {
     const stored = loadLocal<CertificateItem[]>('alhan_certificates', INITIAL_CERTIFICATES);
     return stored.map((c) => ({
@@ -847,7 +1015,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logActivity(`Credenciais de acesso actualizadas para o painel ${role}`);
   };
 
-  const updateUserApprovalStatus = (uid: string, status: 'pendente' | 'aprovado' | 'rejeitado') => {
+  const updateUserApprovalStatus = (uid: string, status: AccountApprovalState) => {
     let targetUser: RegisteredUserAccount | undefined;
     setRegisteredUsers((prev) =>
       prev.map((u) => {
@@ -862,20 +1030,213 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUser((prev) => (prev && prev.uid === uid ? { ...prev, approvalStatus: status } : prev));
 
     if (targetUser) {
+      if (targetUser.role === 'ALUNO' && (status === 'aprovado' || status === 'pendente' || status === 'rejeitado')) {
+        setEnrollments((prev) =>
+          prev.map((enr) =>
+            enr.studentId === uid ||
+            (targetUser && enr.studentEmail?.toLowerCase() === targetUser.email.toLowerCase())
+              ? { ...enr, enrollmentApprovalStatus: status }
+              : enr
+          )
+        );
+      }
+
       const statusLabel =
         status === 'aprovado'
-          ? 'AUTORIZADO / APROVADO'
+          ? 'APROVADO / AUTORIZADO'
           : status === 'rejeitado'
-          ? 'NÃO AUTORIZADO / SUSPENSO'
-          : 'PENDENTE DE AUTORIZAÇÃO';
+          ? 'REJEITADO'
+          : status === 'suspenso'
+          ? 'SUSPENSO'
+          : status === 'bloqueado'
+          ? 'BLOQUEADO'
+          : 'PENDENTE DE APROVAÇÃO';
       triggerNotification(
         'Novo registo',
-        `Inscrição de Professor ${status === 'aprovado' ? 'Autorizada' : 'Actualizada'}`,
-        `O acesso do Professor / Formador ${targetUser.fullName} ao Painel do Professor foi marcado como ${statusLabel} pela Administração.`,
-        'PROFESSOR'
+        `Conta de ${targetUser.role === 'PROFESSOR' ? 'Professor' : 'Formando'} ${statusLabel}`,
+        `O estado da conta de ${targetUser.fullName} (${targetUser.email}) foi actualizado pelo Administrador Único para ${statusLabel}.`,
+        targetUser.role
       );
-      logActivity(`Estado de autorização do professor ${targetUser.fullName} alterado para ${statusLabel}`);
+      logActivity(
+        `Estado da conta (${targetUser.role}) de ${targetUser.fullName} alterado pelo Administrador Único para ${statusLabel}`
+      );
     }
+  };
+
+  const updateStudentAccountDetails = (
+    uidOrPayload:
+      | string
+      | {
+          uid?: string;
+          enrollmentId?: string;
+          fullName?: string;
+          email?: string;
+          phone?: string;
+          studentBI?: string;
+          companyName?: string;
+          approvalStatus?: AccountApprovalState;
+          courseTitle?: string;
+          modality?: 'Online' | 'Presencial' | 'Híbrida';
+          amountKz?: number;
+          firstInstallmentAmountKz?: number;
+          secondInstallmentAmountKz?: number;
+        },
+    maybeUpdates?: {
+      fullName?: string;
+      email?: string;
+      phone?: string;
+      studentBI?: string;
+      companyName?: string;
+      approvalStatus?: AccountApprovalState;
+    }
+  ) => {
+    const uid = typeof uidOrPayload === 'string' ? uidOrPayload : uidOrPayload.uid || '';
+    const enrollmentId = typeof uidOrPayload === 'string' ? undefined : uidOrPayload.enrollmentId;
+    const updates = typeof uidOrPayload === 'string' ? maybeUpdates || {} : uidOrPayload;
+
+    let updatedAccount: RegisteredUserAccount | undefined;
+    if (uid) {
+      setRegisteredUsers((prev) =>
+        prev.map((u) => {
+          if (u.uid !== uid) return u;
+          updatedAccount = {
+            ...u,
+            fullName: updates.fullName?.trim() || u.fullName,
+            email: updates.email?.trim().toLowerCase() || u.email,
+            phone: updates.phone?.trim() || u.phone,
+            studentBI: updates.studentBI !== undefined ? updates.studentBI.trim().toUpperCase() : u.studentBI,
+            companyName: updates.companyName !== undefined ? updates.companyName.trim() : u.companyName,
+            approvalStatus: updates.approvalStatus || u.approvalStatus,
+          };
+          return updatedAccount;
+        })
+      );
+    }
+
+    const finalUpdated = updatedAccount as RegisteredUserAccount | undefined;
+    setEnrollments((prev) =>
+      prev.map((enr) => {
+        const matchesEnrollment =
+          (enrollmentId && enr.id === enrollmentId) ||
+          (uid && enr.studentId === uid) ||
+          (finalUpdated && enr.studentEmail?.toLowerCase() === finalUpdated.email.toLowerCase()) ||
+          (updates.email && enr.studentEmail?.toLowerCase() === updates.email.trim().toLowerCase());
+        if (!matchesEnrollment) return enr;
+
+        const extraCourseFields = typeof uidOrPayload === 'string' ? {} : uidOrPayload;
+        return {
+          ...enr,
+          studentName: updates.fullName?.trim() || finalUpdated?.fullName || enr.studentName,
+          studentEmail: updates.email?.trim().toLowerCase() || finalUpdated?.email || enr.studentEmail,
+          studentPhone: updates.phone?.trim() || finalUpdated?.phone || enr.studentPhone,
+          studentBI:
+            updates.studentBI !== undefined
+              ? updates.studentBI.trim().toUpperCase()
+              : finalUpdated?.studentBI || enr.studentBI,
+          enrollmentApprovalStatus:
+            updates.approvalStatus === 'aprovado' ||
+            updates.approvalStatus === 'pendente' ||
+            updates.approvalStatus === 'rejeitado'
+              ? updates.approvalStatus
+              : enr.enrollmentApprovalStatus,
+          courseTitle: extraCourseFields.courseTitle?.trim() || enr.courseTitle,
+          modality: extraCourseFields.modality || enr.modality,
+          amountKz:
+            extraCourseFields.amountKz !== undefined && extraCourseFields.amountKz > 0
+              ? extraCourseFields.amountKz
+              : enr.amountKz,
+          firstInstallmentAmountKz:
+            extraCourseFields.firstInstallmentAmountKz !== undefined &&
+            extraCourseFields.firstInstallmentAmountKz >= 0
+              ? extraCourseFields.firstInstallmentAmountKz
+              : enr.firstInstallmentAmountKz,
+          secondInstallmentAmountKz:
+            extraCourseFields.secondInstallmentAmountKz !== undefined &&
+            extraCourseFields.secondInstallmentAmountKz >= 0
+              ? extraCourseFields.secondInstallmentAmountKz
+              : enr.secondInstallmentAmountKz,
+        };
+      })
+    );
+
+    logActivity(
+      `Dados pessoais e de inscrição do formando ${
+        updates.fullName || finalUpdated?.fullName || uid
+      } actualizados pelo Administrador Único`
+    );
+  };
+
+  const requestSecurePasswordResetLink = async (
+    emailOrUser: string,
+    phoneHint?: string
+  ): Promise<{
+    fullName: string;
+    email: string;
+    phone: string;
+    resetToken: string;
+    resetLink: string;
+    resetTokenUrl: string;
+    dispatchedViaFirebase: boolean;
+  }> => {
+    const cleanTarget = emailOrUser.trim().toLowerCase();
+    if (!cleanTarget) {
+      throw new Error('Informe o e-mail ou utilizador registado do formando ou professor.');
+    }
+
+    const foundUser = registeredUsers.find(
+      (u) => u.email.toLowerCase() === cleanTarget || u.username.toLowerCase() === cleanTarget
+    );
+    const foundEnrollment = enrollments.find(
+      (e) => e.studentEmail?.toLowerCase() === cleanTarget || e.studentName.toLowerCase() === cleanTarget
+    );
+
+    const targetEmail = foundUser?.email || foundEnrollment?.studentEmail || (cleanTarget.includes('@') ? cleanTarget : '');
+    const targetName = foundUser?.fullName || foundEnrollment?.studentName || emailOrUser;
+    const targetPhone = phoneHint?.trim() || foundUser?.phone || foundEnrollment?.studentPhone || '+244 922 021 211';
+
+    if (!targetEmail) {
+      throw new Error(`Nenhuma conta encontrada com o identificador "${emailOrUser}".`);
+    }
+
+    let dispatchedViaFirebase = false;
+    // Attempt Firebase Auth password reset email dispatch if account exists in Firebase Auth
+    try {
+      await sendPasswordResetEmail(auth, targetEmail);
+      dispatchedViaFirebase = true;
+    } catch {
+      // Non-blocking fallback when account is managed in platform registry
+    }
+
+    const resetToken = `ALHAN-SEC-${Date.now().toString(36).toUpperCase()}-${Math.random()
+      .toString(36)
+      .slice(2, 6)
+      .toUpperCase()}`;
+    const resetLink = `https://alhan.pro/login?modo=recuperar&email=${encodeURIComponent(
+      targetEmail
+    )}&token=${encodeURIComponent(resetToken)}`;
+
+    notifyAdminAndEmailGeral({
+      panelOrigin: 'PAINEL_ALUNO',
+      subject: `Solicitação Segura de Redefinição de Senha — ${targetName}`,
+      applicantName: targetName,
+      applicantEmail: targetEmail,
+      applicantPhone: targetPhone,
+      details: `Mecanismo Seguro de Redefinição de Palavra-passe accionado pelo Administrador Único (sem exposição de senha actual). Token Seguro: ${resetToken} | Link: ${resetLink}`,
+    });
+
+    logActivity(
+      `Solicitação segura de redefinição de palavra-passe emitida para ${targetName} (${targetEmail}) — Token ${resetToken}`
+    );
+
+    return {
+      fullName: targetName,
+      email: targetEmail,
+      phone: targetPhone,
+      resetToken,
+      resetLink,
+      resetTokenUrl: resetLink,
+      dispatchedViaFirebase,
+    };
   };
 
   const resetPasswordByEmail = async (
@@ -915,10 +1276,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     triggerNotification(
       'Novo registo',
       `Palavra-passe Redefinida (${found.role})`,
-      `A palavra-passe da conta de ${found.fullName} (${found.email}) foi redefinida com sucesso.`,
+      `A palavra-passe da conta de ${found.fullName} (${found.email}) foi redefinida através do mecanismo seguro.`,
       'ADMIN'
     );
-    logActivity(`Palavra-passe redefinida via e-mail para ${found.fullName} (${found.email})`);
+    logActivity(`Palavra-passe redefinida via mecanismo seguro para ${found.fullName} (${found.email})`);
 
     return updatedAccount;
   };
@@ -927,7 +1288,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = registeredUsers.find((u) => u.uid === uid);
     setRegisteredUsers((prev) => prev.filter((u) => u.uid !== uid));
     if (target) {
-      // Also clean up any enrollments tied to this deleted student if applicable
       if (target.role === 'ALUNO') {
         setEnrollments((prev) =>
           prev.filter(
@@ -938,7 +1298,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
       }
       logActivity(
-        `Conta de ${target.role === 'PROFESSOR' ? 'Professor/Formador' : 'Aluno/Utilizador'} eliminada pelo Administrador: ${target.fullName} (${target.email})`
+        `Conta de ${target.role === 'PROFESSOR' ? 'Professor/Formador' : 'Aluno/Utilizador'} eliminada pelo Administrador Único: ${target.fullName} (${target.email})`
       );
     }
   };
@@ -948,9 +1308,433 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setEnrollments((prev) => prev.filter((e) => e.id !== enrollmentId));
     if (target) {
       logActivity(
-        `Inscrição eliminada pelo Administrador: ${target.studentName} (${target.courseTitle})`
+        `Inscrição eliminada pelo Administrador Único: ${target.studentName} (${target.courseTitle})`
       );
     }
+  };
+
+  // ==========================================================
+  // SISTEMA DE PAGAMENTO EM DUAS PARCELAS & NOTIFICAÇÕES DE VENCIMENTO
+  // ==========================================================
+  const updateInstallmentPaymentStatus = async (
+    enrollmentId: string,
+    rawTarget: 'FIRST' | 'SECOND' | 'BOTH' | '1ª Parcela' | '2ª Parcela' | 'Ambas',
+    status: InstallmentStatus,
+    adminNote?: string
+  ) => {
+    const target: 'FIRST' | 'SECOND' | 'BOTH' =
+      rawTarget === '1ª Parcela'
+        ? 'FIRST'
+        : rawTarget === '2ª Parcela'
+        ? 'SECOND'
+        : rawTarget === 'Ambas'
+        ? 'BOTH'
+        : rawTarget;
+    const nowDate = new Date().toISOString().slice(0, 10);
+    const adminName = user?.fullName || 'Administrador Geral ALHAN – SGI';
+    const targetEnr = enrollments.find((e) => e.id === enrollmentId);
+    if (!targetEnr) return;
+
+    const matchedCourse = courses.find((c) => c.id === targetEnr.courseId);
+    const calc = computeCourseInstallments(matchedCourse, targetEnr.createdAt);
+
+    const nextFirstStatus: InstallmentStatus =
+      target === 'FIRST' || target === 'BOTH'
+        ? status
+        : targetEnr.firstInstallmentStatus || 'Pendente';
+    const nextSecondStatus: InstallmentStatus =
+      target === 'SECOND' || target === 'BOTH'
+        ? status
+        : targetEnr.secondInstallmentStatus || 'Pendente';
+
+    // 1st installment paid confirms the student's spot and unlocks classroom access; full payment when both are paid
+    const overallPaymentStatus: EnrollmentItem['paymentStatus'] =
+      nextFirstStatus === 'Pago' ? 'Pago' : 'Pendente';
+
+    const instLabel: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral' =
+      target === 'BOTH'
+        ? 'Pagamento Integral'
+        : target === 'FIRST'
+        ? '1ª Parcela'
+        : '2ª Parcela';
+
+    const historyEntry: PaymentHistoryEntry = {
+      id: `pay-adm-${Date.now()}`,
+      installment: instLabel,
+      installmentLabel: instLabel,
+      amountKz:
+        target === 'BOTH'
+          ? targetEnr.amountKz
+          : target === 'FIRST'
+          ? targetEnr.firstInstallmentAmountKz ?? calc.firstKz
+          : targetEnr.secondInstallmentAmountKz ?? calc.secondKz,
+      dueDate:
+        target === 'FIRST'
+          ? targetEnr.firstInstallmentDueDate || calc.firstDueDate
+          : targetEnr.secondInstallmentDueDate || calc.secondDueDate,
+      paidAt: status === 'Pago' ? nowDate : undefined,
+      recordedAt: nowDate,
+      method: targetEnr.paymentMethod,
+      reference: targetEnr.paymentReference,
+      status,
+      confirmedBy: adminName,
+      note:
+        adminNote ||
+        `Estado actualizado pelo Administrador Único para «${status}» (${
+          target === 'BOTH' ? '1ª e 2ª Parcelas' : target === 'FIRST' ? '1ª Parcela' : '2ª Parcela'
+        }).`,
+    };
+
+    setEnrollments((prev) =>
+      prev.map((enr) => {
+        if (enr.id !== enrollmentId) return enr;
+        const existingHist = enr.paymentHistory || [];
+        return {
+          ...enr,
+          paymentStatus: overallPaymentStatus,
+          enrollmentApprovalStatus:
+            status === 'Pago' ? 'aprovado' : enr.enrollmentApprovalStatus || 'pendente',
+          firstInstallmentStatus: nextFirstStatus,
+          firstInstallmentPaidAt:
+            (target === 'FIRST' || target === 'BOTH') && status === 'Pago'
+              ? nowDate
+              : enr.firstInstallmentPaidAt,
+          secondInstallmentStatus: nextSecondStatus,
+          secondInstallmentPaidAt:
+            (target === 'SECOND' || target === 'BOTH') && status === 'Pago'
+              ? nowDate
+              : enr.secondInstallmentPaidAt,
+          paymentHistory: [historyEntry, ...existingHist],
+        };
+      })
+    );
+
+    if (auth.currentUser && auth.currentUser.emailVerified) {
+      await updateEnrollmentStatusInFirestore(enrollmentId, overallPaymentStatus).catch(() => null);
+    }
+
+    const parcelaLabel =
+      target === 'BOTH' ? '1.ª e 2.ª Parcelas' : target === 'FIRST' ? '1.ª Parcela (Confirmação de Vaga)' : '2.ª Parcela';
+    triggerNotification(
+      'Pagamento aprovado',
+      `Actualização de Pagamento (${parcelaLabel}): ${status}`,
+      `O estado da ${parcelaLabel} da formação «${targetEnr.courseTitle}» (${targetEnr.studentName}) foi actualizado para «${status}».`,
+      'ALUNO'
+    );
+    logActivity(
+      `Pagamento (${parcelaLabel}) da inscrição #${enrollmentId} (${targetEnr.studentName}) actualizado para ${status}`,
+      adminName
+    );
+  };
+
+  const updateEnrollmentApprovalStatus = async (
+    enrollmentId: string,
+    approvalStatus: 'pendente' | 'aprovado' | 'rejeitado'
+  ) => {
+    const targetEnr = enrollments.find((e) => e.id === enrollmentId);
+    setEnrollments((prev) =>
+      prev.map((enr) =>
+        enr.id === enrollmentId ? { ...enr, enrollmentApprovalStatus: approvalStatus } : enr
+      )
+    );
+    if (targetEnr) {
+      // Also approve the corresponding student user account if found
+      setRegisteredUsers((prev) =>
+        prev.map((u) =>
+          u.uid === targetEnr.studentId ||
+          (targetEnr.studentEmail && u.email.toLowerCase() === targetEnr.studentEmail.toLowerCase())
+            ? { ...u, approvalStatus }
+            : u
+        )
+      );
+      setUser((prev) =>
+        prev &&
+        (prev.uid === targetEnr.studentId ||
+          (targetEnr.studentEmail && prev.email.toLowerCase() === targetEnr.studentEmail.toLowerCase()))
+          ? { ...prev, approvalStatus }
+          : prev
+      );
+      triggerNotification(
+        'Nova inscrição',
+        `Inscrição de Formando ${approvalStatus === 'aprovado' ? 'Aprovada' : approvalStatus === 'rejeitado' ? 'Rejeitada' : 'Pendente'}`,
+        `A inscrição de ${targetEnr.studentName} no curso «${targetEnr.courseTitle}» foi marcada como ${approvalStatus.toUpperCase()} pelo Administrador Único.`,
+        'ALUNO'
+      );
+      logActivity(
+        `Inscrição #${enrollmentId} (${targetEnr.studentName} - ${targetEnr.courseTitle}) marcada como ${approvalStatus.toUpperCase()}`
+      );
+    }
+  };
+
+  const notifySecondInstallmentDue = (enrollmentId: string) => {
+    const targetEnr = enrollments.find((e) => e.id === enrollmentId);
+    if (!targetEnr) return;
+    const matchedCourse = courses.find((c) => c.id === targetEnr.courseId);
+    const calc = computeCourseInstallments(matchedCourse, targetEnr.createdAt);
+    const secondAmt = targetEnr.secondInstallmentAmountKz ?? calc.secondKz;
+    const secondDue = targetEnr.secondInstallmentDueDate || calc.secondDueDate;
+    const nowIso = new Date().toISOString();
+
+    setEnrollments((prev) =>
+      prev.map((enr) =>
+        enr.id === enrollmentId ? { ...enr, secondInstallmentNotifiedAt: nowIso } : enr
+      )
+    );
+
+    triggerNotification(
+      'Pagamento aprovado',
+      `Aviso de Vencimento da 2.ª Parcela — ${targetEnr.courseTitle}`,
+      `Prezado(a) formando(a) ${targetEnr.studentName}, recordamos que a 2.ª Parcela no valor de ${secondAmt.toLocaleString(
+        'pt-AO'
+      )} Kz (uma semana após o início da formação) vence em ${secondDue}. Efectue o pagamento no seu Painel do Aluno.`,
+      'ALUNO'
+    );
+
+    notifyAdminAndEmailGeral({
+      panelOrigin: 'PAINEL_ALUNO',
+      subject: `Notificação de Vencimento da 2.ª Parcela — ${targetEnr.studentName} (${targetEnr.courseTitle})`,
+      applicantName: targetEnr.studentName,
+      applicantEmail: targetEnr.studentEmail || 'geral@alhan.pro',
+      applicantPhone: targetEnr.studentPhone || '+244 922 021 211',
+      details: `Curso: ${targetEnr.courseTitle} | 2.ª Parcela: ${secondAmt.toLocaleString('pt-AO')} Kz | Data de Vencimento: ${secondDue} | Estado: ${targetEnr.secondInstallmentStatus || 'Pendente'}`,
+    });
+
+    logActivity(
+      `Notificação de vencimento da 2.ª Parcela (${secondAmt.toLocaleString('pt-AO')} Kz · Vencimento: ${secondDue}) enviada ao formando ${targetEnr.studentName}`
+    );
+  };
+
+  // ==========================================================
+  // 1. AUDITORIA, BACKUP E LIMPEZA DE DADOS COM CONFIRMAÇÃO DO ADMINISTRADOR
+  // ==========================================================
+  const auditCandidates: DataAuditCandidateItem[] = React.useMemo(() => {
+    const items: DataAuditCandidateItem[] = [];
+
+    // Audit Enrollments
+    const seenEnrollmentKeys = new Set<string>();
+    enrollments.forEach((enr) => {
+      const key = `${(enr.studentEmail || enr.studentName).toLowerCase()}::${enr.courseId}`;
+      const isDuplicate = seenEnrollmentKeys.has(key);
+      seenEnrollmentKeys.add(key);
+
+      const isInitialSeedTest =
+        enr.id === 'enr-01' ||
+        enr.studentId === 'aluno-01' ||
+        (enr.studentEmail && enr.studentEmail.toLowerCase().endsWith('@empresa.ao')) ||
+        enr.studentName.toLowerCase().includes('teste') ||
+        enr.studentName.toLowerCase().includes('demo');
+
+      if (isDuplicate) {
+        items.push({
+          id: `enr::${enr.id}`,
+          category: 'INSCRICAO',
+          title: `${enr.studentName} — ${enr.courseTitle}`,
+          identifier: `Inscrição #${enr.id} (${enr.studentEmail || 'sem email'})`,
+          reason: 'Registo de inscrição duplicado para o mesmo formando e curso.',
+          classification: 'DUPLICADO',
+          recommendedAction: 'ELIMINAR_APOS_CONFIRMACAO',
+          createdAt: enr.createdAt,
+        });
+      } else if (isInitialSeedTest) {
+        items.push({
+          id: `enr::${enr.id}`,
+          category: 'INSCRICAO',
+          title: `${enr.studentName} — ${enr.courseTitle}`,
+          identifier: `Inscrição #${enr.id} (${enr.studentEmail || 'manuel.mateus@empresa.ao'})`,
+          reason:
+            'Registo inicial fictício/demonstração de semente (domínio genérico @empresa.ao / aluno-01).',
+          classification: 'REGISTO_TESTE_INICIAL',
+          recommendedAction: 'ELIMINAR_APOS_CONFIRMACAO',
+          createdAt: enr.createdAt,
+        });
+      } else {
+        items.push({
+          id: `enr::${enr.id}`,
+          category: 'INSCRICAO',
+          title: `${enr.studentName} — ${enr.courseTitle}`,
+          identifier: `Inscrição #${enr.id} (${enr.studentEmail || enr.studentPhone || ''})`,
+          reason: 'Inscrição legítima registada na plataforma.',
+          classification: 'DADO_LEGITIMO_PRESERVADO',
+          recommendedAction: 'PRESERVAR',
+          createdAt: enr.createdAt,
+        });
+      }
+    });
+
+    // Audit Certificates
+    const seenCertCodes = new Set<string>();
+    certificates.forEach((cert) => {
+      const isDuplicate = seenCertCodes.has(cert.code);
+      seenCertCodes.add(cert.code);
+
+      const isInitialSeedCert =
+        cert.id === 'cert-sgi-001' ||
+        cert.id === 'cert-pres-01' ||
+        cert.studentId === 'aluno-01' ||
+        cert.studentId === 'aluno-presencial-01' ||
+        (cert.studentEmail && cert.studentEmail.toLowerCase().endsWith('@empresa.ao'));
+
+      if (isDuplicate) {
+        items.push({
+          id: `cert::${cert.id}`,
+          category: 'CERTIFICADO',
+          title: `${cert.studentName} — ${cert.courseTitle}`,
+          identifier: `Código: ${cert.code} (ID: ${cert.id})`,
+          reason: 'Certificado com código duplicado.',
+          classification: 'DUPLICADO',
+          recommendedAction: 'ELIMINAR_APOS_CONFIRMACAO',
+          createdAt: cert.createdAt,
+        });
+      } else if (isInitialSeedCert) {
+        items.push({
+          id: `cert::${cert.id}`,
+          category: 'CERTIFICADO',
+          title: `${cert.studentName} — ${cert.courseTitle}`,
+          identifier: `Código: ${cert.code} · B.I.: ${cert.studentBI || 'N/A'}`,
+          reason:
+            'Certificado inicial fictício/exemplo pré-carregado na configuração base (@empresa.ao) sem emissão administrativa real.',
+          classification: 'SEM_VALIDADE_REAL',
+          recommendedAction: 'ELIMINAR_APOS_CONFIRMACAO',
+          createdAt: cert.createdAt,
+        });
+      } else {
+        items.push({
+          id: `cert::${cert.id}`,
+          category: 'CERTIFICADO',
+          title: `${cert.studentName} — ${cert.courseTitle}`,
+          identifier: `Código: ${cert.code} · B.I.: ${cert.studentBI || 'N/A'}`,
+          reason: 'Certificado legítimo emitido pela Administração ALHAN.',
+          classification: 'DADO_LEGITIMO_PRESERVADO',
+          recommendedAction: 'PRESERVAR',
+          createdAt: cert.createdAt,
+        });
+      }
+    });
+
+    // Audit Certificate Requests
+    certificateRequests.forEach((req) => {
+      const isInitialSeedReq =
+        req.id === 'cert-req-01' ||
+        req.userId === 'aluno-01' ||
+        req.studentEmail.toLowerCase().endsWith('@empresa.ao');
+
+      items.push({
+        id: `certreq::${req.id}`,
+        category: 'SOLICITACAO_CERTIFICADO',
+        title: `${req.studentName} — ${req.courseName}`,
+        identifier: `Pedido #${req.id} (${req.studentEmail})`,
+        reason: isInitialSeedReq
+          ? 'Solicitação inicial de demonstração pré-carregada para aluno-01 (@empresa.ao).'
+          : 'Solicitação legítima de formando registado.',
+        classification: isInitialSeedReq ? 'REGISTO_TESTE_INICIAL' : 'DADO_LEGITIMO_PRESERVADO',
+        recommendedAction: isInitialSeedReq ? 'ELIMINAR_APOS_CONFIRMACAO' : 'PRESERVAR',
+        createdAt: req.createdAt,
+      });
+    });
+
+    // Audit Registered Users
+    registeredUsers.forEach((u) => {
+      const isTestAccount =
+        u.email.toLowerCase().endsWith('@empresa.ao') ||
+        u.email.toLowerCase().includes('teste') ||
+        u.fullName.toLowerCase().includes('teste');
+
+      items.push({
+        id: `usr::${u.uid}`,
+        category: 'FORMANDO',
+        title: `${u.fullName} (${u.role})`,
+        identifier: `${u.email} · User: ${u.username}`,
+        reason: isTestAccount
+          ? 'Conta identificada com dados de teste/fictícios.'
+          : 'Conta registada legítima.',
+        classification: isTestAccount ? 'REGISTO_TESTE_INICIAL' : 'DADO_LEGITIMO_PRESERVADO',
+        recommendedAction: isTestAccount ? 'ELIMINAR_APOS_CONFIRMACAO' : 'PRESERVAR',
+        createdAt: u.createdAt,
+      });
+    });
+
+    return items.map((item) => ({
+      ...item,
+      subtitle: item.identifier,
+      suggestedForDeletion: item.recommendedAction === 'ELIMINAR_APOS_CONFIRMACAO',
+    }));
+  }, [enrollments, certificates, certificateRequests, registeredUsers]);
+
+  const createDataSafetyBackup = (): SystemBackupSnapshot => {
+    const snapshot: SystemBackupSnapshot = {
+      backupId: `BKP-ALHAN-${new Date().toISOString().replace(/[:.]/g, '-')}`,
+      createdAt: new Date().toISOString(),
+      createdBy: user?.fullName || 'Administrador Geral ALHAN – SGI',
+      registeredUsers: [...registeredUsers],
+      enrollments: [...enrollments],
+      certificates: [...certificates],
+      certificateRequests: [...certificateRequests],
+    };
+    setLastSystemBackup(snapshot);
+    persistAndBroadcast('alhan_safety_backup_v1', snapshot);
+    logActivity(
+      `Cópia de segurança completa criada (${snapshot.backupId}) antes de operação de limpeza de dados`
+    );
+    return snapshot;
+  };
+
+  const executeAdminConfirmedDataCleanup = (selectedIds: string[]) => {
+    // Always guarantee a safety backup before any deletion operation
+    const backup = createDataSafetyBackup();
+
+    const enrIdsToRemove = new Set(
+      selectedIds.filter((id) => id.startsWith('enr::')).map((id) => id.replace('enr::', ''))
+    );
+    const certIdsToRemove = new Set(
+      selectedIds.filter((id) => id.startsWith('cert::')).map((id) => id.replace('cert::', ''))
+    );
+    const reqIdsToRemove = new Set(
+      selectedIds
+        .filter((id) => id.startsWith('certreq::'))
+        .map((id) => id.replace('certreq::', ''))
+    );
+    const usrIdsToRemove = new Set(
+      selectedIds.filter((id) => id.startsWith('usr::')).map((id) => id.replace('usr::', ''))
+    );
+
+    if (enrIdsToRemove.size > 0) {
+      setEnrollments((prev) => prev.filter((e) => !enrIdsToRemove.has(e.id)));
+    }
+    if (certIdsToRemove.size > 0) {
+      setCertificates((prev) => prev.filter((c) => !certIdsToRemove.has(c.id)));
+    }
+    if (reqIdsToRemove.size > 0) {
+      setCertificateRequests((prev) => prev.filter((r) => !reqIdsToRemove.has(r.id)));
+    }
+    if (usrIdsToRemove.size > 0) {
+      setRegisteredUsers((prev) => prev.filter((u) => !usrIdsToRemove.has(u.uid)));
+    }
+
+    const removedCount =
+      enrIdsToRemove.size + certIdsToRemove.size + reqIdsToRemove.size + usrIdsToRemove.size;
+
+    logActivity(
+      `Limpeza de dados confirmada pelo Administrador Único concluída: ${removedCount} registo(s) fictício(s)/teste eliminado(s). Backup preservado: ${backup.backupId}`
+    );
+
+    return {
+      removedCount,
+      deletedCount: removedCount,
+      backupId: backup.backupId,
+      backup,
+    };
+  };
+
+  const restoreDataSafetyBackup = (): boolean => {
+    if (!lastSystemBackup) return false;
+    setRegisteredUsers(lastSystemBackup.registeredUsers);
+    setEnrollments(lastSystemBackup.enrollments);
+    setCertificates(lastSystemBackup.certificates);
+    setCertificateRequests(lastSystemBackup.certificateRequests);
+    logActivity(
+      `Cópia de segurança (${lastSystemBackup.backupId}) restaurada com sucesso pelo Administrador Único`
+    );
+    return true;
   };
 
   const createAdminRealtimeNotification = (payload: {
@@ -1597,15 +2381,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (registeredMatch.password !== cleanPass) {
         throw new Error('Palavra-passe incorrecta para esta conta registada. Se esqueceu a senha, utilize a opção «Redefinir Palavra-passe com E-mail».');
       }
-      const approvalStatus =
+      const approvalStatus: AccountApprovalState =
         registeredMatch.approvalStatus ||
-        (registeredMatch.role === 'PROFESSOR' ? 'pendente' : 'aprovado');
+        (registeredMatch.role === 'PROFESSOR' || registeredMatch.role === 'ALUNO'
+          ? 'pendente'
+          : 'aprovado');
       const active: ActiveUser = {
         uid: registeredMatch.uid,
         fullName: registeredMatch.fullName,
         username: registeredMatch.username,
         email: registeredMatch.email,
         phone: registeredMatch.phone,
+        studentBI: registeredMatch.studentBI,
         role: registeredMatch.role,
         companyId: registeredMatch.companyId,
         companyName: registeredMatch.companyName,
@@ -1613,89 +2400,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approvalStatus,
       };
       setUser(active);
-      logActivity(`Sessão iniciada (${active.role}): ${active.fullName}`, active.fullName);
+      logActivity(`Sessão iniciada (${active.role} · Estado: ${approvalStatus}): ${active.fullName}`, active.fullName);
       return active.role;
     }
 
-    // 2. Check Single Unified Administrator Credentials (alhan.admin / admin@alhan.pro / Alhan@2026)
+    // 2. Check Single Unified Principal Administrator Credentials (EXACTLY ONE MAIN ADMINISTRATOR: alhan.admin / admin@alhan.pro / joaomuatxissombo22@gmail.com)
+    const adminCred = panelCredentials.find((c) => c.role === 'ADMIN');
     if (
       (cleanId === 'alhan.admin' ||
         cleanId === 'admin@alhan.pro' ||
-        cleanId === 'gestao.alhan' ||
-        cleanId === 'gestao@alhan.pro' ||
-        cleanId === 'admin' ||
-        cleanId === 'superadmin') &&
-      (cleanPass === 'Alhan@2026' || cleanPass === 'Alhan@SGI2026')
+        cleanId === 'joaomuatxissombo22@gmail.com' ||
+        (adminCred &&
+          (cleanId === adminCred.username.toLowerCase() ||
+            cleanId === adminCred.email.toLowerCase()))) &&
+      (cleanPass === 'Alhan@2026' ||
+        cleanPass === 'Alhan@SGI2026' ||
+        (adminCred && cleanPass === adminCred.password))
     ) {
       const active: ActiveUser = {
         uid: 'staff-admin-unico',
-        fullName: 'Administrador Geral ALHAN – SGI',
-        username: 'alhan.admin',
-        email: 'admin@alhan.pro',
+        fullName: 'Administrador Principal ALHAN – SGI',
+        username: adminCred?.username || 'alhan.admin',
+        email: adminCred?.email || 'admin@alhan.pro',
         phone: '+244 922 021 211',
         role: 'ADMIN',
         companyId: 'alhan-sgi',
         approvalStatus: 'aprovado',
       };
       setUser(active);
-      logActivity('Acesso total autorizado ao Painel do Administrador Único ALHAN (ADMIN)', active.fullName);
+      logActivity('Acesso exclusivo autorizado ao Administrador Principal Único ALHAN (ADMIN)', active.fullName);
       return 'ADMIN';
-    }
-
-    const internalCred = panelCredentials.find(
-      (c) =>
-        (c.role === 'SUPER_ADMIN' || c.role === 'ADMIN' || c.role === 'PROFESSOR') &&
-        (c.username.toLowerCase() === cleanId || c.email.toLowerCase() === cleanId)
-    );
-
-    if (internalCred) {
-      if (cleanPass !== internalCred.password) {
-        throw new Error('Credenciais administrativas ou docentes inválidas. Acesso restrito.');
-      }
-      const active: ActiveUser = {
-        uid: `staff-${internalCred.role.toLowerCase()}`,
-        fullName:
-          internalCred.role === 'SUPER_ADMIN'
-            ? 'Super Administrador ALHAN'
-            : internalCred.role === 'ADMIN'
-            ? 'Gestor Operacional ALHAN'
-            : 'Eng.º Formador SGI (ALHAN)',
-        username: internalCred.username,
-        email: internalCred.email,
-        phone: '+244 922 021 211',
-        role: internalCred.role,
-        companyId: 'alhan-sgi',
-        approvalStatus: 'aprovado',
-      };
-      setUser(active);
-      logActivity(`Acesso autorizado ao painel ${internalCred.role}`, active.fullName);
-      return internalCred.role;
     }
 
     // 3. If user tried to log in as ALUNO, PROFESSOR or CLIENTE_EMPRESARIAL without registering first
     if (selectedRole === 'ALUNO' || selectedRole === 'CLIENTE_EMPRESARIAL' || selectedRole === 'PROFESSOR') {
       throw new Error(
         selectedRole === 'ALUNO'
-          ? 'Conta de Aluno não encontrada. O Painel do Aluno só é activado após efectuar o seu cadastro em «Criar Conta / Cadastrar».'
+          ? 'Conta de Formando não encontrada. Preencha o formulário de inscrição em «Criar Conta / Cadastrar» e aguarde a aprovação do Administrador.'
           : selectedRole === 'PROFESSOR'
-          ? 'Conta de Professor / Formador não encontrada. Inscreva-se no separador «Criar Conta / Cadastrar» e aguarde a autorização do Painel Administrativo.'
+          ? 'Conta de Professor / Formador não encontrada. Solicite acesso no separador «Inscrever Professor / Criar Conta» e aguarde a autorização do Administrador.'
           : 'Conta Empresarial não encontrada. O Painel do Cliente Empresarial só é activado após efectuar o cadastro da sua empresa em «Criar Conta / Cadastrar».'
       );
     }
 
-    throw new Error('Utilizador ou palavra-passe inválidos. Verifique as suas credenciais de acesso.');
+    throw new Error('Utilizador ou palavra-passe inválidos. Acesso administrativo exclusivo ao Administrador Principal Único da ALHAN.');
   };
 
   const registerAccount = async (payload: {
     fullName: string;
     email: string;
     phone: string;
+    studentBI?: string;
     username: string;
     password: string;
     role: UserRole;
     companyName?: string;
     specialty?: string;
   }) => {
+    // Security Rule 6: NEVER allow creation of additional ADMIN or SUPER_ADMIN accounts
+    if (payload.role === 'ADMIN' || payload.role === 'SUPER_ADMIN') {
+      throw new Error(
+        'Operação bloqueada por segurança: A plataforma mantém exclusivamente UM Administrador Principal.'
+      );
+    }
+
     const allowedRegisterRole: 'ALUNO' | 'CLIENTE_EMPRESARIAL' | 'PROFESSOR' =
       payload.role === 'CLIENTE_EMPRESARIAL'
         ? 'CLIENTE_EMPRESARIAL'
@@ -1721,8 +2489,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? 'alhan-docente'
         : 'alhan-aluno';
     const companyTitle = payload.companyName?.trim() || payload.fullName.trim();
-    const initialApprovalStatus: 'pendente' | 'aprovado' =
-      allowedRegisterRole === 'PROFESSOR' ? 'pendente' : 'aprovado';
+    // Requirements 2 & 3: Both new students (ALUNO) and professors (PROFESSOR) start with status PENDENTE until Administrator approval
+    const initialApprovalStatus: AccountApprovalState =
+      allowedRegisterRole === 'PROFESSOR' || allowedRegisterRole === 'ALUNO'
+        ? 'pendente'
+        : 'aprovado';
 
     const newAccount: RegisteredUserAccount = {
       uid: newUid,
@@ -1730,6 +2501,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       username: cleanUsername,
       email: cleanEmail,
       phone: payload.phone.trim(),
+      studentBI: payload.studentBI?.trim().toUpperCase(),
       password: payload.password.trim(),
       role: allowedRegisterRole,
       companyId,
@@ -1744,7 +2516,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setRegisteredUsers((prev) => [newAccount, ...prev]);
 
-    // If registering as a Corporate Client, automatically initialize their private ISO Project in the portal
     if (allowedRegisterRole === 'CLIENTE_EMPRESARIAL') {
       const newCompanyProject: IsoProjectItem = {
         id: `proj-${Date.now()}`,
@@ -1772,6 +2543,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       username: newAccount.username,
       email: newAccount.email,
       phone: newAccount.phone,
+      studentBI: newAccount.studentBI,
       role: allowedRegisterRole,
       companyId,
       companyName: newAccount.companyName,
@@ -1782,36 +2554,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUser(newUser);
 
     if (allowedRegisterRole === 'PROFESSOR') {
+      createAdminRealtimeNotification({
+        type: 'NOVO_FORMANDO',
+        title: `Solicitação de Acesso de Professor: ${newUser.fullName}`,
+        message: `O professor/formador ${newUser.fullName} (${newUser.email}) solicitou acesso ao Painel do Professor e aguarda aprovação do Administrador.`,
+        studentName: newUser.fullName,
+        courseName: newAccount.specialty || 'Painel do Professor',
+        requestId: newUid,
+      });
       triggerNotification(
         'Novo registo',
-        `Nova Inscrição no Painel do Professor: ${newUser.fullName}`,
-        `O professor/formador ${newUser.fullName} (E-mail: ${newUser.email} · Tel: ${newUser.phone} · Especialidade: ${newAccount.specialty}) inscreveu-se no Painel do Professor e aguarda autorização administrativa. Notificação enviada para geral@alhan.pro.`,
+        `Solicitação de Acesso ao Painel do Professor: ${newUser.fullName}`,
+        `O professor/formador ${newUser.fullName} (E-mail: ${newUser.email} · Tel: ${newUser.phone} · Especialidade: ${newAccount.specialty}) solicitou acesso e aguarda aprovação do Administrador Único.`,
         'ADMIN'
       );
       notifyAdminAndEmailGeral({
         panelOrigin: 'PAINEL_PROFESSOR',
-        subject: `Nova Inscrição no Painel do Professor — ${newUser.fullName}`,
+        subject: `Nova Solicitação de Acesso ao Painel do Professor — ${newUser.fullName}`,
         applicantName: newUser.fullName,
         applicantEmail: newUser.email,
         applicantPhone: newUser.phone,
-        details: `Utilizador: ${newUser.username} | Especialidade: ${newAccount.specialty} | Estado: Aguardando Autorização do Painel Administrativo`,
+        details: `Utilizador: ${newUser.username} | Especialidade: ${newAccount.specialty} | Estado: PENDENTE de aprovação do Administrador Único`,
       });
       logActivity(
-        `Nova inscrição no Painel do PROFESSOR (${newUser.fullName}) — Notificado Painel Administrativo e geral@alhan.pro`,
+        `Solicitação de acesso ao Painel do PROFESSOR (${newUser.fullName}) — Estado: PENDENTE de aprovação administrativa`,
         newUser.fullName
       );
     } else if (allowedRegisterRole === 'CLIENTE_EMPRESARIAL') {
       triggerNotification(
         'Novo registo',
         `Nova Inscrição no Painel da Empresa: ${companyTitle}`,
-        `A empresa "${companyTitle}" (Responsável: ${newUser.fullName} · E-mail: ${newUser.email} · Tel: ${newUser.phone}) cadastrou-se no Painel do Cliente Empresarial. Notificação enviada para geral@alhan.pro.`,
+        `A empresa "${companyTitle}" (Responsável: ${newUser.fullName} · E-mail: ${newUser.email} · Tel: ${newUser.phone}) cadastrou-se no Painel do Cliente Empresarial.`,
         'ADMIN'
-      );
-      triggerNotification(
-        'Novo registo',
-        'Painel Empresarial Activado com Sucesso',
-        `Bem-vindo(a) à plataforma ALHAN SGI, ${newUser.fullName} (${companyTitle}).`,
-        'CLIENTE_EMPRESARIAL'
       );
       notifyAdminAndEmailGeral({
         panelOrigin: 'PAINEL_EMPRESA',
@@ -1822,32 +2596,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         details: `Empresa: ${companyTitle} | Responsável: ${newUser.fullName} | Utilizador: ${newUser.username} | Projecto SGI/ISO inicializado`,
       });
       logActivity(
-        `Nova inscrição no Painel da EMPRESA (${companyTitle} - ${newUser.fullName}) — Notificado Painel Administrativo e geral@alhan.pro`,
+        `Nova inscrição no Painel da EMPRESA (${companyTitle} - ${newUser.fullName})`,
         newUser.fullName
       );
     } else {
+      createAdminRealtimeNotification({
+        type: 'NOVO_FORMANDO',
+        title: `Novo Formando Pendente de Aprovação: ${newUser.fullName}`,
+        message: `O formando ${newUser.fullName} (${newUser.email}) preencheu o formulário de inscrição e aguarda aprovação do Administrador para aceder ao painel e cursos.`,
+        studentName: newUser.fullName,
+        courseName: 'Inscrição de Formando (Painel do Aluno)',
+        requestId: newUid,
+      });
       triggerNotification(
         'Novo registo',
-        `Nova Inscrição no Painel do Aluno: ${newUser.fullName}`,
-        `O aluno ${newUser.fullName} (E-mail: ${newUser.email} · Tel: ${newUser.phone}) cadastrou-se no Painel do Aluno. Notificação enviada para geral@alhan.pro.`,
+        `Novo Formando Pendente de Aprovação: ${newUser.fullName}`,
+        `O formando ${newUser.fullName} (E-mail: ${newUser.email} · Tel: ${newUser.phone}) registou-se com estado PENDENTE e aguarda aprovação do Administrador Único.`,
         'ADMIN'
-      );
-      triggerNotification(
-        'Novo registo',
-        'Cadastro de Aluno Concluído com Sucesso',
-        `Bem-vindo(a) à plataforma ALHAN SGI, ${newUser.fullName}. O seu Painel do Aluno foi activado.`,
-        'ALUNO'
       );
       notifyAdminAndEmailGeral({
         panelOrigin: 'PAINEL_ALUNO',
-        subject: `Nova Inscrição no Painel do Aluno — ${newUser.fullName}`,
+        subject: `Nova Inscrição de Formando (PENDENTE de Aprovação) — ${newUser.fullName}`,
         applicantName: newUser.fullName,
         applicantEmail: newUser.email,
         applicantPhone: newUser.phone,
-        details: `Aluno: ${newUser.fullName} | Utilizador: ${newUser.username} | E-mail: ${newUser.email} | Telefone: ${newUser.phone}`,
+        details: `Formando: ${newUser.fullName} | Utilizador: ${newUser.username} | E-mail: ${newUser.email} | Telefone: ${newUser.phone} | Estado: PENDENTE até aprovação do Administrador`,
       });
       logActivity(
-        `Nova inscrição no Painel do ALUNO (${newUser.fullName}) — Notificado Painel Administrativo e geral@alhan.pro`,
+        `Nova inscrição de Formando (${newUser.fullName}) registada com estado PENDENTE até aprovação do Administrador`,
         newUser.fullName
       );
     }
@@ -1863,30 +2639,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const saveCourse = async (course: CourseItem) => {
+    const calc = computeCourseInstallments(course);
+    const normalizedCourse: CourseItem = {
+      ...course,
+      firstInstallmentKz: course.firstInstallmentKz ?? calc.firstKz,
+      secondInstallmentKz: course.secondInstallmentKz ?? calc.secondKz,
+      courseStartDate: course.courseStartDate || calc.courseStartDate,
+    };
     setCourses((prev) => {
-      const exists = prev.some((c) => c.id === course.id);
-      return exists ? prev.map((c) => (c.id === course.id ? course : c)) : [course, ...prev];
+      const exists = prev.some((c) => c.id === normalizedCourse.id);
+      return exists
+        ? prev.map((c) => (c.id === normalizedCourse.id ? normalizedCourse : c))
+        : [normalizedCourse, ...prev];
     });
-    logActivity(`Curso guardado/actualizado: ${course.title}`);
-    triggerNotification('Nova aula', 'Catálogo de Formações Actualizado', `O curso "${course.title}" foi actualizado no catálogo.`);
+    logActivity(
+      `Curso guardado/actualizado: ${normalizedCourse.title} (Total: ${normalizedCourse.priceKz.toLocaleString(
+        'pt-AO'
+      )} Kz · 1ª Parcela: ${(normalizedCourse.firstInstallmentKz || 0).toLocaleString(
+        'pt-AO'
+      )} Kz · 2ª Parcela: ${(normalizedCourse.secondInstallmentKz || 0).toLocaleString('pt-AO')} Kz)`
+    );
+    triggerNotification('Nova aula', 'Catálogo de Formações Actualizado', `O curso "${normalizedCourse.title}" foi actualizado no catálogo.`);
 
     if (auth.currentUser && auth.currentUser.email === 'joaomuatxissombo22@gmail.com') {
-      const path = `courses/${course.id}`;
+      const path = `courses/${normalizedCourse.id}`;
       try {
-        await setDoc(doc(db, 'courses', course.id), {
-          id: course.id,
-          title: course.title.slice(0, 160),
-          category: course.category.slice(0, 80),
-          modality: course.modality,
-          priceKz: Number(course.priceKz),
-          durationHours: Number(course.durationHours),
-          lessonsCount: Number(course.lessonsCount),
-          instructorName: course.instructorName.slice(0, 120),
-          instructorId: course.instructorId.slice(0, 128),
-          published: Boolean(course.published),
-          description: course.description.slice(0, 1500),
-          objectives: course.objectives.slice(0, 1500),
-          syllabus: course.syllabus.slice(0, 2000),
+        await setDoc(doc(db, 'courses', normalizedCourse.id), {
+          id: normalizedCourse.id,
+          title: normalizedCourse.title.slice(0, 160),
+          category: normalizedCourse.category.slice(0, 80),
+          modality: normalizedCourse.modality,
+          priceKz: Number(normalizedCourse.priceKz),
+          durationHours: Number(normalizedCourse.durationHours),
+          lessonsCount: Number(normalizedCourse.lessonsCount),
+          instructorName: normalizedCourse.instructorName.slice(0, 120),
+          instructorId: normalizedCourse.instructorId.slice(0, 128),
+          published: Boolean(normalizedCourse.published),
+          description: normalizedCourse.description.slice(0, 1500),
+          objectives: normalizedCourse.objectives.slice(0, 1500),
+          syllabus: normalizedCourse.syllabus.slice(0, 2000),
           createdAt: serverTimestamp(),
         });
       } catch (err) {
@@ -1973,30 +2764,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     studentName?: string;
     studentPhone?: string;
     studentEmail?: string;
+    studentBI?: string;
+    installmentOption?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
+    installmentTarget?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
   }) => {
+    const nowIso = new Date().toISOString();
     const studentId = auth.currentUser?.uid || user?.uid || `inscrito-${Date.now()}`;
     const studentName = payload.studentName?.trim() || user?.fullName || 'Formando Inscrito';
     const enrollmentId = `enr-${Date.now()}`;
+    const calc = computeCourseInstallments(payload.course, nowIso);
+    const chosenInstallment = payload.installmentOption || payload.installmentTarget || '1ª Parcela';
+    const refCode = payload.paymentReference || `REF-${Date.now().toString().slice(-6)}`;
+
+    const initialHistory: PaymentHistoryEntry[] = [
+      {
+        id: `hist-p1-${enrollmentId}`,
+        installment: '1ª Parcela',
+        installmentLabel: '1ª Parcela',
+        amountKz: calc.firstKz,
+        dueDate: calc.firstDueDate,
+        recordedAt: calc.firstDueDate,
+        method: payload.paymentMethod,
+        reference: `${refCode}-P1`,
+        status: 'Pendente',
+        note: 'Primeira parcela obrigatória no acto da inscrição para confirmar a vaga do formando.',
+      },
+      {
+        id: `hist-p2-${enrollmentId}`,
+        installment: '2ª Parcela',
+        installmentLabel: '2ª Parcela',
+        amountKz: calc.secondKz,
+        dueDate: calc.secondDueDate,
+        recordedAt: calc.firstDueDate,
+        method: payload.paymentMethod,
+        reference: `${refCode}-P2`,
+        status: 'Pendente',
+        note: `Segunda parcela (${calc.secondKz.toLocaleString('pt-AO')} Kz) com vencimento 1 semana após o início da formação (${calc.secondDueDate}).`,
+      },
+    ];
+
     const newEnrollment: EnrollmentItem = {
       id: enrollmentId,
       studentId,
       studentName,
       studentPhone: payload.studentPhone || user?.phone || '+244 922 021 211',
       studentEmail: payload.studentEmail || user?.email || 'aluno@alhan.pro',
+      studentBI: payload.studentBI || user?.studentBI,
       courseId: payload.course.id,
       courseTitle: payload.course.title,
       modality: payload.modality,
-      amountKz: payload.course.priceKz,
+      amountKz: calc.totalKz,
       paymentMethod: payload.paymentMethod,
-      paymentReference: payload.paymentReference || `REF-${Date.now().toString().slice(-6)}`,
-      receiptNote: payload.receiptNote || 'Comprovativo submetido para validação administrativa.',
+      paymentReference: refCode,
+      receiptNote:
+        payload.receiptNote ||
+        `Inscrição submetida (${chosenInstallment}). Aguarda aprovação e confirmação administrativa da 1.ª parcela (${calc.firstKz.toLocaleString('pt-AO')} Kz).`,
       receiptFileUrl: payload.receiptFileUrl,
       receiptFileName: payload.receiptFileName,
       paymentStatus: 'Pendente',
+      enrollmentApprovalStatus: 'pendente',
+      courseStartDate: calc.courseStartDate,
+      firstInstallmentAmountKz: calc.firstKz,
+      firstInstallmentDueDate: calc.firstDueDate,
+      firstInstallmentStatus: 'Pendente',
+      firstInstallmentReference: `${refCode}-P1`,
+      secondInstallmentAmountKz: calc.secondKz,
+      secondInstallmentDueDate: calc.secondDueDate,
+      secondInstallmentStatus: 'Pendente',
+      secondInstallmentReference: `${refCode}-P2`,
+      paymentHistory: initialHistory,
       progressPercent: 0,
       completedLessons: [],
       completed: false,
-      createdAt: new Date().toISOString(),
+      enrolledAt: nowIso,
+      createdAt: nowIso,
     };
 
     setEnrollments((prev) => [newEnrollment, ...prev]);
@@ -2005,22 +2846,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await saveEnrollmentToFirestore(newEnrollment);
     }
 
+    createAdminRealtimeNotification({
+      type: 'NOVA_INSCRICAO',
+      title: `Nova Inscrição Pendente: ${studentName}`,
+      message: `${studentName} inscreveu-se em «${payload.course.title}» (1.ª Parcela: ${calc.firstKz.toLocaleString('pt-AO')} Kz · 2.ª Parcela: ${calc.secondKz.toLocaleString('pt-AO')} Kz). Aguarda aprovação do Administrador.`,
+      studentName,
+      courseName: payload.course.title,
+      requestId: enrollmentId,
+    });
+
     triggerNotification(
       'Nova inscrição',
-      `Nova Inscrição de Aluno em Curso: ${payload.course.title}`,
-      `Inscrição de ${studentName} (Tel: ${newEnrollment.studentPhone} · E-mail: ${newEnrollment.studentEmail}) no curso "${payload.course.title}" (${payload.course.priceKz.toLocaleString('pt-AO')} Kz via ${payload.paymentMethod}). Notificado geral@alhan.pro.`,
+      `Nova Inscrição (Pendente de Aprovação): ${payload.course.title}`,
+      `Inscrição de ${studentName} no curso "${payload.course.title}" (Total: ${calc.totalKz.toLocaleString('pt-AO')} Kz | 1.ª Parcela: ${calc.firstKz.toLocaleString('pt-AO')} Kz | 2.ª Parcela: ${calc.secondKz.toLocaleString('pt-AO')} Kz com vencimento em ${calc.secondDueDate}).`,
       'ADMIN'
     );
     notifyAdminAndEmailGeral({
       panelOrigin: 'INSCRICAO_CURSO',
-      subject: `Nova Inscrição em Curso — ${studentName} (${payload.course.title})`,
+      subject: `Nova Inscrição em Curso (2 Parcelas) — ${studentName} (${payload.course.title})`,
       applicantName: studentName,
       applicantEmail: newEnrollment.studentEmail || 'geral@alhan.pro',
       applicantPhone: newEnrollment.studentPhone || '+244 922 021 211',
-      details: `Curso: ${payload.course.title} | Modalidade: ${payload.modality} | Valor: ${payload.course.priceKz.toLocaleString('pt-AO')} Kz | Canal: ${payload.paymentMethod} | Ref: ${newEnrollment.paymentReference}`,
+      details: `Curso: ${payload.course.title} | Valor Total: ${calc.totalKz.toLocaleString('pt-AO')} Kz | 1.ª Parcela (acto da inscrição): ${calc.firstKz.toLocaleString('pt-AO')} Kz | 2.ª Parcela (vencimento ${calc.secondDueDate}): ${calc.secondKz.toLocaleString('pt-AO')} Kz | Estado: PENDENTE`,
     });
     logActivity(
-      `Nova inscrição no curso ${payload.course.title} (${studentName}) — Notificado Painel Admin e geral@alhan.pro`
+      `Nova inscrição no curso ${payload.course.title} (${studentName}) em regime de 2 parcelas — Estado: PENDENTE`
     );
 
     return newEnrollment;
@@ -2037,9 +2887,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     receiptFileName?: string;
     studentPhone?: string;
     studentEmail?: string;
+    installmentOption?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
+    installmentTarget?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
   }) => {
     const studentId = auth.currentUser?.uid || user?.uid || `inscrito-${Date.now()}`;
     const studentName = user?.fullName || 'Aluno Registado';
+    const chosenInstallment = payload.installmentOption || payload.installmentTarget || '1ª Parcela';
+    const calc = computeCourseInstallments(payload.course);
 
     const existing = enrollments.find(
       (e) =>
@@ -2050,6 +2904,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     if (existing) {
+      const refCode =
+        payload.paymentReference ||
+        existing.paymentReference ||
+        `REF-${Date.now().toString().slice(-6)}`;
+      const amountSubmitted =
+        chosenInstallment === 'Pagamento Integral'
+          ? existing.amountKz
+          : chosenInstallment === '2ª Parcela'
+          ? existing.secondInstallmentAmountKz ?? calc.secondKz
+          : existing.firstInstallmentAmountKz ?? calc.firstKz;
+
+      const proofEntry: PaymentHistoryEntry = {
+        id: `hist-proof-${Date.now()}`,
+        installment: chosenInstallment,
+        amountKz: amountSubmitted,
+        dueDate:
+          chosenInstallment === '2ª Parcela'
+            ? existing.secondInstallmentDueDate || calc.secondDueDate
+            : existing.firstInstallmentDueDate || calc.firstDueDate,
+        method: payload.paymentMethod,
+        reference: refCode,
+        status: 'Pendente',
+        note:
+          payload.receiptNote ||
+          `Comprovativo referente à ${chosenInstallment} (${amountSubmitted.toLocaleString(
+            'pt-AO'
+          )} Kz) submetido pelo formando para confirmação administrativa.`,
+      };
+
       const updated: EnrollmentItem = {
         ...existing,
         studentId,
@@ -2057,10 +2940,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         studentPhone: payload.studentPhone || existing.studentPhone || user?.phone || '+244 922 021 211',
         studentEmail: payload.studentEmail || existing.studentEmail || user?.email || 'aluno@alhan.pro',
         paymentMethod: payload.paymentMethod,
-        paymentReference: payload.paymentReference || existing.paymentReference || `REF-${Date.now().toString().slice(-6)}`,
-        receiptNote: payload.receiptNote || existing.receiptNote || `Comprovativo via ${payload.paymentMethod} submetido no Painel do Aluno.`,
+        paymentReference: refCode,
+        receiptNote:
+          payload.receiptNote ||
+          `Comprovativo da ${chosenInstallment} (${amountSubmitted.toLocaleString('pt-AO')} Kz via ${payload.paymentMethod}) submetido no Painel do Formando.`,
         receiptFileUrl: payload.receiptFileUrl || existing.receiptFileUrl,
         receiptFileName: payload.receiptFileName || existing.receiptFileName,
+        firstInstallmentReference:
+          chosenInstallment === '1ª Parcela' || chosenInstallment === 'Pagamento Integral'
+            ? refCode
+            : existing.firstInstallmentReference,
+        secondInstallmentReference:
+          chosenInstallment === '2ª Parcela' || chosenInstallment === 'Pagamento Integral'
+            ? refCode
+            : existing.secondInstallmentReference,
+        paymentHistory: [proofEntry, ...(existing.paymentHistory || [])],
       };
       setEnrollments((prev) => prev.map((e) => (e.id === existing.id ? updated : e)));
 
@@ -2072,13 +2966,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
 
+      createAdminRealtimeNotification({
+        type: 'PAGAMENTO_REGISTADO',
+        title: `Comprovativo de ${chosenInstallment}: ${studentName}`,
+        message: `O formando ${studentName} submeteu o comprovativo da ${chosenInstallment} (${amountSubmitted.toLocaleString('pt-AO')} Kz via ${payload.paymentMethod}) para o curso «${payload.course.title}».`,
+        studentName,
+        courseName: payload.course.title,
+        requestId: existing.id,
+      });
+
       triggerNotification(
         'Nova inscrição',
-        `Comprovativo Enviado pelo Aluno: ${payload.course.title}`,
-        `O aluno ${studentName} submeteu o comprovativo de pagamento (${payload.paymentMethod} · Ref: ${updated.paymentReference}) para liberar a formação.`,
+        `Comprovativo da ${chosenInstallment} Submetido: ${payload.course.title}`,
+        `O formando ${studentName} submeteu o comprovativo da ${chosenInstallment} (${amountSubmitted.toLocaleString('pt-AO')} Kz · Ref: ${updated.paymentReference}).`,
         'ADMIN'
       );
-      logActivity(`Comprovativo de pagamento submetido pelo aluno ${studentName} (${payload.course.title})`, studentName);
+      logActivity(
+        `Comprovativo de pagamento (${chosenInstallment} - ${amountSubmitted.toLocaleString('pt-AO')} Kz) submetido pelo formando ${studentName} (${payload.course.title})`,
+        studentName
+      );
       return updated;
     }
 
@@ -2093,12 +2999,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       studentName,
       studentPhone: payload.studentPhone,
       studentEmail: payload.studentEmail,
+      installmentOption: chosenInstallment,
     });
   };
 
   const updateEnrollmentStatus = async (enrollmentId: string, status: EnrollmentItem['paymentStatus']) => {
+    const nowDate = new Date().toISOString().slice(0, 10);
     setEnrollments((prev) =>
-      prev.map((item) => (item.id === enrollmentId ? { ...item, paymentStatus: status } : item))
+      prev.map((item) =>
+        item.id === enrollmentId
+          ? {
+              ...item,
+              paymentStatus: status,
+              enrollmentApprovalStatus:
+                status === 'Pago' ? 'aprovado' : item.enrollmentApprovalStatus || 'pendente',
+              firstInstallmentStatus:
+                status === 'Pago' ? 'Pago' : item.firstInstallmentStatus || 'Pendente',
+              firstInstallmentPaidAt:
+                status === 'Pago' ? item.firstInstallmentPaidAt || nowDate : item.firstInstallmentPaidAt,
+            }
+          : item
+      )
     );
 
     if (auth.currentUser && auth.currentUser.emailVerified) {
@@ -2109,8 +3030,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (status === 'Pago' && target) {
       triggerNotification(
         'Pagamento aprovado',
-        'Acesso ao Curso Libertado',
-        `O pagamento da formação "${target.courseTitle}" para ${target.studentName} foi validado com sucesso. Notifique o aluno no WhatsApp (${target.studentPhone || 'N/A'}) ou E-mail (${target.studentEmail || 'N/A'}).`,
+        'Vaga Confirmada e Acesso ao Curso Libertado',
+        `O pagamento da formação "${target.courseTitle}" para ${target.studentName} foi confirmado pela Administração. Lembrete: a 2.ª Parcela vence em ${target.secondInstallmentDueDate || '1 semana após o início da formação'}.`,
         'ALUNO'
       );
     }
@@ -2551,9 +3472,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         panelCredentials,
         updatePanelCredential,
         updateUserApprovalStatus,
+        updateStudentAccountDetails,
+        requestSecurePasswordResetLink,
         resetPasswordByEmail,
         deleteRegisteredUser,
         deleteEnrollment,
+        updateInstallmentPaymentStatus,
+        updateEnrollmentApprovalStatus,
+        notifySecondInstallmentDue,
+        auditCandidates,
+        lastSystemBackup,
+        createDataSafetyBackup,
+        executeAdminConfirmedDataCleanup,
+        restoreDataSafetyBackup,
         requestCertificate,
         submitCertificateRequest,
         updateCertificateRequestStatus,

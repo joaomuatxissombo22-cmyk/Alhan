@@ -42,3 +42,15 @@
   user-select: none;
   -webkit-user-select: none;
 }
+
+/* Ensure exclusive ALHAN institutional branding without any third-party AI tool badges */
+[id*="aistudio-badge"],
+[class*="aistudio-badge"],
+[data-ai-watermark],
+.ai-generated-badge {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
