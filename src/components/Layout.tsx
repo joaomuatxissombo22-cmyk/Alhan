@@ -367,6 +367,16 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               Normas ISO
             </Link>
             <Link
+              to="/portefolio-impacto"
+              className={`hover:text-[#19B5FE] transition-colors whitespace-nowrap shrink-0 ${
+                location.pathname === '/portefolio-impacto' || location.pathname === '/relatorio-impacto'
+                  ? 'text-[#19B5FE] underline underline-offset-8'
+                  : ''
+              }`}
+            >
+              Portefólio & Impacto
+            </Link>
+            <Link
               to="/consultar-certificado"
               className={`hover:text-[#19B5FE] transition-colors whitespace-nowrap shrink-0 ${
                 location.pathname === '/consultar-certificado' ? 'text-[#19B5FE] underline underline-offset-8' : ''
@@ -414,6 +424,10 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <span aria-hidden="true" className="text-white/25">·</span>
             <Link to="/contactos" className="hover:text-[#19B5FE] transition-colors whitespace-nowrap">
               Contactos
+            </Link>
+            <span aria-hidden="true" className="text-white/25">·</span>
+            <Link to="/relatorio-impacto" className="hover:text-[#19B5FE] font-semibold text-[#E5C97B] transition-colors whitespace-nowrap">
+              Relatório de Impacto e Empregabilidade
             </Link>
             <span aria-hidden="true" className="text-white/25">·</span>
             <Link to="/politica-pagamentos" className="hover:text-[#19B5FE] font-semibold text-[#19B5FE] transition-colors whitespace-nowrap">
@@ -530,6 +544,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <Link to="/politica-pagamentos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 text-emerald-300 min-h-[42px] flex items-center">Política de Pagamentos</Link>
             <Link to="/como-funciona" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Como Funciona & FAQ</Link>
             <Link to="/empresas" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Empresas e Cases</Link>
+            <Link to="/portefolio-impacto" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-[#C8A951]/20 border border-[#C8A951]/40 text-[#E5C97B] min-h-[42px] flex items-center">Portefólio & Impacto</Link>
+            <Link to="/relatorio-impacto" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 text-emerald-300 min-h-[42px] flex items-center">Relatório de Impacto</Link>
             <Link to="/solicitar-diagnostico" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Solicitar Diagnóstico</Link>
             <Link to="/contactos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 min-h-[42px] flex items-center">Contactos</Link>
           </div>
@@ -647,6 +663,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                 <li><Link to="/" className="hover:text-white transition-colors">Início</Link></li>
                 <li><Link to="/quem-somos" className="hover:text-white transition-colors">Quem Somos</Link></li>
                 <li><Link to="/formacoes" className="hover:text-white transition-colors">Nossas Formações</Link></li>
+                <li><Link to="/portefolio-impacto" className="text-[#E5C97B] hover:text-white transition-colors font-semibold">Portefólio, Impacto e Empregabilidade</Link></li>
+                <li><Link to="/relatorio-impacto" className="text-[#19B5FE] hover:text-white transition-colors font-semibold">Relatório Público de Impacto</Link></li>
                 <li><Link to="/consultoria-iso" className="hover:text-white transition-colors">Consultoria ISO</Link></li>
                 <li><Link to="/normas-iso" className="hover:text-white transition-colors">Normas ISO</Link></li>
                 <li><Link to="/como-funciona" className="hover:text-white transition-colors">Como Funciona</Link></li>

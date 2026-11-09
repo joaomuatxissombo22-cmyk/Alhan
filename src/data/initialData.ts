@@ -691,6 +691,11 @@ export interface TestimonialItem {
   standardImplemented: string;
   projectOutcome: string;
   verified: boolean;
+  testimonialType?: 'FORMANDO' | 'CLIENTE_EMPRESARIAL';
+  approvalStatus?: 'pendente' | 'aprovado' | 'rejeitado';
+  authorizedForPublication?: boolean;
+  approvedBy?: string;
+  approvedAt?: string;
   createdAt?: string;
 }
 
@@ -708,6 +713,11 @@ export const INITIAL_TESTIMONIALS: TestimonialItem[] = [
     standardImplemented: 'SGI (ISO 9001:2015 & ISO 45001:2018)',
     projectOutcome: '100% de conformidade nas auditorias internas e qualificação para novos concursos',
     verified: true,
+    testimonialType: 'CLIENTE_EMPRESARIAL',
+    approvalStatus: 'aprovado',
+    authorizedForPublication: true,
+    approvedBy: 'Direcção Geral ALHAN',
+    approvedAt: '2026-02-10T10:00:00Z',
   },
   {
     id: 'test-2',
@@ -722,6 +732,11 @@ export const INITIAL_TESTIMONIALS: TestimonialItem[] = [
     standardImplemented: 'ISO 14001:2015 & ISO 37001 (Compliance)',
     projectOutcome: 'Plano de Gestão Ambiental operacional e aprovação corporativa sem ressalvas',
     verified: true,
+    testimonialType: 'CLIENTE_EMPRESARIAL',
+    approvalStatus: 'aprovado',
+    authorizedForPublication: true,
+    approvedBy: 'Direcção Geral ALHAN',
+    approvedAt: '2026-02-12T10:00:00Z',
   },
   {
     id: 'test-3',
@@ -732,10 +747,15 @@ export const INITIAL_TESTIMONIALS: TestimonialItem[] = [
     companyLogoText: 'ATLAS',
     rating: 5,
     feedback:
-      'Excelente rigor técnico e pontualidade. Os formadores da Academia ALHAN qualificaram 28 auditores internos da nossa equipa offshore com material didáctico irrepreensível e simulações realistas alinhadas à directriz ISO 19011. Recomendo vivamente.',
+      'Excelente rigor técnico e pontualidade. Os formadores da Academia ALHAN qualificaram a nossa equipa de auditores internos com material didáctico irrepreensível e simulações realistas alinhadas à directriz ISO 19011. Recomendo vivamente.',
     standardImplemented: 'Formação Auditor Líder ISO 19011 & ISO 45001',
-    projectOutcome: '28 auditores certificados com validação de QR Code emitida e registada',
+    projectOutcome: 'Auditores internos qualificados com registo institucional na ALHAN',
     verified: true,
+    testimonialType: 'CLIENTE_EMPRESARIAL',
+    approvalStatus: 'aprovado',
+    authorizedForPublication: true,
+    approvedBy: 'Direcção Geral ALHAN',
+    approvedAt: '2026-02-14T10:00:00Z',
   },
   {
     id: 'test-4',
@@ -750,20 +770,30 @@ export const INITIAL_TESTIMONIALS: TestimonialItem[] = [
     standardImplemented: 'ISO 9001:2015 & Mapeamento de Processos',
     projectOutcome: 'Padronização integral dos processos de compras, estaleiro e entrega técnica',
     verified: true,
+    testimonialType: 'CLIENTE_EMPRESARIAL',
+    approvalStatus: 'aprovado',
+    authorizedForPublication: true,
+    approvedBy: 'Direcção Geral ALHAN',
+    approvedAt: '2026-02-16T10:00:00Z',
   },
   {
     id: 'test-5',
-    clientName: 'Dr. Sebastião Quaresma',
-    role: 'Director Executivo',
-    companyName: 'AgroSul Alimentos & Bebidas',
-    companySector: 'Agroindústria & Segurança Alimentar',
-    companyLogoText: 'AGROSUL',
+    clientName: 'Manuel João Mateus',
+    role: 'Antigo Formando Certificado SGI',
+    companyName: 'Empresa Industrial de Luanda, Lda',
+    companySector: 'Qualidade, Ambiente e Segurança (QSMS)',
+    companyLogoText: 'MJM',
     rating: 5,
     feedback:
-      'A equipa da ALHAN demonstrou profundo conhecimento do quadro legal angolano e das normas internacionais. A implementação das boas práticas e controlos preventivos permitiu-nos alcançar um patamar de excelência exigido pelas maiores redes retalhistas.',
-    standardImplemented: 'ISO 22000 & Boas Práticas Operacionais',
-    projectOutcome: 'Rastreabilidade total da cadeia produtiva e homologação como fornecedor classe A',
+      'A formação em Sistema de Gestão Integrado (ISO 9001, 14001 e 45001) na Academia ALHAN proporcionou-me domínio prático do Anexo SL, matrizes de risco e condução de auditorias internas. Todo o processo pedagógico e documental foi de altíssimo nível.',
+    standardImplemented: 'Formação Sistema de Gestão Integrado – SGI',
+    projectOutcome: 'Formando qualificado com registo oficial ALHAN-SGI-2026-001',
     verified: true,
+    testimonialType: 'FORMANDO',
+    approvalStatus: 'aprovado',
+    authorizedForPublication: true,
+    approvedBy: 'Direcção Geral ALHAN',
+    approvedAt: '2026-02-20T10:00:00Z',
   },
 ];
 
@@ -1677,6 +1707,8 @@ export const INITIAL_ENROLLMENTS: EnrollmentItem[] = [
     completedLessons: ['les-sgi-1', 'les-sgi-2', 'les-sgi-3'],
     quizScore: 100,
     completed: true,
+    certificateRequested: true,
+    certificateRequestedAt: '2026-02-14T15:20:00Z',
     createdAt: '2026-02-01T10:00:00Z',
   },
 ];
@@ -1718,15 +1750,15 @@ export const INITIAL_CERTIFICATE_REQUESTS: CertificateRequestItem[] = [
     enrollmentDate: '2026-02-01',
     completionDate: '2026-02-14',
     requestDate: '2026-02-14T15:20:00Z',
-    studentNotes: 'Concluí todos os módulos e avaliação final com 100% de aproveitamento.',
-    status: 'DISPONÍVEL',
+    studentNotes: 'Solicito o envio do meu certificado oficial em PDF pelo Administrador após conclusão da formação.',
+    status: 'PENDENTE',
     certificateStoragePath: 'certificates/aluno-01/curso-sgi-01/certificate.pdf',
     certificateFileUrl: '',
-    certificateFileName: 'Certificado_ALHAN_ALHAN-SGI-2026-001_Manuel_Joao_Mateus.pdf',
+    certificateFileName: '',
     certificateCode: 'ALHAN-SGI-2026-001',
-    issuedAt: '2026-02-15T12:00:00Z',
-    issuedBy: 'Administrador Geral ALHAN – SGI',
-    adminNotes: 'Requisitos de participação e aproveitamento (100%) validados pela Direcção Pedagógica.',
+    issuedAt: '',
+    issuedBy: '',
+    adminNotes: 'Aguardando anexo e envio do Certificado em PDF exclusivamente pelo Administrador.',
     auditHistory: [
       {
         id: 'aud-c-1',
@@ -1734,26 +1766,8 @@ export const INITIAL_CERTIFICATE_REQUESTS: CertificateRequestItem[] = [
         statusAfter: 'PENDENTE',
         actorName: 'Manuel João Mateus',
         actorRole: 'ALUNO',
-        notes: 'Solicitação submetida pelo formando após conclusão de 100% da formação.',
+        notes: 'Solicitação submetida pelo formando no painel do aluno. Aguarda envio do ficheiro PDF oficial pelo Administrador.',
         timestamp: '2026-02-14T15:20:00Z',
-      },
-      {
-        id: 'aud-c-2',
-        action: 'EM_ANALISE',
-        statusAfter: 'EM PROCESSAMENTO',
-        actorName: 'Administrador Geral ALHAN – SGI',
-        actorRole: 'ADMIN',
-        notes: 'Pedido em análise documental e verificação de aproveitamento.',
-        timestamp: '2026-02-15T09:10:00Z',
-      },
-      {
-        id: 'aud-c-3',
-        action: 'EMITIDO_E_DISPONIBILIZADO',
-        statusAfter: 'DISPONÍVEL',
-        actorName: 'Administrador Geral ALHAN – SGI',
-        actorRole: 'ADMIN',
-        notes: 'Certificado PDF anexado no Firebase Storage (certificates/aluno-01/curso-sgi-01/certificate.pdf) e disponibilizado na conta do formando.',
-        timestamp: '2026-02-15T12:00:00Z',
       },
     ],
     createdAt: '2026-02-14T15:20:00Z',
@@ -1764,8 +1778,8 @@ export const INITIAL_ADMIN_NOTIFICATIONS: AdminNotificationRecord[] = [
   {
     id: 'adm-notif-01',
     type: 'SOLICITACAO_CERTIFICADO',
-    title: 'Nova solicitação de certificado',
-    message: 'O formando Manuel João Mateus solicitou um certificado da formação Sistema de Gestão Integrado – SGI.',
+    title: 'Solicitação de certificado PDF pendente de envio pelo ADM',
+    message: 'O formando Manuel João Mateus solicitou o certificado PDF da formação Sistema de Gestão Integrado – SGI. Anexe e envie o PDF oficial.',
     studentName: 'Manuel João Mateus',
     courseName: 'Sistema de Gestão Integrado – SGI',
     requestId: 'cert-req-01',
@@ -1773,4 +1787,494 @@ export const INITIAL_ADMIN_NOTIFICATIONS: AdminNotificationRecord[] = [
     createdAt: '2026-02-14T15:20:00Z',
   },
 ];
+
+// ============================================================================
+// PORTEFÓLIO, IMPACTO, EMPREGABILIDADE E GOVERNANÇA INSTITUCIONAL
+// ============================================================================
+
+export interface DynamicCountersConfig {
+  trainedStudentsCount: number | null;
+  trainedStudentsValidated: boolean;
+  trainedStudentsSource: string;
+  sgiImplementationsCount: number | null;
+  sgiImplementationsValidated: boolean;
+  sgiImplementationsSource: string;
+  coursesDeliveredCount: number | null;
+  coursesDeliveredValidated: boolean;
+  coursesDeliveredSource: string;
+  partnerCompaniesCount: number | null;
+  partnerCompaniesValidated: boolean;
+  partnerCompaniesSource: string;
+  referencePeriod: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface EmployabilityIndicatorItem {
+  id: string;
+  key:
+    | 'total_certificados'
+    | 'primeiro_emprego'
+    | 'reintegracao_mercado'
+    | 'promocao_profissional'
+    | 'conta_propria'
+    | 'empresas_contratantes';
+  label: string;
+  description: string;
+  value: number | null;
+  percentageOfTotal?: number | null;
+  unit: string;
+  validated: boolean;
+  referencePeriod: string;
+  sourceMethod: string;
+  accountingCriteria: string;
+  evidenceReference: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export type EmployabilityOutcomeCategory =
+  | 'PRIMEIRO_EMPREGO'
+  | 'REINTEGRACAO_MERCADO'
+  | 'PROMOCAO_PROFISSIONAL'
+  | 'CONTA_PROPRIA'
+  | 'EM_ACOMPANHAMENTO';
+
+export interface AlumniTrackingRecord {
+  id: string;
+  studentName: string;
+  studentBI?: string;
+  courseTitle: string;
+  certificateCode: string;
+  completionYear: string;
+  outcomeCategory: EmployabilityOutcomeCategory;
+  employerOrActivityName: string;
+  jobRoleOrService: string;
+  verificationSource: string;
+  dataProtectionConsent: boolean;
+  validatedByAdmin: boolean;
+  updatedAt: string;
+}
+
+export interface ImpactEvidenceDocument {
+  id: string;
+  code: string;
+  title: string;
+  category: 'Pauta & Registo de Certificação' | 'Inquérito de Empregabilidade' | 'Protocolo & Parceria' | 'Evidência Fotográfica / Actividade' | 'Relatório de Auditoria Interna';
+  description: string;
+  referencePeriod: string;
+  sourceOrigin: string;
+  fileUrl?: string;
+  fileName?: string;
+  validated: boolean;
+  published: boolean;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
+export interface PublicImpactReportItem {
+  id: string;
+  editionYear: string;
+  referencePeriod: string;
+  title: string;
+  subtitle: string;
+  status: 'RASCUNHO' | 'APROVADO_PUBLICADO' | 'ARQUIVADO';
+  approvedBy: string;
+  publishedAt: string;
+  updatedAt: string;
+  section1PresentationAndObjectives: string;
+  section2ActivitiesAndTrainings: string;
+  section3AchievedResults: string;
+  section4EmployabilityIndicatorsSummary: string;
+  section5MethodologyAndValidation: string;
+  section6EvidencesAndSupportDocs: string;
+  section7ConclusionsAndFuturePerspectives: string;
+  pdfAttachmentUrl?: string;
+  pdfAttachmentName?: string;
+}
+
+export interface ImpactGovernanceAuditEntry {
+  id: string;
+  action: string;
+  actorName: string;
+  details: string;
+  timestamp: string;
+}
+
+export interface TrainingPortfolioHistoryItem {
+  id: string;
+  editionCode: string;
+  courseTitle: string;
+  specialtyArea: string;
+  modality: 'Presencial' | 'Online' | 'Híbrida';
+  location: string;
+  period: string;
+  certifiedStudentsCount: number | null;
+  validatedCount: boolean;
+  activityDescription: string;
+  imageUrl: string;
+  evidenceCode: string;
+}
+
+export interface InstitutionalPartnershipItem {
+  id: string;
+  organizationName: string;
+  sector: string;
+  partnershipType: 'Parceiro Empresarial' | 'Cliente de Consultoria SGI' | 'Entidade Empregadora / Recepção de Formandos' | 'Cooperação Técnica';
+  scopeDescription: string;
+  sinceYear: string;
+  verified: boolean;
+}
+
+export const INITIAL_DYNAMIC_COUNTERS: DynamicCountersConfig = {
+  trainedStudentsCount: 2,
+  trainedStudentsValidated: true,
+  trainedStudentsSource: 'Registo Oficial de Certificados Validados na Plataforma ALHAN (ALHAN-SGI-2026-001 e ALH-PRES-2026-0042)',
+  sgiImplementationsCount: 5,
+  sgiImplementationsValidated: true,
+  sgiImplementationsSource: 'Dossiers de Consultoria e Projectos ISO/SGI Executados pela Equipa Técnica ALHAN',
+  coursesDeliveredCount: 10,
+  coursesDeliveredValidated: true,
+  coursesDeliveredSource: 'Catálogo Oficial de Especialidades e Programas Formativos Ministrados pela Academia ALHAN',
+  partnerCompaniesCount: 5,
+  partnerCompaniesValidated: true,
+  partnerCompaniesSource: 'Organizações e Clientes Corporativos com Projectos e Protocolos Registados',
+  referencePeriod: 'Ciclo Institucional 2025 – 2026',
+  updatedAt: '2026-03-01T10:00:00Z',
+  updatedBy: 'Direcção Geral – ALHAN SGI',
+};
+
+export const INITIAL_EMPLOYABILITY_INDICATORS: EmployabilityIndicatorItem[] = [
+  {
+    id: 'ind-emp-1',
+    key: 'total_certificados',
+    label: 'Total de Formandos Certificados',
+    description: 'Formandos com avaliação concluída, aproveitamento comprovado e certificado oficial emitido e registado pela Administração.',
+    value: 2,
+    percentageOfTotal: 100,
+    unit: 'Formandos',
+    validated: true,
+    referencePeriod: '2025 – 2026',
+    sourceMethod: 'Livro de Registo de Certificados Emitidos e Validação Administrativa ALHAN',
+    accountingCriteria: 'Contabiliza exclusivamente formandos com certificado PDF validado e código único activo.',
+    evidenceReference: 'EVD-ALH-2026-001 (Registo Oficial de Certificados)',
+    updatedAt: '2026-03-01T10:00:00Z',
+    updatedBy: 'Direcção Geral – ALHAN SGI',
+  },
+  {
+    id: 'ind-emp-2',
+    key: 'primeiro_emprego',
+    label: 'Formandos que Conseguiram o Primeiro Emprego',
+    description: 'Antigos formandos que ingressaram no mercado de trabalho formal após a conclusão e certificação na Academia ALHAN.',
+    value: null,
+    percentageOfTotal: null,
+    unit: 'Formandos',
+    validated: false,
+    referencePeriod: 'Inquérito Pós-Formação 2026',
+    sourceMethod: 'Inquérito de Acompanhamento de Antigos Formandos (6 e 12 meses pós-formação)',
+    accountingCriteria: 'Exige confirmação documental do formando com consentimento expresso de protecção de dados ou declaração da entidade empregadora.',
+    evidenceReference: 'EVD-ALH-2026-002 (Inquérito de Rastreabilidade de Empregabilidade)',
+    updatedAt: '2026-03-01T10:00:00Z',
+    updatedBy: 'Direcção Geral – ALHAN SGI',
+  },
+  {
+    id: 'ind-emp-3',
+    key: 'reintegracao_mercado',
+    label: 'Formandos Reintegrados no Mercado de Trabalho',
+    description: 'Profissionais que se encontravam em transição de carreira e retomaram actividade laboral activa em QSMS/SGI.',
+    value: null,
+    percentageOfTotal: null,
+    unit: 'Formandos',
+    validated: false,
+    referencePeriod: 'Inquérito Pós-Formação 2026',
+    sourceMethod: 'Registo de Acompanhamento de Carreira e Validação junto de Antigos Formandos',
+    accountingCriteria: 'Contabiliza apenas registos auditados com evidência de vínculo profissional posterior à data de conclusão do curso.',
+    evidenceReference: 'EVD-ALH-2026-002 (Inquérito de Rastreabilidade de Empregabilidade)',
+    updatedAt: '2026-03-01T10:00:00Z',
+    updatedBy: 'Direcção Geral – ALHAN SGI',
+  },
+  {
+    id: 'ind-emp-4',
+    key: 'promocao_profissional',
+    label: 'Formandos que Conseguiram Promoção Profissional',
+    description: 'Formandos já empregados que progrediram para funções de Coordenação, Auditoria Interna ou Direcção Técnica SGI/HSE.',
+    value: 2,
+    percentageOfTotal: 100,
+    unit: 'Formandos',
+    validated: true,
+    referencePeriod: '2025 – 2026',
+    sourceMethod: 'Declaração de Acompanhamento Pós-Formação e Registo de Desempenho Profissional',
+    accountingCriteria: 'Contabiliza formandos certificados com progressão funcional ou atribuição formal de responsabilidades SGI/Auditoria.',
+    evidenceReference: 'EVD-ALH-2026-001 / Fichas de Acompanhamento #ALM-01 e #ALM-02',
+    updatedAt: '2026-03-01T10:00:00Z',
+    updatedBy: 'Direcção Geral – ALHAN SGI',
+  },
+  {
+    id: 'ind-emp-5',
+    key: 'conta_propria',
+    label: 'Formandos que Iniciaram Actividade por Conta Própria',
+    description: 'Antigos formandos que passaram a actuar como consultores independentes, formadores ou auditores externos.',
+    value: null,
+    percentageOfTotal: null,
+    unit: 'Formandos',
+    validated: false,
+    referencePeriod: 'Inquérito Pós-Formação 2026',
+    sourceMethod: 'Inquérito Anual de Empreendedorismo Técnico e Consultoria Independente',
+    accountingCriteria: 'Requer registo de actividade profissional autónoma ou prestação de serviços técnicos verificada.',
+    evidenceReference: 'EVD-ALH-2026-002 (Inquérito de Rastreabilidade de Empregabilidade)',
+    updatedAt: '2026-03-01T10:00:00Z',
+    updatedBy: 'Direcção Geral – ALHAN SGI',
+  },
+  {
+    id: 'ind-emp-6',
+    key: 'empresas_contratantes',
+    label: 'Empresas que Receberam ou Contrataram Antigos Formandos',
+    description: 'Organizações angolanas e multinacionais que integram nos seus quadros profissionais certificados pela ALHAN.',
+    value: 2,
+    percentageOfTotal: null,
+    unit: 'Empresas',
+    validated: true,
+    referencePeriod: '2025 – 2026',
+    sourceMethod: 'Registo Institucional de Entidades Empregadoras e Clientes Corporativos',
+    accountingCriteria: 'Contabiliza entidades empresariais verificadas onde actuam formandos com certificado válido emitido pela ALHAN.',
+    evidenceReference: 'EVD-ALH-2026-003 (Dossier de Empresas e Rastreabilidade)',
+    updatedAt: '2026-03-01T10:00:00Z',
+    updatedBy: 'Direcção Geral – ALHAN SGI',
+  },
+];
+
+export const INITIAL_ALUMNI_TRACKING: AlumniTrackingRecord[] = [
+  {
+    id: 'alm-01',
+    studentName: 'Manuel João Mateus',
+    studentBI: '005432198LA031',
+    courseTitle: 'Sistema de Gestão Integrado – SGI (ISO 9001, 14001 e 45001)',
+    certificateCode: 'ALHAN-SGI-2026-001',
+    completionYear: '2026',
+    outcomeCategory: 'PROMOCAO_PROFISSIONAL',
+    employerOrActivityName: 'Empresa Industrial de Luanda, Lda',
+    jobRoleOrService: 'Técnico Especialista & Auditor Interno do SGI',
+    verificationSource: 'Validação directa com a empresa e certificado #ALHAN-SGI-2026-001',
+    dataProtectionConsent: true,
+    validatedByAdmin: true,
+    updatedAt: '2026-02-20T10:00:00Z',
+  },
+  {
+    id: 'alm-02',
+    studentName: 'Eng.º António Francisco da Costa',
+    studentBI: '007891234LA042',
+    courseTitle: 'Implementador e Auditor Interno SGI - Luanda Presencial (Kilamba)',
+    certificateCode: 'ALH-PRES-2026-0042',
+    completionYear: '2026',
+    outcomeCategory: 'PROMOCAO_PROFISSIONAL',
+    employerOrActivityName: 'Sociedade Industrial de Luanda, S.A.',
+    jobRoleOrService: 'Coordenador de Implementação e Auditoria Interna SGI',
+    verificationSource: 'Pauta Presencial Kilamba e Certificado #ALH-PRES-2026-0042',
+    dataProtectionConsent: true,
+    validatedByAdmin: true,
+    updatedAt: '2026-02-28T15:00:00Z',
+  },
+];
+
+export const INITIAL_IMPACT_EVIDENCES: ImpactEvidenceDocument[] = [
+  {
+    id: 'evd-01',
+    code: 'EVD-ALH-2026-001',
+    title: 'Registo Geral de Certificados Emitidos e Pautas Pedagógicas Validadas',
+    category: 'Pauta & Registo de Certificação',
+    description: 'Base documental auditável contendo os códigos únicos de certificados emitidos pela Administração, carga horária cumprida e avaliação final.',
+    referencePeriod: '2025 – 2026',
+    sourceOrigin: 'Coordenação Pedagógica – Academia ALHAN',
+    validated: true,
+    published: true,
+    uploadedAt: '2026-02-28T16:00:00Z',
+    uploadedBy: 'Direcção Geral – ALHAN SGI',
+  },
+  {
+    id: 'evd-02',
+    code: 'EVD-ALH-2026-002',
+    title: 'Protocolo Metodológico de Inquérito e Rastreabilidade de Empregabilidade (6 e 12 Meses)',
+    category: 'Inquérito de Empregabilidade',
+    description: 'Instrumento oficial de recolha de dados junto de antigos formandos com termo de consentimento de protecção de dados pessoais e verificação de vínculo laboral.',
+    referencePeriod: 'Ciclo 2026',
+    sourceOrigin: 'Gabinete de Qualidade, Governance e Impacto – ALHAN',
+    validated: true,
+    published: true,
+    uploadedAt: '2026-03-01T09:00:00Z',
+    uploadedBy: 'Direcção Geral – ALHAN SGI',
+  },
+  {
+    id: 'evd-03',
+    code: 'EVD-ALH-2026-003',
+    title: 'Dossier de Projectos de Consultoria ISO e Acompanhamento em Empresas Clientes',
+    category: 'Relatório de Auditoria Interna',
+    description: 'Evidências de diagnósticos Gap Analysis, mapeamento de processos SIPOC, matrizes LAIA/SST e auditorias internas ISO 19011 realizadas em Angola.',
+    referencePeriod: '2025 – 2026',
+    sourceOrigin: 'Divisão de Consultoria e Auditoria Técnica – ALHAN',
+    validated: true,
+    published: true,
+    uploadedAt: '2026-03-01T09:30:00Z',
+    uploadedBy: 'Direcção Geral – ALHAN SGI',
+  },
+];
+
+export const INITIAL_TRAINING_PORTFOLIO_HISTORY: TrainingPortfolioHistoryItem[] = [
+  {
+    id: 'port-hist-01',
+    editionCode: 'ED-SGI-2026-01',
+    courseTitle: 'Sistema de Gestão Integrado – SGI (ISO 9001, ISO 14001 e ISO 45001)',
+    specialtyArea: 'Sistemas Integrados (Qualidade, Ambiente e SST)',
+    modality: 'Híbrida',
+    location: 'Luanda (Centralidade do Kilamba) & Microsoft Teams',
+    period: 'Fevereiro 2026',
+    certifiedStudentsCount: 2,
+    validatedCount: true,
+    activityDescription:
+      'Capacitação prática na estrutura harmonizada Anexo SL, elaboração de matrizes integradas de risco QSMS, mapeamento SIPOC e condução de auditorias internas.',
+    imageUrl: '/assets/aistudio/iso_a9fe34ed.jpg',
+    evidenceCode: 'EVD-ALH-2026-001',
+  },
+  {
+    id: 'port-hist-02',
+    editionCode: 'ED-HSE-2026-11',
+    courseTitle: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+    specialtyArea: 'Saúde Ocupacional, Segurança Operacional e Ambiente',
+    modality: 'Híbrida',
+    location: 'Luanda & Online via Microsoft Teams',
+    period: 'Ciclo 2026 (Inscrições e Turmas em Curso)',
+    certifiedStudentsCount: null,
+    validatedCount: false,
+    activityDescription:
+      'Formação orientada para Análise Preliminar de Risco (APR), Permissões de Trabalho (PTW), hierarquia de controlos ISO 45001, matriz LAIA e resposta a emergências.',
+    imageUrl: '/assets/aistudio/Forma__o_HSE__Turma_de_Novembro_eeeafbbb.png',
+    evidenceCode: 'EVD-ALH-2026-002',
+  },
+  {
+    id: 'port-hist-03',
+    editionCode: 'ED-AUD-2026-02',
+    courseTitle: 'Formação de Auditores Internos e Auditores Líderes (ISO 19011)',
+    specialtyArea: 'Auditoria de Sistemas de Gestão',
+    modality: 'Presencial',
+    location: 'Luanda – Angola',
+    period: 'Ciclo Formativo 2026',
+    certifiedStudentsCount: null,
+    validatedCount: false,
+    activityDescription:
+      'Simulações práticas de auditoria de 1ª e 2ª parte, recolha de evidências objectivas, entrevistas no terreno e redacção técnica de constatações de não conformidade.',
+    imageUrl: '/assets/aistudio/imagm_da_alha_2a7ca3f2.png',
+    evidenceCode: 'EVD-ALH-2026-003',
+  },
+];
+
+export const INITIAL_INSTITUTIONAL_PARTNERSHIPS: InstitutionalPartnershipItem[] = [
+  {
+    id: 'part-01',
+    organizationName: 'Empresa Industrial de Luanda, Lda',
+    sector: 'Indústria Transformadora & Logística',
+    partnershipType: 'Cliente de Consultoria SGI',
+    scopeDescription: 'Implementação acompanhada do Sistema de Gestão Integrado (ISO 9001, ISO 14001 e ISO 45001), auditoria interna e qualificação de quadros.',
+    sinceYear: '2026',
+    verified: true,
+  },
+  {
+    id: 'part-02',
+    organizationName: 'Sociedade Industrial de Luanda, S.A.',
+    sector: 'Indústria & Metalomecânica',
+    partnershipType: 'Entidade Empregadora / Recepção de Formandos',
+    scopeDescription: 'Cooperação técnica em implementação SGI e integração de quadros técnicos certificados em Qualidade e SST.',
+    sinceYear: '2025',
+    verified: true,
+  },
+  {
+    id: 'part-03',
+    organizationName: 'Kwanza Logistics & Supply Chain, Lda',
+    sector: 'Logística Portuária & Distribuição',
+    partnershipType: 'Parceiro Empresarial',
+    scopeDescription: 'Projectos de Gestão Ambiental (ISO 14001) e Compliance/Antissuborno (ISO 37001) para operações logísticas.',
+    sinceYear: '2025',
+    verified: true,
+  },
+  {
+    id: 'part-04',
+    organizationName: 'Atlas Offshore & Energy Services',
+    sector: 'Petróleo, Gás & Energia',
+    partnershipType: 'Parceiro Empresarial',
+    scopeDescription: 'Capacitação de equipas técnicas em Auditoria Interna ISO 19011 e Segurança e Saúde no Trabalho ISO 45001.',
+    sinceYear: '2025',
+    verified: true,
+  },
+  {
+    id: 'part-05',
+    organizationName: 'Empreendimentos de Construção Benguela, Lda',
+    sector: 'Construção Civil & Obras Públicas',
+    partnershipType: 'Parceiro Empresarial',
+    scopeDescription: 'Padronização de processos operacionais de estaleiro e indicadores KPI segundo a norma ISO 9001:2015.',
+    sinceYear: '2025',
+    verified: true,
+  },
+];
+
+export const INITIAL_PUBLIC_IMPACT_REPORTS: PublicImpactReportItem[] = [
+  {
+    id: 'rep-impact-2026',
+    editionYear: '2026',
+    referencePeriod: '1.º Semestre de 2026 (Dados Auditados até Março de 2026)',
+    title: 'Relatório Institucional de Impacto, Formação Profissional e Empregabilidade — 2026',
+    subtitle: 'Transparência, Governance Pedagógica e Resultados Verificados da Academia e Consultoria ALHAN em Angola',
+    status: 'APROVADO_PUBLICADO',
+    approvedBy: 'Direcção Geral – ALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA',
+    publishedAt: '2026-03-01T10:00:00Z',
+    updatedAt: '2026-03-01T10:00:00Z',
+    section1PresentationAndObjectives:
+      'A ALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA (NIF 5000682557), sediada em Luanda, Centralidade do Kilamba, Quarteirão Q, Prédio Q13, Apartamento 41, apresenta o seu Relatório Público de Impacto e Empregabilidade. O objectivo central deste documento institucional é prestar contas, com rigor técnico e transparência absoluta, sobre as actividades formativas ministradas, os projectos de consultoria em Sistemas de Gestão ISO/SGI e a evolução profissional verificada dos nossos formandos no mercado angolano.',
+    section2ActivitiesAndTrainings:
+      'No período em análise, a Academia ALHAN estruturou e ministrou 10 programas de formação especializada nas modalidades Presencial, Online e Híbrida, abrangendo Sistema de Gestão Integrado (SGI – ISO 9001, ISO 14001 e ISO 45001), Formação em HSE (Saúde, Segurança e Meio Ambiente), Auditor Líder ISO 19011, Compliance (ISO 37001/37301), Consultoria Ambiental e Segurança e Saúde no Trabalho. Paralelamente, a divisão técnica conduziu diagnósticos Gap Analysis, mapeamento de processos SIPOC, elaboração de procedimentos obrigatórios e auditorias internas em empresas industriais, logísticas e de construção.',
+    section3AchievedResults:
+      'Foram consolidados os dossiers pedagógicos e técnicos com emissão controlada de certificados exclusivamente pela Administração após verificação de aproveitamento, frequência e regularização contratual. No âmbito empresarial, os projectos acompanhados atingiram marcos verificáveis de padronização documental (Políticas SGI, Matrizes LAIA e APR) e tratamento eficaz de não conformidades segundo a ISO 19011.',
+    section4EmployabilityIndicatorsSummary:
+      'Em estrita observância aos princípios de Governance e Compliance da ALHAN, apenas são publicados números que possuem suporte documental validado. Actualmente encontram-se registados e auditados 2 formandos certificados com progressão profissional documentada em funções de coordenação e auditoria interna SGI em 2 empresas de referência. Os indicadores relativos a Primeiro Emprego, Reintegração no Mercado de Trabalho e Actividade por Conta Própria encontram-se com o estatuto oficial "Dados em actualização" enquanto decorre o ciclo regulamentar de recolha e validação documental pós-formação.',
+    section5MethodologyAndValidation:
+      'A metodologia de recolha e validação de dados da ALHAN baseia-se em três níveis de verificação: (1) Registo Interno de Certificação com código único e arquivo PDF emitido pelo Administrador; (2) Inquérito de Rastreabilidade de Carreira realizado aos 6 e 12 meses após a conclusão da formação, acompanhado de consentimento informado de protecção de dados pessoais; e (3) Confirmação documental (declaração de vínculo, promoção funcional ou prestação de serviços) validada pela Direcção antes de qualquer publicação estatística.',
+    section6EvidencesAndSupportDocs:
+      'Os indicadores deste relatório estão suportados pelos documentos institucionais EVD-ALH-2026-001 (Registo Geral de Certificados Emitidos e Pautas Validadas), EVD-ALH-2026-002 (Protocolo de Inquérito de Empregabilidade e Consentimento de Dados) e EVD-ALH-2026-003 (Dossier de Projectos de Consultoria e Auditorias Internas ISO).',
+    section7ConclusionsAndFuturePerspectives:
+      'A ALHAN reafirma o seu compromisso com a verdade estatística, a qualificação prática dos quadros angolanos e o fortalecimento da competitividade das empresas nacionais através das normas ISO. Para os próximos ciclos trimestrais, prevê-se a conclusão da validação documental dos novos inquéritos de empregabilidade das turmas de HSE e SGI e a expansão de parcerias técnicas com o sector produtivo em Luanda e demais províncias.',
+  },
+  {
+    id: 'rep-impact-2025',
+    editionYear: '2025',
+    referencePeriod: 'Exercício Institucional de 2025 (Relatório Anual Consolidado)',
+    title: 'Relatório Institucional de Actividades, Estruturação Pedagógica e Consultoria ISO — 2025',
+    subtitle: 'Consolidação da Metodologia de 14 Etapas ISO e Lançamento dos Programas de Qualificação QSMS/SGI',
+    status: 'APROVADO_PUBLICADO',
+    approvedBy: 'Direcção Geral – ALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA',
+    publishedAt: '2025-12-20T10:00:00Z',
+    updatedAt: '2025-12-20T10:00:00Z',
+    section1PresentationAndObjectives:
+      'O Relatório Anual de 2025 documenta a consolidação metodológica da ALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA na estruturação de serviços de consultoria em normas ISO e preparação da oferta formativa especializada para o mercado angolano.',
+    section2ActivitiesAndTrainings:
+      'Estruturação dos manuais técnicos, matrizes práticas LAIA, APR e SIPOC, e desenvolvimento dos programas curriculares de Qualidade (ISO 9001), Ambiente (ISO 14001), SST (ISO 45001), Auditoria (ISO 19011) e Compliance (ISO 37001).',
+    section3AchievedResults:
+      'Implementação da metodologia proprietária em 14 etapas para acompanhamento de clientes corporativos e estabelecimento de parcerias técnicas nos sectores industrial, logístico, energético e de construção civil.',
+    section4EmployabilityIndicatorsSummary:
+      'Definição da matriz institucional de indicadores de empregabilidade e criação dos protocolos de rastreabilidade pós-formação para aplicação às coortes certificadas.',
+    section5MethodologyAndValidation:
+      'Adopção do padrão de Governança de Dados da ALHAN: proibição de estimativas não auditadas, exigência de consentimento de protecção de dados e aprovação prévia da Administração para publicação de relatórios e testemunhos.',
+    section6EvidencesAndSupportDocs:
+      'Manuais pedagógicos aprovados, procedimentos internos de gestão documental e registos de projectos de consultoria empresarial.',
+    section7ConclusionsAndFuturePerspectives:
+      'As bases lançadas em 2025 permitiram a transição para a plataforma digital integrada em 2026, com controlo rigoroso de certificados PDF emitidos pela Administração e monitorização contínua do impacto formativo.',
+  },
+];
+
+export const INITIAL_IMPACT_AUDIT_LOGS: ImpactGovernanceAuditEntry[] = [
+  {
+    id: 'imp-log-01',
+    action: 'PUBLICACAO_RELATORIO_IMPACTO',
+    actorName: 'Direcção Geral – ALHAN SGI',
+    details: 'Publicação oficial do Relatório Institucional de Impacto e Empregabilidade 2026 com validação de indicadores e fontes documentais.',
+    timestamp: '2026-03-01T10:00:00Z',
+  },
+];
+
 

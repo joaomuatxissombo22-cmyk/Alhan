@@ -287,7 +287,7 @@ export const IsoRecommendationQuiz: React.FC = () => {
 };
 
 export const HomePage: React.FC = () => {
-  const { courses, isoStandards } = useApp();
+  const { courses, isoStandards, employabilityIndicators, dynamicCounters } = useApp();
   const featuredCourses = courses.filter((c) => c.published).slice(0, 6);
   const featuredStandards = isoStandards.slice(0, 6);
 
@@ -606,6 +606,84 @@ export const HomePage: React.FC = () => {
       {/* 6. QUESTIONÁRIO INTERACTIVO DE RECOMENDAÇÃO ISO */}
       <section className="py-16 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
         <IsoRecommendationQuiz />
+      </section>
+
+      {/* 6.5. SECÇÃO DE DESTAQUE: IMPACTO NA FORMAÇÃO E EMPREGABILIDADE */}
+      <section className="py-16 bg-gradient-to-br from-[#041525] via-[#07223B] to-[#0B3558] text-white border-y border-white/10">
+        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <div className="lg:col-span-6 space-y-4">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-[#C8A951]/40 text-[#E5C97B] text-xs font-extrabold uppercase tracking-widest">
+                <ShieldCheck className="w-4 h-4 text-[#C8A951]" />
+                <span>Portefólio, Impacto e Empregabilidade · {dynamicCounters.referencePeriod}</span>
+              </div>
+              <h2 className="font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white leading-tight">
+                Conheça o nosso impacto na formação e empregabilidade.
+              </h2>
+              <p className="text-sm sm:text-base text-slate-200 leading-relaxed">
+                Publicamos com transparência, rigor metodológico e conformidade documental o histórico das nossas formações, os indicadores reais de progressão profissional dos antigos formandos e o Relatório Público de Impacto da ALHAN.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <Link
+                  to="/relatorio-impacto"
+                  className="inline-flex items-center gap-2 bg-[#C8A951] hover:bg-[#d8b960] text-[#041525] font-extrabold px-5 py-3.5 rounded-xl text-sm shadow-lg transition-all"
+                >
+                  <span>Consultar Relatório de Impacto</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+                <Link
+                  to="/portefolio-impacto"
+                  className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold px-5 py-3.5 rounded-xl text-sm transition-all"
+                >
+                  <span>Explorar Portefólio e Indicadores</span>
+                </Link>
+              </div>
+            </div>
+
+            <div className="lg:col-span-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {employabilityIndicators.slice(0, 4).map((ind) => (
+                  <div
+                    key={ind.id}
+                    className="rounded-2xl bg-white/[0.06] border border-white/15 p-5 flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="text-[11px] font-bold uppercase text-sky-300">
+                          {ind.referencePeriod}
+                        </span>
+                        {ind.validated && ind.value !== null ? (
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                            Validado
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                            Em actualização
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-sm font-bold text-white mb-2">{ind.label}</h3>
+                    </div>
+                    <div>
+                      {ind.validated && ind.value !== null ? (
+                        <p className="text-2xl sm:text-3xl font-extrabold text-[#E5C97B] tabular-nums">
+                          {ind.value} <span className="text-xs font-semibold text-slate-300">{ind.unit}</span>
+                        </p>
+                      ) : (
+                        <span className="inline-block text-xs font-bold text-amber-300 bg-amber-500/15 border border-amber-400/30 px-2.5 py-1 rounded-lg">
+                          Dados em actualização
+                        </span>
+                      )}
+                      <p className="text-[11px] text-slate-400 mt-1.5 line-clamp-1">
+                        Fonte: {ind.sourceMethod}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* 7. DEPOIMENTOS E TESTEMUNHOS DE CONFIANÇA (Carousel de Clientes e Logos) */}

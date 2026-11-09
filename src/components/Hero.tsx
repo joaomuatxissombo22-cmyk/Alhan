@@ -1,779 +1,670 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
+  Award,
   CheckCircle2,
-  MessageCircle,
   ChevronLeft,
   ChevronRight,
-  Pause,
   Play,
-  Video,
-  Image as ImageIcon,
-  Volume2,
-  VolumeX,
+  Pause,
   RotateCcw,
-  Award,
   ShieldCheck,
   Leaf,
-  Settings,
-  FileCheck2,
+  HardHat,
   Sparkles,
-  Upload,
+  GraduationCap,
+  Images,
+  Volume2,
+  VolumeX,
+  BarChart3,
+  Building2,
+  BookOpen,
 } from 'lucide-react';
-import { COMPANY_INFO, HERO_SLIDES } from '../data/initialData';
+import { HERO_SLIDES } from '../data/initialData';
+import { useApp } from '../context/AppContext';
 
-interface Cartoon3DScene {
+interface CartoonScene {
   id: string;
-  durationSec: number;
+  step: string;
   badge: string;
   title: string;
-  subtitle: string;
   narration: string;
-  image: string;
-  highlightPillar: 'ISO 9001' | 'ISO 14001' | 'ISO 45001' | 'CERTIFICADO SGI';
-  pillars: string[];
+  accentColor: string;
+  bgGlow: string;
+  isoPillars: { code: string; label: string; color: string }[];
 }
 
-// 20-second loop (4 chapters x 5 seconds = 20s, matching 15–25s requirement in Module 6.3)
-const SGI_CARTOON_3D_SCENES: Cartoon3DScene[] = [
+const CARTOON_3D_SCENES: CartoonScene[] = [
   {
-    id: 'cartoon-scene-1',
-    durationSec: 5,
-    badge: 'CENA 01 · FORMAÇÃO CORPORATIVA EM CARTOON 3D (SGI)',
-    title: 'Formador e Profissionais em Sala de Formação Executiva SGI',
-    subtitle: 'Integração Estratégica das Normas ISO 9001, ISO 14001 e ISO 45001',
+    id: 'scene-1',
+    step: 'CENA 01 / 05',
+    badge: 'ACADEMIA ALHAN · FORMAÇÃO PROFISSIONAL SGI',
+    title: 'Formador e Turma em Sala Moderna de Formação SGI',
     narration:
-      'Transformamos conhecimento em competência. Desenvolvemos profissionais e organizações através de formações especializadas em Sistemas de Gestão Integrados.',
-    image: '/assets/aistudio/hero_sgi_cartoon_3d.jpg',
-    highlightPillar: 'ISO 9001',
-    pillars: ['ISO 9001 — Qualidade', 'Liderança Executiva', 'Processos Auditáveis'],
+      'Formação prática e interactiva em Sistema de Gestão Integrado para qualificar quadros técnicos, gestores e auditores em Angola.',
+    accentColor: '#00E5FF',
+    bgGlow: 'from-[#0B4F6C] via-[#072A40] to-[#041523]',
+    isoPillars: [
+      { code: 'ISO 9001', label: 'Qualidade', color: '#38BDF8' },
+      { code: 'ISO 14001', label: 'Ambiente', color: '#34D399' },
+      { code: 'ISO 45001', label: 'SST', color: '#FBBF24' },
+    ],
   },
   {
-    id: 'cartoon-scene-2',
-    durationSec: 5,
-    badge: 'CENA 02 · GESTÃO AMBIENTAL E SUSTENTABILIDADE (ISO 14001)',
-    title: 'Controlo Ambiental e Desempenho Sustentável nas Organizações',
-    subtitle: 'Formação Prática para Indústria, Energia, Logística e Serviços em Angola',
+    id: 'scene-2',
+    step: 'CENA 02 / 05',
+    badge: 'OS 3 PILARES DO SGI · INTEGRAÇÃO ANEXO SL',
+    title: 'Qualidade (ISO 9001), Ambiente (ISO 14001) e SST (ISO 45001)',
     narration:
-      'Com a ISO 14001, capacitamos equipas para gerir aspectos ambientais, cumprir requisitos legais e promover a sustentabilidade empresarial.',
-    image: '/assets/aistudio/hero_sgi_cartoon_3d.jpg',
-    highlightPillar: 'ISO 14001',
-    pillars: ['ISO 14001 — Ambiente', 'Conformidade Legal', 'Gestão de Riscos'],
+      'Domine de forma integrada o controlo documental, matrizes de aspectos e impactos ambientais (LAIA) e análise preliminar de risco (APR).',
+    accentColor: '#34D399',
+    bgGlow: 'from-[#064E3B] via-[#072A40] to-[#041523]',
+    isoPillars: [
+      { code: 'ISO 9001', label: 'Processos & Cliente', color: '#38BDF8' },
+      { code: 'ISO 14001', label: 'Sustentabilidade', color: '#34D399' },
+      { code: 'ISO 45001', label: 'Zero Acidentes', color: '#FBBF24' },
+    ],
   },
   {
-    id: 'cartoon-scene-3',
-    durationSec: 5,
-    badge: 'CENA 03 · SEGURANÇA E SAÚDE NO TRABALHO (ISO 45001 & HSE)',
-    title: 'Prevenção de Riscos Laborais e Cultura de Zero Acidentes',
-    subtitle: 'Ambientes de Trabalho Seguros, Saudáveis e de Alta Performance',
+    id: 'scene-3',
+    step: 'CENA 03 / 05',
+    badge: 'APLICAÇÃO PRÁTICA · EMPRESAS E INDÚSTRIA',
+    title: 'Auditoria Interna ISO 19011, Segurança e Melhoria Contínua',
     narration:
-      'A norma ISO 45001 protege o capital humano da organização através do controlo operacional e prevenção activa de incidentes.',
-    image: '/assets/aistudio/Forma__o_HSE__Turma_de_Novembro_eeeafbbb.png',
-    highlightPillar: 'ISO 45001',
-    pillars: ['ISO 45001 — SST', 'Prevenção HSE', 'Cultura de Segurança'],
+      'Simulações reais de auditoria no terreno, uso correcto de EPIs, mapeamento SIPOC e indicadores KPI para excelência operacional.',
+    accentColor: '#FBBF24',
+    bgGlow: 'from-[#1E3A8A] via-[#0B2742] to-[#041523]',
+    isoPillars: [
+      { code: 'ISO 19011', label: 'Auditoria Interna', color: '#A78BFA' },
+      { code: 'PDCA', label: 'Melhoria Contínua', color: '#38BDF8' },
+      { code: 'SST / EPI', label: 'Operação Segura', color: '#FBBF24' },
+    ],
   },
   {
-    id: 'cartoon-scene-4',
-    durationSec: 5,
-    badge: 'CENA 04 · DOCUMENTOS ISO E CERTIFICADO OFICIAL ALHAN',
-    title: 'Certificação Profissional Validada na Plataforma ALHAN',
-    subtitle: 'Emissão e Entrega Digital de Certificados em PDF no Painel do Formando',
+    id: 'scene-4',
+    step: 'CENA 04 / 05',
+    badge: 'CERTIFICAÇÃO OFICIAL · EMISSÃO PELO ADMINISTRADOR',
+    title: 'Conclusão da Formação e Entrega de Certificado Oficial em PDF',
     narration:
-      'Ao concluir a formação na ALHAN, o formando solicita e recebe o seu certificado oficial em PDF directamente no seu painel.',
-    image: '/assets/aistudio/hero_sgi_cartoon_3d.jpg',
-    highlightPillar: 'CERTIFICADO SGI',
-    pillars: ['Documentos ISO', 'Certificado Oficial PDF', 'Validação QR ALHAN'],
+      'Após concluir a formação, solicite o seu certificado no painel do formando e receba o documento oficial em PDF enviado pela Administração da ALHAN.',
+    accentColor: '#C8A951',
+    bgGlow: 'from-[#3B2F13] via-[#0A2540] to-[#041523]',
+    isoPillars: [
+      { code: 'PDF OFICIAL', label: 'Enviado pelo ADM', color: '#C8A951' },
+      { code: 'QR CODE', label: 'Validação Pública', color: '#34D399' },
+      { code: 'CARREIRA', label: 'Reconhecimento', color: '#38BDF8' },
+    ],
+  },
+  {
+    id: 'scene-5',
+    step: 'CENA 05 / 05',
+    badge: 'INSCRIÇÕES ABERTAS · LUANDA E ONLINE',
+    title: 'Inscreva-se na Formação em Sistema de Gestão Integrado (SGI)',
+    narration:
+      'Eleve a sua carreira e a competitividade da sua organização com a ALHAN Consultoria e Prestação de Serviços, Lda.',
+    accentColor: '#38BDF8',
+    bgGlow: 'from-[#0E4D92] via-[#07233B] to-[#03111E]',
+    isoPillars: [
+      { code: 'PRESENCIAL', label: 'Luanda · Kilamba', color: '#38BDF8' },
+      { code: 'ONLINE / HÍBRIDA', label: 'Todo o País', color: '#34D399' },
+      { code: 'ALHAN SGI', label: 'Excelência ISO', color: '#C8A951' },
+    ],
   },
 ];
 
+const AnimatedCounterNumber: React.FC<{
+  target: number | null;
+  validated: boolean;
+  suffix?: string;
+}> = ({ target, validated, suffix = '' }) => {
+  const [displayValue, setDisplayValue] = useState<number>(0);
+
+  useEffect(() => {
+    if (!validated || target === null || target === undefined) {
+      setDisplayValue(0);
+      return;
+    }
+    let start = 0;
+    const end = Math.max(0, Number(target));
+    if (end === 0) {
+      setDisplayValue(0);
+      return;
+    }
+    const durationMs = 1100;
+    const stepTime = Math.max(20, Math.floor(durationMs / Math.max(1, end)));
+    const timer = window.setInterval(() => {
+      start += Math.max(1, Math.ceil(end / 28));
+      if (start >= end) {
+        setDisplayValue(end);
+        window.clearInterval(timer);
+      } else {
+        setDisplayValue(start);
+      }
+    }, stepTime);
+
+    return () => window.clearInterval(timer);
+  }, [target, validated]);
+
+  if (!validated || target === null || target === undefined) {
+    return (
+      <span className="inline-block text-sm sm:text-base font-bold text-amber-300 bg-amber-500/15 border border-amber-400/30 px-2.5 py-1 rounded-lg">
+        Dados em actualização
+      </span>
+    );
+  }
+
+  return (
+    <span className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight tabular-nums">
+      {displayValue.toLocaleString('pt-AO')}
+      {suffix}
+    </span>
+  );
+};
+
 export const Hero: React.FC = () => {
-  // Respect prefers-reduced-motion accessibility setting (Module 6.3)
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setPrefersReducedMotion(mq.matches);
-    const listener = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
-    mq.addEventListener?.('change', listener);
-    return () => mq.removeEventListener?.('change', listener);
-  }, []);
-
-  // Default to Animated Cartoon 3D SGI Hero mode (Module 6)
-  const [mediaMode, setMediaMode] = useState<'cartoon3d' | 'gallery'>('cartoon3d');
-  const [videoPlaying, setVideoPlaying] = useState(true);
-  // Module 6.3: Sem som activo por defeito
-  const [videoMuted, setVideoMuted] = useState(true);
+  const { dynamicCounters, courses } = useApp();
+  const [viewMode, setViewMode] = useState<'cartoon3d' | 'gallery'>('cartoon3d');
   const [sceneIndex, setSceneIndex] = useState(0);
-  const [sceneElapsed, setSceneElapsed] = useState(0);
-  const [customVideoUrl, setCustomVideoUrl] = useState<string | null>(null);
-  const [nativeVideoAvailable, setNativeVideoAvailable] = useState(false);
-
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [isGalleryPaused, setIsGalleryPaused] = useState(false);
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
-
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [isMuted, setIsMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const lastSpokenSceneRef = useRef<number | null>(null);
 
-  const slideCount = HERO_SLIDES.length;
-  const currentSlide = HERO_SLIDES[activeIndex] || HERO_SLIDES[0];
-  const currentScene = SGI_CARTOON_3D_SCENES[sceneIndex] || SGI_CARTOON_3D_SCENES[0];
-  const totalLoopDuration = SGI_CARTOON_3D_SCENES.reduce((acc, s) => acc + s.durationSec, 0); // 20s
-  const elapsedBeforeCurrent = SGI_CARTOON_3D_SCENES.slice(0, sceneIndex).reduce(
-    (acc, s) => acc + s.durationSec,
-    0
-  );
-  const overallProgressPct = Math.min(
-    100,
-    Math.round(((elapsedBeforeCurrent + sceneElapsed) / totalLoopDuration) * 100)
-  );
-
-  useEffect(() => {
-    if (prefersReducedMotion) {
-      setVideoPlaying(false);
+  const toggleVideoSound = () => {
+    if (!videoRef.current) return;
+    const nextMuted = !isMuted;
+    videoRef.current.muted = nextMuted;
+    setIsMuted(nextMuted);
+    if (!nextMuted) {
+      videoRef.current.volume = 1;
+      videoRef.current.play().catch(() => {});
     }
-  }, [prefersReducedMotion]);
-
-  const nextSlide = useCallback(() => {
-    setActiveIndex((prev) => (prev + 1) % slideCount);
-  }, [slideCount]);
-
-  const prevSlide = useCallback(() => {
-    setActiveIndex((prev) => (prev - 1 + slideCount) % slideCount);
-  }, [slideCount]);
-
-  useEffect(() => {
-    if (isGalleryPaused || mediaMode !== 'gallery' || prefersReducedMotion) return;
-    const timer = setInterval(nextSlide, 6500);
-    return () => clearInterval(timer);
-  }, [isGalleryPaused, mediaMode, prefersReducedMotion, nextSlide]);
-
-  // Continuous 20-second loop for Cartoon 3D SGI animation (Module 6.3)
-  useEffect(() => {
-    if (mediaMode !== 'cartoon3d' || !videoPlaying || customVideoUrl) return;
-    const interval = setInterval(() => {
-      setSceneElapsed((prev) => {
-        if (prev + 0.25 >= currentScene.durationSec) {
-          setSceneIndex((s) => (s + 1) % SGI_CARTOON_3D_SCENES.length);
-          return 0;
-        }
-        return prev + 0.25;
-      });
-    }, 250);
-    return () => clearInterval(interval);
-  }, [mediaMode, videoPlaying, customVideoUrl, currentScene.durationSec]);
-
-  // Optional Portuguese narration ONLY when user explicitly unmutes (Muted by default per 6.3)
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    if (mediaMode !== 'cartoon3d' || !videoPlaying || videoMuted || customVideoUrl) {
-      window.speechSynthesis.cancel();
-      return;
-    }
-
-    if (lastSpokenSceneRef.current !== sceneIndex) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(currentScene.narration);
-      utterance.lang = 'pt-PT';
-      utterance.rate = 1.02;
-      window.speechSynthesis.speak(utterance);
-      lastSpokenSceneRef.current = sceneIndex;
-    }
-  }, [mediaMode, videoPlaying, videoMuted, customVideoUrl, sceneIndex, currentScene.narration]);
-
-  useEffect(() => {
-    return () => {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
-  }, []);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchStartX(e.touches[0].clientX);
   };
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX === null) return;
-    const deltaX = e.changedTouches[0].clientX - touchStartX;
-    if (Math.abs(deltaX) > 45) {
-      if (mediaMode === 'gallery') {
-        if (deltaX < 0) nextSlide();
-        else prevSlide();
-      } else {
-        setSceneIndex((prev) =>
-          deltaX < 0
-            ? (prev + 1) % SGI_CARTOON_3D_SCENES.length
-            : (prev - 1 + SGI_CARTOON_3D_SCENES.length) % SGI_CARTOON_3D_SCENES.length
-        );
-        setSceneElapsed(0);
-      }
+  useEffect(() => {
+    if (viewMode !== 'cartoon3d' || !isPlaying) return;
+    const timer = window.setInterval(() => {
+      setSceneIndex((prev) => (prev + 1) % CARTOON_3D_SCENES.length);
+    }, 6000);
+    return () => window.clearInterval(timer);
+  }, [viewMode, isPlaying]);
+
+  useEffect(() => {
+    if (viewMode !== 'gallery') return;
+    const timer = window.setInterval(() => {
+      setSlideIndex((prev) => (prev + 1) % HERO_SLIDES.length);
+    }, 7000);
+    return () => window.clearInterval(timer);
+  }, [viewMode]);
+
+  const currentScene = CARTOON_3D_SCENES[sceneIndex];
+  const currentSlide = HERO_SLIDES[slideIndex];
+
+  const prevItem = () => {
+    if (viewMode === 'cartoon3d') {
+      setSceneIndex((prev) => (prev - 1 + CARTOON_3D_SCENES.length) % CARTOON_3D_SCENES.length);
+    } else {
+      setSlideIndex((prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length);
     }
-    setTouchStartX(null);
   };
 
-  const togglePlayPause = () => {
-    if (videoRef.current && (customVideoUrl || nativeVideoAvailable)) {
-      if (videoPlaying) {
-        videoRef.current.pause();
-        setVideoPlaying(false);
-      } else {
-        videoRef.current.play().catch(() => null);
-        setVideoPlaying(true);
-      }
-      return;
+  const nextItem = () => {
+    if (viewMode === 'cartoon3d') {
+      setSceneIndex((prev) => (prev + 1) % CARTOON_3D_SCENES.length);
+    } else {
+      setSlideIndex((prev) => (prev + 1) % HERO_SLIDES.length);
     }
-    setVideoPlaying((prev) => !prev);
   };
-
-  const toggleMute = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = !videoMuted;
-    }
-    setVideoMuted((prev) => !prev);
-  };
-
-  const handleLocalVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setCustomVideoUrl(url);
-    setMediaMode('cartoon3d');
-    setVideoPlaying(true);
-  };
-
-  const whatsappUrl = `https://wa.me/${COMPANY_INFO.whatsappNumber}?text=${encodeURIComponent(
-    COMPANY_INFO.whatsappDefaultMessage
-  )}`;
 
   return (
     <section
-      aria-label="Hero Principal Animado SGI — ALHAN Consultoria e Prestação de Serviços"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      className="relative bg-gradient-to-b from-[#051525] via-[#061A2D] to-[#071D33] text-[#F5F9FC] py-8 sm:py-12 lg:py-16 border-b border-white/10 overflow-hidden"
+      aria-label="Destaque Principal — Formação em Sistema de Gestão Integrado (SGI)"
+      className="relative overflow-hidden bg-[#041525] text-white border-b border-white/10"
     >
-      {/* Subtle Ambient Corporate Glow */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-32 right-1/4 w-[480px] h-[480px] rounded-full bg-[#0077C8]/15 blur-3xl"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -bottom-32 left-10 w-[400px] h-[400px] rounded-full bg-[#19B5FE]/10 blur-3xl"
-      />
+      {/* Ambient Background Lighting */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-32 -left-24 w-[28rem] h-[28rem] rounded-full bg-[#0E7490]/25 blur-[110px]" />
+        <div className="absolute top-1/4 right-0 w-[32rem] h-[32rem] rounded-full bg-[#C8A951]/15 blur-[130px]" />
+        <div
+          className="absolute inset-0 opacity-[0.05]"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)',
+            backgroundSize: '48px 48px',
+          }}
+        />
+      </div>
 
-      <div className="relative z-10 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
-          {/* Left Column: Exact Module 6.2 Copy, Three ISO Pillars & Official CTAs */}
-          <div className="lg:col-span-6 flex flex-col justify-between space-y-6">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-10 sm:py-12 lg:py-14">
+        {/* Main Split Layout: ALL TEXT ON LEFT COLUMN | CLEAN ANIMATION & GALLERY IMAGES ON RIGHT COLUMN */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+          {/* LEFT COLUMN (5 cols): Institutional Copy + Active Scene / Gallery Text Description */}
+          <div className="lg:col-span-5 flex flex-col justify-between space-y-5">
             <div>
               {/* Kicker Badge */}
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.06] border border-[#19B5FE]/30 text-xs font-bold text-[#19B5FE] tracking-wide">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>SISTEMA DE GESTÃO INTEGRADO (SGI) · FORMAÇÃO & CONSULTORIA ISO</span>
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.08] border border-[#C8A951]/40 mb-4">
+                <Sparkles className="w-3.5 h-3.5 text-[#C8A951] shrink-0" />
+                <span className="text-[11px] font-bold tracking-[0.14em] uppercase text-[#E5C97B]">
+                  ACADEMIA & CONSULTORIA ALHAN · LUANDA, ANGOLA
+                </span>
               </div>
 
-              {/* Exact Headline required by Module 6.2 */}
-              <h1 className="text-2xl sm:text-4xl lg:text-[42px] font-extrabold tracking-tight text-white mt-4 leading-[1.14]">
-                TRANSFORMAMOS CONHECIMENTO EM{' '}
-                <span className="text-[#19B5FE] underline decoration-[#0077C8]/70 decoration-2 underline-offset-8">
-                  COMPETÊNCIA.
+              {/* Primary Headline */}
+              <h1 className="font-display text-2xl sm:text-3xl lg:text-[2.35rem] font-extrabold tracking-tight leading-[1.14] text-white mb-3.5">
+                Formação em{' '}
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#38BDF8] via-[#34D399] to-[#C8A951]">
+                  Sistema de Gestão Integrado (SGI)
                 </span>
               </h1>
 
-              {/* Exact Subtitle required by Module 6.2 */}
-              <p className="text-sm sm:text-base text-[#F5F9FC]/90 mt-4 leading-relaxed max-w-2xl">
-                Desenvolvemos profissionais e organizações através de formações especializadas e implementação de Sistemas de Gestão Integrados, alinhados com as normas internacionais ISO.
+              {/* Subtitle */}
+              <p className="text-sm sm:text-base text-slate-200/90 leading-relaxed mb-5 font-normal">
+                Qualidade, Ambiente e Segurança e Saúde no Trabalho para profissionais e empresas que procuram excelência, conformidade normativa e evolução profissional em Angola.
               </p>
 
-              {/* Three Highlighted Pillars required by Module 6.2 */}
-              <div className="mt-6 space-y-2.5">
-                <p className="text-[11px] font-extrabold uppercase tracking-wider text-[#9AA6AE]">
-                  Os Três Pilares do Sistema de Gestão Integrado (SGI):
-                </p>
-                <div className="grid grid-cols-1 gap-2.5">
-                  <div
-                    className={`flex items-center gap-3.5 p-3 rounded-xl border transition-all ${
-                      mediaMode === 'cartoon3d' && currentScene.highlightPillar === 'ISO 9001'
-                        ? 'bg-[#0077C8]/25 border-[#19B5FE] shadow-md'
-                        : 'bg-white/[0.04] border-white/10 hover:border-white/25'
-                    }`}
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300 shrink-0">
-                      <Settings className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs sm:text-sm font-extrabold text-white">
-                        ISO 9001 — Gestão da Qualidade.
-                      </p>
-                      <p className="text-[11px] text-[#9AA6AE]">
-                        Excelência nos processos, satisfação do cliente e melhoria contínua.
-                      </p>
-                    </div>
+              {/* 3 ISO Pillar Cards */}
+              <div className="grid grid-cols-3 gap-2.5 mb-5">
+                <div className="rounded-xl bg-white/[0.05] border border-sky-400/25 p-2.5">
+                  <div className="flex items-center gap-1.5 text-sky-400 font-bold text-xs mb-0.5">
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
+                    <span>ISO 9001</span>
                   </div>
-
-                  <div
-                    className={`flex items-center gap-3.5 p-3 rounded-xl border transition-all ${
-                      mediaMode === 'cartoon3d' && currentScene.highlightPillar === 'ISO 14001'
-                        ? 'bg-emerald-900/30 border-emerald-400 shadow-md'
-                        : 'bg-white/[0.04] border-white/10 hover:border-white/25'
-                    }`}
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 shrink-0">
-                      <Leaf className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs sm:text-sm font-extrabold text-white">
-                        ISO 14001 — Gestão Ambiental.
-                      </p>
-                      <p className="text-[11px] text-[#9AA6AE]">
-                        Sustentabilidade operacional, controlo de impactos e conformidade ambiental.
-                      </p>
-                    </div>
+                  <p className="text-[11px] text-slate-300 leading-tight">Gestão da Qualidade</p>
+                </div>
+                <div className="rounded-xl bg-white/[0.05] border border-emerald-400/25 p-2.5">
+                  <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs mb-0.5">
+                    <Leaf className="w-4 h-4 shrink-0" />
+                    <span>ISO 14001</span>
                   </div>
-
-                  <div
-                    className={`flex items-center gap-3.5 p-3 rounded-xl border transition-all ${
-                      mediaMode === 'cartoon3d' && currentScene.highlightPillar === 'ISO 45001'
-                        ? 'bg-[#0077C8]/25 border-[#19B5FE] shadow-md'
-                        : 'bg-white/[0.04] border-white/10 hover:border-white/25'
-                    }`}
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-[#19B5FE]/20 border border-[#19B5FE]/40 flex items-center justify-center text-[#19B5FE] shrink-0">
-                      <ShieldCheck className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs sm:text-sm font-extrabold text-white">
-                        ISO 45001 — Segurança e Saúde no Trabalho.
-                      </p>
-                      <p className="text-[11px] text-[#9AA6AE]">
-                        Prevenção de riscos ocupacionais, ambientes seguros e protecção da vida.
-                      </p>
-                    </div>
+                  <p className="text-[11px] text-slate-300 leading-tight">Gestão Ambiental</p>
+                </div>
+                <div className="rounded-xl bg-white/[0.05] border border-amber-400/25 p-2.5">
+                  <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs mb-0.5">
+                    <HardHat className="w-4 h-4 shrink-0" />
+                    <span>ISO 45001</span>
                   </div>
+                  <p className="text-[11px] text-slate-300 leading-tight">Segurança e SST</p>
                 </div>
               </div>
 
-              {/* Exact Primary & Secondary Buttons required by Module 6.2 */}
-              <div className="flex flex-wrap items-center gap-3 mt-7">
-                <Link
-                  to="/formacoes"
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-[#0077C8] hover:bg-[#008FEA] text-white font-extrabold text-xs sm:text-sm shadow-lg transition-colors whitespace-nowrap min-h-[46px]"
-                >
-                  <span>EXPLORAR FORMAÇÕES</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
+              {/* Dedicated Side Info Box for Current Animation Scene or Current Class Gallery Photo (Moved OFF the image/animation!) */}
+              <div className="rounded-2xl bg-[#07223B]/90 border border-white/15 p-4 sm:p-5 shadow-lg mb-5">
+                {viewMode === 'cartoon3d' ? (
+                  <div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-md bg-sky-500/20 text-sky-300 border border-sky-400/30">
+                        <Sparkles className="w-3 h-3" />
+                        {currentScene.step} · {currentScene.badge}
+                      </span>
+                    </div>
+                    <h2 className="text-base sm:text-lg font-extrabold text-white leading-snug mb-1.5">
+                      {currentScene.title}
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-3">
+                      {currentScene.narration}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {currentScene.isoPillars.map((pillar) => (
+                        <span
+                          key={pillar.code}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.06] border border-white/10 text-[11px] font-bold text-white"
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: pillar.color }}
+                          />
+                          <span>{pillar.code}:</span>
+                          <span className="text-slate-300 font-medium">{pillar.label}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-md bg-[#C8A951]/20 text-[#E5C97B] border border-[#C8A951]/40">
+                        <Images className="w-3 h-3" />
+                        GALERIA DE TURMAS ({slideIndex + 1}/{HERO_SLIDES.length}) · {currentSlide.thumbnailLabel}
+                      </span>
+                    </div>
+                    <h2 className="text-base sm:text-lg font-extrabold text-white leading-snug mb-1.5">
+                      {currentSlide.caption}
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-3">
+                      {currentSlide.description}
+                    </p>
+                    <div className="space-y-1">
+                      {currentSlide.highlights.slice(0, 2).map((hl, idx) => (
+                        <div key={idx} className="flex items-center gap-2 text-xs text-slate-200">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span>{hl}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
 
+            {/* Primary & Secondary CTAs */}
+            <div>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-4">
                 <Link
-                  to="/quem-somos"
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-extrabold text-xs sm:text-sm transition-colors whitespace-nowrap min-h-[46px]"
+                  to="/academia"
+                  className="inline-flex items-center justify-center gap-2.5 bg-[#C8A951] hover:bg-[#d8b960] text-[#041525] font-extrabold px-5 py-3.5 rounded-xl text-sm shadow-lg shadow-[#C8A951]/20 transition-all"
                 >
-                  <span>CONHECER A ALHAN</span>
+                  <GraduationCap className="w-4 h-4 shrink-0" />
+                  <span>Inscrever-se na Formação SGI</span>
+                  <ArrowRight className="w-4 h-4 shrink-0" />
                 </Link>
-
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl border border-[#19B5FE]/40 text-[#19B5FE] hover:bg-[#19B5FE]/10 font-bold text-xs sm:text-sm transition-colors whitespace-nowrap min-h-[46px]"
+                <Link
+                  to="/portefolio-impacto"
+                  className="inline-flex items-center justify-center gap-2 bg-white/[0.08] hover:bg-white/[0.14] text-white font-semibold px-4 py-3.5 rounded-xl text-sm border border-white/15 transition-all"
                 >
-                  <MessageCircle className="w-4 h-4" />
-                  <span>WhatsApp Directo</span>
-                </a>
+                  <BarChart3 className="w-4 h-4 text-[#38BDF8]" />
+                  <span>Portefólio & Impacto</span>
+                </Link>
+              </div>
+
+              {/* Trust Strip */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-3 border-t border-white/10 text-xs text-slate-300">
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  Certificado PDF enviado pelo ADM
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-400" />
+                  Pagamento em 2 Parcelas
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Right Column: Cartoon 3D SGI Animated Stage & Video Loop (Module 6.1 & 6.3) */}
-          <div className="lg:col-span-6 flex flex-col justify-between gap-3.5">
-            {/* Mode Switcher: Animação Cartoon 3D SGI vs Galeria Institucional */}
-            <div className="flex items-center justify-between gap-2 bg-white/5 border border-white/15 p-1.5 rounded-xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setMediaMode('cartoon3d');
-                  if (!prefersReducedMotion) setVideoPlaying(true);
-                }}
-                className={`flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-extrabold transition-colors min-h-[40px] ${
-                  mediaMode === 'cartoon3d'
-                    ? 'bg-[#0077C8] text-white shadow-sm'
-                    : 'text-[#F5F9FC]/80 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Video className="w-4 h-4 text-[#19B5FE]" />
-                <span>Animação Cartoon 3D · Formação SGI</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMediaMode('gallery');
-                }}
-                className={`flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-extrabold transition-colors min-h-[40px] ${
-                  mediaMode === 'gallery'
-                    ? 'bg-[#0077C8] text-white shadow-sm'
-                    : 'text-[#F5F9FC]/80 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <ImageIcon className="w-4 h-4" />
-                <span>Galeria de Turmas & Destaques ({slideCount})</span>
-              </button>
-            </div>
-
-            {mediaMode === 'cartoon3d' ? (
-              /* Cartoon 3D Animated Video / Interactive Stage (15-25s Loop, Muted by default, Accessible Controls) */
-              <div className="relative rounded-2xl overflow-hidden border-2 border-[#19B5FE]/40 bg-[#041220] aspect-[4/3] sm:aspect-[16/10] shadow-2xl flex flex-col justify-between group">
-                {/* Native HTML5 Video Loop supporting .mp4 and .webm with fallback to Animated 3D Cartoon Stage */}
-                <video
-                  ref={videoRef}
-                  autoPlay={!prefersReducedMotion}
-                  loop
-                  muted={videoMuted}
-                  playsInline
-                  poster="/assets/aistudio/hero_sgi_cartoon_3d.jpg"
-                  onCanPlay={() => setNativeVideoAvailable(true)}
-                  onError={() => setNativeVideoAvailable(false)}
-                  className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${
-                    customVideoUrl || nativeVideoAvailable ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
+          {/* RIGHT COLUMN (7 cols): CLEAN VISUAL STAGE (NO TEXT OVERLAYS ON TOP OF ANIMATION OR PHOTOS) */}
+          <div className="lg:col-span-7">
+            {/* Mode Switcher Bar (Above Stage) */}
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3 bg-[#072038] border border-white/10 rounded-2xl p-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cartoon3d')}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                    viewMode === 'cartoon3d'
+                      ? 'bg-[#C8A951] text-[#041525] shadow-sm'
+                      : 'text-slate-200 hover:bg-white/10'
                   }`}
                 >
-                  {customVideoUrl ? (
-                    <source src={customVideoUrl} />
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Animação Cartoon 3D SGI</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('gallery')}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                    viewMode === 'gallery'
+                      ? 'bg-[#C8A951] text-[#041525] shadow-sm'
+                      : 'text-slate-200 hover:bg-white/10'
+                  }`}
+                >
+                  <Images className="w-3.5 h-3.5" />
+                  <span>Galeria de Turmas</span>
+                </button>
+              </div>
+
+              {viewMode === 'cartoon3d' && (
+                <button
+                  type="button"
+                  onClick={toggleVideoSound}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-bold text-white transition-all"
+                  title={isMuted ? 'Activar Som do Vídeo' : 'Silenciar Vídeo'}
+                >
+                  {isMuted ? (
+                    <>
+                      <VolumeX className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Activar Som</span>
+                    </>
                   ) : (
                     <>
-                      <source src="/assets/video/hero-sgi-cartoon-3d.webm" type="video/webm" />
-                      <source src="/assets/video/hero-sgi-cartoon-3d.mp4" type="video/mp4" />
+                      <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Som Activo</span>
                     </>
                   )}
-                </video>
+                </button>
+              )}
+            </div>
 
-                {/* High-Resolution 3D Cartoon Corporate Illustration with Ken-Burns & Interactive Holographic SGI Elements */}
-                {!customVideoUrl && !nativeVideoAvailable && (
-                  <div className="absolute inset-0 overflow-hidden">
-                    <img
-                      key={currentScene.id}
-                      src={currentScene.image}
-                      alt="Formação Corporativa em Sistema de Gestão Integrado (SGI) — Estilo Cartoon 3D ALHAN"
-                      referrerPolicy="no-referrer"
-                      className={`w-full h-full object-cover object-center transition-transform duration-[5000ms] ease-out ${
-                        videoPlaying && !prefersReducedMotion ? 'scale-110' : 'scale-100'
+            {/* Clean Visual Stage Frame — Zero Text Overlays Covering the Media */}
+            <div className="relative rounded-3xl overflow-hidden border border-white/15 bg-gradient-to-br from-[#0A2742] to-[#041322] shadow-2xl">
+              {viewMode === 'cartoon3d' ? (
+                <div
+                  className={`relative aspect-[16/10] sm:aspect-[16/9] w-full bg-gradient-to-br ${currentScene.bgGlow} transition-colors duration-700 overflow-hidden`}
+                >
+                  {/* Official Cartoon 3D SGI Training Video */}
+                  <video
+                    ref={videoRef}
+                    src="/assets/aistudio/video_de_sistema_de_gest_o_integrado_e5ec4131.mp4"
+                    poster="/assets/aistudio/Forma__o_HSE__Turma_de_Novembro_eeeafbbb.png"
+                    autoPlay
+                    loop
+                    muted={isMuted}
+                    playsInline
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+
+                  {/* Subtle 3D Vector Stage Accent (Non-textual) */}
+                  <svg
+                    viewBox="0 0 800 500"
+                    className="w-full h-full object-cover opacity-20 mix-blend-screen pointer-events-none"
+                    role="img"
+                    aria-label={currentScene.title}
+                  >
+                    <defs>
+                      <radialGradient id="floorGlow" cx="50%" cy="78%" r="48%">
+                        <stop offset="0%" stopColor={currentScene.accentColor} stopOpacity="0.35" />
+                        <stop offset="100%" stopColor="#041525" stopOpacity="0" />
+                      </radialGradient>
+                    </defs>
+                    <ellipse cx="400" cy="405" rx="340" ry="65" fill="url(#floorGlow)" />
+                  </svg>
+                </div>
+              ) : (
+                /* Clean Class Gallery Mode — Full Image With ZERO Text Overlays On Top */
+                <div className="relative aspect-[16/10] sm:aspect-[16/9] w-full bg-[#041525]">
+                  <img
+                    src={currentSlide.image}
+                    alt={currentSlide.caption}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Clean Playback & Scene/Slide Controls Bar BELOW the Visual Stage */}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 bg-[#072038] border border-white/10 rounded-2xl px-4 py-2.5">
+              {/* Scene / Slide Dots & Thumbnails */}
+              {viewMode === 'cartoon3d' ? (
+                <div className="flex items-center gap-2">
+                  {CARTOON_3D_SCENES.map((sc, idx) => (
+                    <button
+                      key={sc.id}
+                      type="button"
+                      onClick={() => setSceneIndex(idx)}
+                      aria-label={`Cena ${idx + 1}`}
+                      className={`h-2.5 rounded-full transition-all ${
+                        idx === sceneIndex
+                          ? 'w-8 bg-[#C8A951]'
+                          : 'w-2.5 bg-white/25 hover:bg-white/50'
                       }`}
                     />
-                  </div>
+                  ))}
+                  <span className="text-[11px] font-bold text-slate-300 ml-2">
+                    Cena {sceneIndex + 1} de {CARTOON_3D_SCENES.length}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+                  {HERO_SLIDES.map((s, idx) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSlideIndex(idx)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                        idx === slideIndex
+                          ? 'bg-[#C8A951] text-[#041525]'
+                          : 'bg-white/5 text-slate-300 hover:bg-white/15'
+                      }`}
+                    >
+                      {s.thumbnailLabel}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Navigation Buttons */}
+              <div className="flex items-center gap-1.5 ml-auto">
+                {viewMode === 'cartoon3d' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsPlaying((p) => !p)}
+                      aria-label={isPlaying ? 'Pausar animação' : 'Reproduzir animação'}
+                      className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white transition-colors"
+                    >
+                      {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSceneIndex(0);
+                        setIsPlaying(true);
+                      }}
+                      aria-label="Reiniciar animação"
+                      className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  </>
                 )}
-
-                {/* Elegant Dark Readability Overlay (Module 6.3) */}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#04101E] via-[#04101E]/55 to-[#04101E]/25 pointer-events-none" />
-
-                {/* Floating Animated 3D Cartoon SGI Badges inside Stage */}
-                <div className="relative z-10 p-3.5 sm:p-4 flex flex-wrap items-center justify-between gap-2">
-                  <div className="inline-flex items-center gap-2 bg-[#061A2D]/90 backdrop-blur-md border border-[#19B5FE]/40 text-white px-3 py-1.5 rounded-lg shadow-lg">
-                    <img
-                      src={COMPANY_INFO.logoPath}
-                      alt="Logotipo ALHAN"
-                      referrerPolicy="no-referrer"
-                      className="h-5 w-5 rounded bg-white p-0.5 object-contain"
-                    />
-                    <span className="text-[11px] font-extrabold tracking-wide text-[#19B5FE]">
-                      CARTOON 3D · FORMAÇÃO SGI ALHAN
-                    </span>
-                  </div>
-
-                  {/* Accessibility Audio & Video File Controls */}
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={toggleMute}
-                      aria-label={videoMuted ? 'Activar som da animação' : 'Silenciar animação'}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#061A2D]/90 hover:bg-[#061A2D] text-white text-[11px] font-bold border border-white/20 transition-colors"
-                    >
-                      {videoMuted ? (
-                        <>
-                          <VolumeX className="w-3.5 h-3.5 text-slate-300" />
-                          <span>Sem Som (Padrão)</span>
-                        </>
-                      ) : (
-                        <>
-                          <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Som Activo</span>
-                        </>
-                      )}
-                    </button>
-
-                    <label
-                      title="Carregar ficheiro de vídeo .mp4 ou .webm personalizado"
-                      className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold border border-white/15 transition-colors"
-                    >
-                      <Upload className="w-3.5 h-3.5 text-[#19B5FE]" />
-                      <span className="hidden sm:inline">.MP4 / .WEBM</span>
-                      <input
-                        type="file"
-                        accept="video/mp4,video/webm"
-                        onChange={handleLocalVideoUpload}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                {/* Animated SGI Floating Nodes Overlay */}
-                <div className="relative z-10 px-4 sm:px-5 my-auto flex flex-col justify-end">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                    <div
-                      className={`p-2 rounded-lg backdrop-blur-md border text-[11px] font-bold flex items-center gap-1.5 transition-all ${
-                        currentScene.highlightPillar === 'ISO 9001'
-                          ? 'bg-amber-500/90 text-[#061A2D] border-amber-300 scale-[1.03]'
-                          : 'bg-[#061A2D]/80 text-white border-white/15'
-                      }`}
-                    >
-                      <Settings className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Qualidade 9001</span>
-                    </div>
-                    <div
-                      className={`p-2 rounded-lg backdrop-blur-md border text-[11px] font-bold flex items-center gap-1.5 transition-all ${
-                        currentScene.highlightPillar === 'ISO 14001'
-                          ? 'bg-emerald-500/90 text-[#061A2D] border-emerald-300 scale-[1.03]'
-                          : 'bg-[#061A2D]/80 text-white border-white/15'
-                      }`}
-                    >
-                      <Leaf className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Ambiente 14001</span>
-                    </div>
-                    <div
-                      className={`p-2 rounded-lg backdrop-blur-md border text-[11px] font-bold flex items-center gap-1.5 transition-all ${
-                        currentScene.highlightPillar === 'ISO 45001'
-                          ? 'bg-[#19B5FE] text-[#061A2D] border-white scale-[1.03]'
-                          : 'bg-[#061A2D]/80 text-white border-white/15'
-                      }`}
-                    >
-                      <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">SST 45001</span>
-                    </div>
-                    <div
-                      className={`p-2 rounded-lg backdrop-blur-md border text-[11px] font-bold flex items-center gap-1.5 transition-all ${
-                        currentScene.highlightPillar === 'CERTIFICADO SGI'
-                          ? 'bg-amber-400 text-[#061A2D] border-white scale-[1.03]'
-                          : 'bg-[#061A2D]/80 text-white border-white/15'
-                      }`}
-                    >
-                      <FileCheck2 className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Certificado PDF</span>
-                    </div>
-                  </div>
-
-                  <div className="p-3 sm:p-3.5 rounded-xl bg-[#061A2D]/85 border border-white/15 backdrop-blur-md">
-                    <p className="text-[10px] font-mono-tabular font-extrabold text-[#19B5FE] uppercase tracking-wider">
-                      {currentScene.badge}
-                    </p>
-                    <h2 className="text-sm sm:text-base font-extrabold text-white mt-0.5 leading-snug">
-                      {currentScene.title}
-                    </h2>
-                    <p className="text-xs text-[#F5F9FC]/85 mt-1 leading-relaxed">
-                      {currentScene.narration}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Bottom Accessibility Control Bar & 20s Loop Timeline */}
-                <div className="relative z-10 p-3 sm:p-3.5 bg-[#04101E]/95 border-t border-white/15 space-y-2">
-                  <div className="w-full h-1.5 bg-white/15 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#19B5FE] transition-all duration-300"
-                      style={{ width: `${overallProgressPct}%` }}
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={togglePlayPause}
-                        aria-label={videoPlaying ? 'Pausar animação SGI' : 'Reproduzir animação SGI'}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-extrabold transition-colors"
-                      >
-                        {videoPlaying ? (
-                          <>
-                            <Pause className="w-3.5 h-3.5" />
-                            <span>Pausar</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            <span>Reproduzir</span>
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSceneIndex(0);
-                          setSceneElapsed(0);
-                          setVideoPlaying(true);
-                        }}
-                        aria-label="Reiniciar loop de animação"
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Reiniciar (20s Loop)</span>
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      {SGI_CARTOON_3D_SCENES.map((sc, idx) => (
-                        <button
-                          key={sc.id}
-                          type="button"
-                          onClick={() => {
-                            setSceneIndex(idx);
-                            setSceneElapsed(0);
-                          }}
-                          className={`px-2 py-1 rounded text-[10px] font-mono-tabular font-bold transition-colors ${
-                            sceneIndex === idx
-                              ? 'bg-[#19B5FE] text-[#061A2D]'
-                              : 'bg-white/10 text-slate-300 hover:bg-white/20'
-                          }`}
-                        >
-                          0{idx + 1}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={prevItem}
+                  aria-label="Anterior"
+                  className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={nextItem}
+                  aria-label="Seguinte"
+                  className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
-            ) : (
-              /* Secondary Institutional Image Gallery Stage */
-              <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-[#061A2D] aspect-[4/3] sm:aspect-[16/10] shadow-2xl">
-                <img
-                  key={currentSlide.image}
-                  src={currentSlide.image}
-                  alt={currentSlide.caption}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover object-top transition-all duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#061A2D] via-[#061A2D]/25 to-transparent" />
-
-                <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
-                  <div className="inline-flex items-center gap-2 bg-white/95 text-[#061A2D] px-3 py-1.5 rounded-lg shadow-md">
-                    <img
-                      src={COMPANY_INFO.logoPath}
-                      alt="Logotipo ALHAN"
-                      referrerPolicy="no-referrer"
-                      className="h-6 w-6 object-contain"
-                    />
-                    <span className="text-[11px] font-extrabold tracking-tight">ALHAN – FORMAÇÃO SGI</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMediaMode('cartoon3d');
-                      setVideoPlaying(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-extrabold shadow-lg"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Voltar ao Cartoon 3D SGI</span>
-                  </button>
-                </div>
-
-                <div className="absolute bottom-0 inset-x-0 p-4 sm:p-5 flex items-end justify-between gap-3">
-                  <div>
-                    <p className="text-xs sm:text-sm font-bold text-white leading-snug">
-                      {currentSlide.caption}
-                    </p>
-                    <p className="text-[11px] text-[#F5F9FC]/80 mt-0.5">
-                      {COMPANY_INFO.address} · {COMPANY_INFO.website}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setIsGalleryPaused((p) => !p)}
-                      aria-label={isGalleryPaused ? 'Retomar galeria' : 'Pausar galeria'}
-                      className="p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white border border-white/15"
-                    >
-                      {isGalleryPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={prevSlide}
-                      aria-label="Imagem anterior"
-                      className="p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white border border-white/15"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={nextSlide}
-                      aria-label="Próxima imagem"
-                      className="p-2 rounded-lg bg-black/60 hover:bg-black/80 text-white border border-white/15"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Quick Scene / Gallery Strip */}
-            <div className="grid grid-cols-4 gap-2">
-              {SGI_CARTOON_3D_SCENES.map((sc, idx) => {
-                const active = mediaMode === 'cartoon3d' && sceneIndex === idx;
-                return (
-                  <button
-                    key={sc.id}
-                    type="button"
-                    onClick={() => {
-                      setMediaMode('cartoon3d');
-                      setSceneIndex(idx);
-                      setSceneElapsed(0);
-                    }}
-                    className={`p-2 rounded-xl border text-left transition-all ${
-                      active
-                        ? 'bg-[#0077C8]/30 border-[#19B5FE] ring-1 ring-[#19B5FE]/50'
-                        : 'bg-white/[0.03] border-white/10 hover:bg-white/[0.07]'
-                    }`}
-                  >
-                    <p className="text-[10px] font-mono-tabular font-extrabold text-[#19B5FE]">
-                      CENA 0{idx + 1}
-                    </p>
-                    <p className="text-[11px] font-bold text-white truncate mt-0.5">
-                      {sc.highlightPillar}
-                    </p>
-                  </button>
-                );
-              })}
             </div>
           </div>
         </div>
 
-        {/* Full-width KPI Strip below Hero split */}
-        <div className="mt-8 sm:mt-10 pt-6 sm:pt-8 border-t border-white/10 grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-          <div>
-            <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-[#19B5FE]">
-              ISO 9001
-            </p>
-            <p className="text-xs text-[#9AA6AE] mt-1">Sistema de Gestão da Qualidade</p>
+        {/* DYNAMIC COUNTER BAR (CONTADOR DINÂMICO DE FORMAÇÃO E IMPLEMENTAÇÕES SGI) */}
+        <div className="mt-10 pt-8 border-t border-white/10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-extrabold uppercase tracking-widest text-[#E5C97B]">
+                Contador Dinâmico de Impacto & Execução Técnica ({dynamicCounters.referencePeriod})
+              </span>
+            </div>
+            <Link
+              to="/relatorio-impacto"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-300 hover:text-sky-200 transition-colors"
+            >
+              <span>Ver Relatório Público de Impacto e Fontes Documentais</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
-          <div>
-            <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-emerald-400">
-              ISO 14001
-            </p>
-            <p className="text-xs text-[#9AA6AE] mt-1">Sistema de Gestão Ambiental</p>
-          </div>
-          <div>
-            <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-amber-400">
-              ISO 45001
-            </p>
-            <p className="text-xs text-[#9AA6AE] mt-1">Segurança e Saúde no Trabalho</p>
-          </div>
-          <div>
-            <p className="text-2xl sm:text-3xl font-extrabold font-mono-tabular text-[#19B5FE]">
-              100% Digital
-            </p>
-            <p className="text-xs text-[#9AA6AE] mt-1">Certificados PDF no Painel do Formando</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Counter 1: Formandos Formados / Certificados */}
+            <div className="rounded-2xl bg-[#072038]/90 border border-white/10 p-4 sm:p-5 flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-sky-500/15 border border-sky-400/30 flex items-center justify-center text-sky-300 shrink-0">
+                <GraduationCap className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">
+                  Formandos Formados
+                </p>
+                <AnimatedCounterNumber
+                  target={dynamicCounters.trainedStudentsCount}
+                  validated={dynamicCounters.trainedStudentsValidated}
+                />
+                <p className="text-[11px] text-slate-400 mt-1 line-clamp-2" title={dynamicCounters.trainedStudentsSource}>
+                  {dynamicCounters.trainedStudentsValidated
+                    ? 'Certificados validados pela Administração'
+                    : 'Em validação documental'}
+                </p>
+              </div>
+            </div>
+
+            {/* Counter 2: Implementações SGI Feitas */}
+            <div className="rounded-2xl bg-[#072038]/90 border border-white/10 p-4 sm:p-5 flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center text-emerald-300 shrink-0">
+                <Award className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">
+                  Implementações Feitas
+                </p>
+                <AnimatedCounterNumber
+                  target={dynamicCounters.sgiImplementationsCount}
+                  validated={dynamicCounters.sgiImplementationsValidated}
+                />
+                <p className="text-[11px] text-slate-400 mt-1 line-clamp-2" title={dynamicCounters.sgiImplementationsSource}>
+                  {dynamicCounters.sgiImplementationsValidated
+                    ? 'Projectos ISO / SGI executados'
+                    : 'Em validação documental'}
+                </p>
+              </div>
+            </div>
+
+            {/* Counter 3: Cursos & Especialidades Ministrados */}
+            <div className="rounded-2xl bg-[#072038]/90 border border-white/10 p-4 sm:p-5 flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-[#C8A951]/15 border border-[#C8A951]/30 flex items-center justify-center text-[#E5C97B] shrink-0">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">
+                  Cursos & Especialidades
+                </p>
+                <AnimatedCounterNumber
+                  target={dynamicCounters.coursesDeliveredCount ?? courses.length}
+                  validated={dynamicCounters.coursesDeliveredValidated}
+                />
+                <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
+                  Programas activos na Academia ALHAN
+                </p>
+              </div>
+            </div>
+
+            {/* Counter 4: Empresas & Parcerias */}
+            <div className="rounded-2xl bg-[#072038]/90 border border-white/10 p-4 sm:p-5 flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-purple-500/15 border border-purple-400/30 flex items-center justify-center text-purple-300 shrink-0">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">
+                  Empresas & Parceiros
+                </p>
+                <AnimatedCounterNumber
+                  target={dynamicCounters.partnerCompaniesCount}
+                  validated={dynamicCounters.partnerCompaniesValidated}
+                />
+                <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
+                  Entidades corporativas e parceiras
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

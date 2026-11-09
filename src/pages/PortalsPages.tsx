@@ -734,9 +734,12 @@ export const StudentPortal: React.FC = () => {
         (c.courseId === enr.courseId && c.studentId === enr.studentId)
     );
     if (req) {
+      if (req.status === 'DISPONÍVEL' && !req.certificateFileUrl?.trim() && !cert?.certificateFileUrl?.trim()) {
+        return { status: 'EM PROCESSAMENTO', request: req, cert };
+      }
       return { status: req.status, request: req, cert };
     }
-    if (cert && cert.status === 'valido') {
+    if (cert && cert.status === 'valido' && Boolean(cert.certificateFileUrl?.trim())) {
       return { status: 'DISPONÍVEL', cert };
     }
     if (enr.certificateRequested) {
@@ -759,20 +762,13 @@ export const StudentPortal: React.FC = () => {
     if (status === 'PENDENTE' || status === 'EM PROCESSAMENTO' || status === 'APROVADO') {
       return {
         eligible: false,
-        reason: `Já existe um pedido em curso (${status}) para a formação «${enr.courseTitle}». Não são permitidas solicitações duplicadas enquanto existir um pedido pendente.`,
+        reason: `Já existe um pedido em curso (${status}) para a formação «${enr.courseTitle}». A Administração enviará o certificado em PDF para este painel após validação.`,
       };
     }
     if (status === 'DISPONÍVEL') {
       return {
         eligible: false,
-        reason: `O seu certificado para «${enr.courseTitle}» já se encontra DISPONÍVEL para visualização e download em PDF.`,
-      };
-    }
-    const isCompleted = enr.completed || enr.progressPercent >= 100;
-    if (!isCompleted) {
-      return {
-        eligible: false,
-        reason: `Para solicitar o certificado da formação «${enr.courseTitle}», é necessário concluir a formação e cumprir os requisitos de aproveitamento/participação definidos pela administração (Progresso actual: ${enr.progressPercent}%).`,
+        reason: `O seu certificado em PDF enviado pela Administração para «${enr.courseTitle}» já se encontra DISPONÍVEL para visualização e download.`,
       };
     }
     return { eligible: true };
@@ -2385,29 +2381,11 @@ export const StudentPortal: React.FC = () => {
                             </div>
                           )}
 
-                          {!isCourseCompleted && status === 'NÃO SOLICITADO' && (
-                            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center justify-between gap-2">
+                          {status === 'NÃO SOLICITADO' && (
+                            <div className="p-2.5 rounded-lg bg-blue-50/80 border border-blue-200 text-[11px] text-[#061A2D]">
                               <span>
-                                Requisito: Conclua os módulos da formação (100%) para habilitar a solicitação do certificado.
+                                <strong>Regra de Certificação Oficial:</strong> Os certificados não são gerados online pelo formando. Solicite o seu certificado abaixo e o Administrador (ADM) enviará o documento oficial em PDF para este painel.
                               </span>
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  const targetCourse = courses.find((c) => c.id === enr.courseId);
-                                  const lessons =
-                                    targetCourse?.modules.flatMap((m) => m.lessons) || [];
-                                  if (lessons.length > 0) {
-                                    for (const les of lessons) {
-                                      await completeLesson(enr.id, les.id, lessons.length, 100);
-                                    }
-                                  } else {
-                                    await completeLesson(enr.id, 'modulo-final', 1, 100);
-                                  }
-                                }}
-                                className="px-2.5 py-1 rounded bg-amber-700 hover:bg-amber-800 text-white text-[10px] font-bold shrink-0"
-                              >
-                                Concluir Formação (100%)
-                              </button>
                             </div>
                           )}
                         </div>
@@ -3730,6 +3708,23 @@ export const AdminPortal: React.FC = () => {
     createDataSafetyBackup,
     executeAdminConfirmedDataCleanup,
     restoreDataSafetyBackup,
+    testimonials,
+    updateTestimonialApprovalStatus,
+    deleteTestimonial,
+    dynamicCounters,
+    updateDynamicCounters,
+    employabilityIndicators,
+    saveEmployabilityIndicator,
+    alumniTrackingRecords,
+    saveAlumniTrackingRecord,
+    deleteAlumniTrackingRecord,
+    impactEvidences,
+    saveImpactEvidence,
+    deleteImpactEvidence,
+    impactReports,
+    saveImpactReport,
+    deleteImpactReport,
+    impactAuditLogs,
   } = useApp();
 
   // MÓDULO 2 & 5 — Estado para "GESTÃO DE CERTIFICADOS" no Painel Administrativo
@@ -3893,14 +3888,27 @@ export const AdminPortal: React.FC = () => {
   const [instantReturnMsg, setInstantReturnMsg] = useState<string | null>(null);
 
   const handleInstantReturnCertificateToStudent = async (enr: EnrollmentItem) => {
-    const cert = await issueCertificate(enr, {
-      studentBI: enr.certificateRequestBI || undefined,
-      grade: 'Aprovado com Distinção',
-    });
+    const matchingReq = certificateRequests.find(
+      (r) => r.enrollmentId === enr.id || (r.courseId === enr.courseId && r.studentEmail === enr.studentEmail)
+    );
+    if (matchingReq) {
+      openAdminCertificateRequest(matchingReq);
+      setActiveModule('GESTÃO DE CERTIFICADOS');
+      const el = document.getElementById('gestao-certificados');
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    setCertTargetEnrollment(enr);
+    setEnrCertBI(enr.certificateRequestBI || '');
+    setEnrCertFileUrl('');
+    setEnrCertFileName('');
+    setEnrCertError(null);
+    setEnrCertSuccess(null);
+    setActiveModule('Inscrições & Pagamentos Angola');
     setInstantReturnMsg(
-      `✓ Certificado em PDF (${cert.code}) retornado instantaneamente para o Painel do Aluno «${
+      `Seleccione e anexe o ficheiro PDF oficial do certificado para enviar ao painel do formando «${
         enr.certificateRequestName || enr.studentName
-      }»! O aluno já recebeu o documento em PDF na sua conta.`
+      }».`
     );
     setTimeout(() => setInstantReturnMsg(null), 6000);
   };
@@ -4117,16 +4125,29 @@ export const AdminPortal: React.FC = () => {
     e.preventDefault();
     if (!certTargetEnrollment) return;
     setEnrCertError(null);
-    const cert = await issueCertificate(certTargetEnrollment, {
-      certificateFileUrl: enrCertFileUrl || undefined,
-      certificateFileName: enrCertFileName || undefined,
-      studentBI:
-        enrCertBI.trim() || certTargetEnrollment.certificateRequestBI || undefined,
-      grade: enrCertGrade.trim() || 'Aprovado com Distinção',
-    });
-    setEnrCertSuccess(
-      `Certificado em PDF (${cert.code}) enviado com sucesso para o Painel do Aluno de ${certTargetEnrollment.studentName}! O aluno já pode clicar em «Baixar Meu Certificado em PDF» na sua área.`
-    );
+    setEnrCertSuccess(null);
+    if (!enrCertFileUrl.trim()) {
+      setEnrCertError(
+        'Por favor, anexe o ficheiro PDF oficial do certificado antes de enviar para o painel do formando. Os certificados não são gerados online.'
+      );
+      return;
+    }
+    try {
+      const cert = await issueCertificate(certTargetEnrollment, {
+        certificateFileUrl: enrCertFileUrl,
+        certificateFileName: enrCertFileName || undefined,
+        studentBI:
+          enrCertBI.trim() || certTargetEnrollment.certificateRequestBI || undefined,
+        grade: enrCertGrade.trim() || 'Aprovado com Distinção',
+      });
+      setEnrCertSuccess(
+        `Certificado em PDF (${cert.code}) enviado com sucesso pelo Administrador para o Painel do Aluno de ${certTargetEnrollment.studentName}! O aluno já pode clicar em «Baixar Meu Certificado em PDF» na sua área.`
+      );
+    } catch (err) {
+      setEnrCertError(
+        err instanceof Error ? err.message : 'Erro ao enviar certificado em PDF para o aluno.'
+      );
+    }
   };
 
   const buildProfessorWhatsAppUrl = (profName: string, profPhone: string, username: string) => {
@@ -4147,6 +4168,7 @@ export const AdminPortal: React.FC = () => {
   const [activeModule, setActiveModule] = useState<
     | 'Dashboard & Indicadores'
     | 'GESTÃO DE CERTIFICADOS'
+    | 'Portefólio, Impacto & Empregabilidade'
     | 'Cursos & Academia LMS'
     | 'Inscrições & Pagamentos Angola'
     | 'Auditoria, Backup & Limpeza de Dados'
@@ -4368,6 +4390,7 @@ export const AdminPortal: React.FC = () => {
     [
       'Dashboard & Indicadores',
       'GESTÃO DE CERTIFICADOS',
+      'Portefólio, Impacto & Empregabilidade',
       'Cursos & Academia LMS',
       'Inscrições & Pagamentos Angola',
       'Auditoria, Backup & Limpeza de Dados',
@@ -4380,6 +4403,13 @@ export const AdminPortal: React.FC = () => {
       'Registos de Actividade',
     ] as const
   ).filter((m): m is Exclude<typeof m, null> => m !== null);
+
+  const pendingStudentsCount = registeredStudents.filter(
+    (u) => !u.approvalStatus || u.approvalStatus === 'pendente'
+  ).length;
+  const pendingEnrollmentsApprovalCount = enrollments.filter(
+    (e) => e.enrollmentApprovalStatus === 'pendente'
+  ).length;
 
   return (
     <PanelAccessGate
@@ -4441,6 +4471,13 @@ export const AdminPortal: React.FC = () => {
               </button>
             )}
             <button
+              onClick={() => setActiveModule('Portefólio, Impacto & Empregabilidade')}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold"
+            >
+              <BarChart3 className="w-4 h-4 text-[#19B5FE]" />
+              <span>Gerir Portefólio & Empregabilidade</span>
+            </button>
+            <button
               onClick={() => {
                 setActiveModule('Cursos & Academia LMS');
                 startEditCourse();
@@ -4452,6 +4489,202 @@ export const AdminPortal: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* CENTRAL GLOBAL DE APROVAÇÃO DE TODOS OS CADASTROS DE ALUNOS E SOLICITAÇÕES DE CERTIFICADOS (SEMPRE VISÍVEL NO DASHBOARD) */}
+        {activeModule === 'Dashboard & Indicadores' && (
+          <div className="bg-white rounded-2xl border-2 border-[#0077C8] p-6 space-y-5 shadow-xs">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#0077C8]/10 text-[#0077C8] text-[11px] font-extrabold uppercase tracking-wider">
+                    <Users className="w-3.5 h-3.5" />
+                    <span>Controlo de Cadastros de Formandos & Solicitações de Certificados</span>
+                  </span>
+                  {(pendingStudentsCount > 0 || pendingEnrollmentsApprovalCount > 0) && (
+                    <span className="px-2.5 py-1 rounded bg-amber-100 text-amber-900 text-[11px] font-extrabold">
+                      {Math.max(pendingStudentsCount, pendingEnrollmentsApprovalCount)} Cadastro(s) de Aluno Aguardam Aprovação
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-lg font-extrabold text-[#061A2D]">
+                  Todos os Cadastros de Alunos (Para Aprovação do ADM) e Solicitações de Certificados PDF
+                </h2>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Todos os cadastros de alunos aparecem abaixo para aprovação pelo Administrador. Os certificados nunca são gerados online pelo aluno — o ADM deve anexar e enviar o certificado em PDF após a solicitação do aluno.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveModule('Inscrições & Pagamentos Angola')}
+                  className="px-3.5 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold"
+                >
+                  Ver Gestão Completa de Alunos ({registeredStudents.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveModule('GESTÃO DE CERTIFICADOS')}
+                  className="px-3.5 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold"
+                >
+                  Ver Solicitações de Certificados ({certificateRequests.length})
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-[#F5F9FC] border-b border-slate-200 text-slate-600">
+                    <th className="py-2.5 px-3">Formando / Aluno Cadastrado</th>
+                    <th className="py-2.5 px-3">Curso Inscrito & Pagamento</th>
+                    <th className="py-2.5 px-3">Estado do Cadastro / Inscrição</th>
+                    <th className="py-2.5 px-3">Solicitação de Certificado PDF</th>
+                    <th className="py-2.5 px-3">Acções Administrativas (Aprovar Aluno / Enviar PDF)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {registeredStudents.map((stu) => {
+                    const stuEnr = enrollments.find(
+                      (e) =>
+                        e.studentEmail?.toLowerCase() === stu.email.toLowerCase() ||
+                        e.studentId === stu.uid
+                    );
+                    const stuReq = certificateRequests.find(
+                      (r) =>
+                        r.studentEmail.toLowerCase() === stu.email.toLowerCase() ||
+                        (stuEnr && r.enrollmentId === stuEnr.id)
+                    );
+                    const appState: AccountApprovalState =
+                      stu.approvalStatus || stuEnr?.enrollmentApprovalStatus || 'pendente';
+
+                    return (
+                      <tr
+                        key={stu.uid}
+                        className={
+                          appState === 'pendente' ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-slate-50'
+                        }
+                      >
+                        <td className="py-3 px-3">
+                          <p className="font-extrabold text-[#061A2D]">{stu.fullName}</p>
+                          <p className="text-[11px] text-slate-500">
+                            {stu.email} · Tel: {stu.phone}
+                          </p>
+                        </td>
+                        <td className="py-3 px-3">
+                          {stuEnr ? (
+                            <>
+                              <p className="font-bold text-[#0077C8]">{stuEnr.courseTitle}</p>
+                              <p className="text-[11px] text-slate-500 font-mono-tabular">
+                                1.ª Parcela: {stuEnr.firstInstallmentStatus || stuEnr.paymentStatus} · 2.ª Parcela:{' '}
+                                {stuEnr.secondInstallmentStatus || 'Pendente'}
+                              </p>
+                            </>
+                          ) : (
+                            <span className="text-slate-400">Conta registada (sem curso activo)</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`inline-flex px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                              appState === 'aprovado'
+                                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                : appState === 'rejeitado' || appState === 'suspenso'
+                                ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                                : 'bg-amber-100 text-amber-900 border border-amber-300'
+                            }`}
+                          >
+                            {appState.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          {stuReq ? (
+                            <div>
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                  stuReq.status === 'DISPONÍVEL' && stuReq.certificateFileUrl
+                                    ? 'bg-emerald-100 text-emerald-900'
+                                    : 'bg-amber-100 text-amber-900'
+                                }`}
+                              >
+                                {stuReq.status === 'DISPONÍVEL' && stuReq.certificateFileUrl
+                                  ? 'PDF ENVIADO PELO ADM'
+                                  : `SOLICITADO (${stuReq.status})`}
+                              </span>
+                              <p className="text-[10px] text-slate-500 mt-0.5 font-mono-tabular">
+                                Pedido em {new Date(stuReq.requestDate).toLocaleDateString('pt-AO')}
+                              </p>
+                            </div>
+                          ) : stuEnr?.certificateRequested ? (
+                            <span className="inline-block px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-extrabold uppercase">
+                              SOLICITADO PELO ALUNO (AGUARDA PDF DO ADM)
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">Não solicitado</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {appState !== 'aprovado' && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await updateUserApprovalStatus(stu.uid, 'aprovado');
+                                  if (stuEnr) {
+                                    await updateEnrollmentApprovalStatus(stuEnr.id, 'aprovado');
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold"
+                              >
+                                ✓ Aprovar Cadastro do Aluno
+                              </button>
+                            )}
+                            {appState !== 'rejeitado' && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await updateUserApprovalStatus(stu.uid, 'rejeitado');
+                                  if (stuEnr) {
+                                    await updateEnrollmentApprovalStatus(stuEnr.id, 'rejeitado');
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-bold"
+                              >
+                                Rejeitar
+                              </button>
+                            )}
+                            {stuReq ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  openAdminCertificateRequest(stuReq);
+                                  const el = document.getElementById('gestao-certificados');
+                                  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold"
+                              >
+                                <Upload className="w-3 h-3" />
+                                <span>Anexar e Enviar Certificado PDF</span>
+                              </button>
+                            ) : stuEnr ? (
+                              <button
+                                type="button"
+                                onClick={() => handleInstantReturnCertificateToStudent(stuEnr)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#061A2D] hover:bg-[#0077C8] text-white text-[11px] font-bold"
+                              >
+                                <Upload className="w-3 h-3" />
+                                <span>Enviar Certificado PDF</span>
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* GLOBAL INSTANTANEOUS STUDENT CERTIFICATE REQUEST BANNER (Receives Request & Returns PDF Instantaneously) */}
         {enrollments.filter((e) => e.certificateRequested).length > 0 && (
@@ -4467,7 +4700,7 @@ export const AdminPortal: React.FC = () => {
                     Solicitações de Certificado em PDF Recebidas em Tempo Real ({enrollments.filter((e) => e.certificateRequested).length})
                   </h2>
                   <p className="text-xs text-slate-700">
-                    Clique em <strong>«Retornar Certificado em PDF Agora»</strong> para enviar instantaneamente o Certificado em PDF de volta para o painel do mesmo aluno que solicitou (ou anexe um PDF personalizado até 2MB).
+                    Os certificados não são feitos online pelo aluno. Clique em <strong>«Anexar e Enviar Certificado em PDF ao Aluno»</strong> para carregar o ficheiro PDF oficial e enviá-lo para o painel do formando que solicitou.
                   </p>
                 </div>
               </div>
@@ -4486,8 +4719,9 @@ export const AdminPortal: React.FC = () => {
                 .map((enr) => {
                   const alreadySentCert = certificates.find(
                     (c) =>
-                      (enr.certificateId && c.id === enr.certificateId) ||
-                      (c.courseId === enr.courseId && c.studentId === enr.studentId)
+                      ((enr.certificateId && c.id === enr.certificateId) ||
+                        (c.courseId === enr.courseId && c.studentId === enr.studentId)) &&
+                      Boolean(c.certificateFileUrl?.trim())
                   );
                   const studentDisplayName = enr.certificateRequestName || enr.studentName;
                   return (
@@ -4508,8 +4742,8 @@ export const AdminPortal: React.FC = () => {
                             }`}
                           >
                             {alreadySentCert
-                              ? `✓ Retornado ao Aluno (${alreadySentCert.code})`
-                              : 'Aguarda Retorno do PDF'}
+                              ? `✓ PDF Enviado ao Aluno (${alreadySentCert.code})`
+                              : 'Aguarda Envio do PDF pelo ADM'}
                           </span>
                         </div>
                         <p className="font-bold text-[#0077C8] mt-1">{enr.courseTitle}</p>
@@ -4531,28 +4765,12 @@ export const AdminPortal: React.FC = () => {
                           onClick={() => handleInstantReturnCertificateToStudent(enr)}
                           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-colors"
                         >
-                          <Send className="w-3.5 h-3.5" />
+                          <Upload className="w-3.5 h-3.5" />
                           <span>
                             {alreadySentCert
-                              ? `Retornar Novamente Certificado PDF para ${studentDisplayName}`
-                              : `Retornar Certificado em PDF Agora para ${studentDisplayName}`}
+                              ? `Substituir / Reenviar Certificado PDF para ${studentDisplayName}`
+                              : `Anexar e Enviar Certificado em PDF para ${studentDisplayName}`}
                           </span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCertTargetEnrollment(enr);
-                            setEnrCertBI(enr.certificateRequestBI || '');
-                            setEnrCertFileUrl('');
-                            setEnrCertFileName('');
-                            setEnrCertError(null);
-                            setEnrCertSuccess(null);
-                            setActiveModule('Inscrições & Pagamentos Angola');
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold"
-                        >
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>Anexar PDF Personalizado (≤2MB) & Retornar</span>
                         </button>
                         <button
                           type="button"
@@ -5047,14 +5265,14 @@ export const AdminPortal: React.FC = () => {
 
                     <div>
                       <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                        Upload do Certificado em PDF (Máx. 10 MB)
+                        Anexar Certificado Oficial em PDF * (Obrigatório · Máx. 10 MB)
                       </label>
-                      <label className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 bg-[#F5F9FC] hover:bg-slate-100 text-xs font-bold text-[#061A2D]">
+                      <label className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-[#0077C8]/40 bg-[#F5F9FC] hover:bg-slate-100 text-xs font-bold text-[#061A2D]">
                         <Upload className="w-3.5 h-3.5 text-[#0077C8] shrink-0" />
                         <span className="truncate">
                           {emitPdfFileName
                             ? `✓ ${emitPdfFileName}`
-                            : 'Seleccionar PDF (ou gerar PDF oficial automático)'}
+                            : 'Seleccionar Ficheiro PDF para Enviar ao Aluno'}
                         </span>
                         <input
                           type="file"
@@ -8214,6 +8432,483 @@ export const AdminPortal: React.FC = () => {
                 >
                   2.º Confirmar e Eliminar Seleccionados ({selectedCleanupIds.length})
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 9.B PORTEFÓLIO, IMPACTO & EMPREGABILIDADE (Gestão Administrativa, Contadores Dinâmicos, Indicadores, Evidências, Relatórios & Governance) */}
+        {activeModule === 'Portefólio, Impacto & Empregabilidade' && (
+          <div className="space-y-6">
+            {/* 1. Gestão dos Contadores Dinâmicos do Hero e Portefólio */}
+            <div className="bg-white rounded-2xl border-2 border-[#0077C8]/30 p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div>
+                  <span className="inline-block px-2.5 py-0.5 rounded bg-[#0077C8]/10 text-[#0077C8] text-[11px] font-extrabold uppercase tracking-wider mb-1">
+                    Contador Dinâmico · Hero & Portefólio
+                  </span>
+                  <h2 className="text-lg font-extrabold text-[#061A2D]">
+                    1. Configuração do Contador Dinâmico (Formandos Formados & Implementações Feitas)
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Actualize os valores validados exibidos no Contador Dinâmico do site. Se desmarcar «Validado», o site apresentará automaticamente «Dados em actualização».
+                  </p>
+                </div>
+                <span className="text-[11px] font-mono-tabular text-slate-500">
+                  Período: {dynamicCounters.referencePeriod} · Actualizado em{' '}
+                  {new Date(dynamicCounters.updatedAt).toLocaleDateString('pt-AO')}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-2">
+                  <label className="block text-xs font-extrabold text-[#061A2D]">
+                    Formandos Formados & Certificados
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={dynamicCounters.trainedStudentsCount ?? 0}
+                    onChange={(e) =>
+                      updateDynamicCounters({
+                        ...dynamicCounters,
+                        trainedStudentsCount: Number(e.target.value),
+                      })
+                    }
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono-tabular font-bold text-[#061A2D]"
+                  />
+                  <label className="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={dynamicCounters.trainedStudentsValidated}
+                      onChange={(e) =>
+                        updateDynamicCounters({
+                          ...dynamicCounters,
+                          trainedStudentsValidated: e.target.checked,
+                        })
+                      }
+                      className="rounded border-slate-300 text-[#0077C8]"
+                    />
+                    <span>Dado Validado (Desmarcar = «Dados em actualização»)</span>
+                  </label>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-2">
+                  <label className="block text-xs font-extrabold text-[#061A2D]">
+                    Implementações SGI / ISO Feitas
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={dynamicCounters.sgiImplementationsCount ?? 0}
+                    onChange={(e) =>
+                      updateDynamicCounters({
+                        ...dynamicCounters,
+                        sgiImplementationsCount: Number(e.target.value),
+                      })
+                    }
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono-tabular font-bold text-[#061A2D]"
+                  />
+                  <label className="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={dynamicCounters.sgiImplementationsValidated}
+                      onChange={(e) =>
+                        updateDynamicCounters({
+                          ...dynamicCounters,
+                          sgiImplementationsValidated: e.target.checked,
+                        })
+                      }
+                      className="rounded border-slate-300 text-[#0077C8]"
+                    />
+                    <span>Dado Validado (Desmarcar = «Dados em actualização»)</span>
+                  </label>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-2">
+                  <label className="block text-xs font-extrabold text-[#061A2D]">
+                    Cursos e Especialidades Ministrados
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={dynamicCounters.coursesDeliveredCount ?? courses.length}
+                    onChange={(e) =>
+                      updateDynamicCounters({
+                        ...dynamicCounters,
+                        coursesDeliveredCount: Number(e.target.value),
+                      })
+                    }
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono-tabular font-bold text-[#061A2D]"
+                  />
+                  <label className="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={dynamicCounters.coursesDeliveredValidated}
+                      onChange={(e) =>
+                        updateDynamicCounters({
+                          ...dynamicCounters,
+                          coursesDeliveredValidated: e.target.checked,
+                        })
+                      }
+                      className="rounded border-slate-300 text-[#0077C8]"
+                    />
+                    <span>Dado Validado</span>
+                  </label>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-2">
+                  <label className="block text-xs font-extrabold text-[#061A2D]">
+                    Empresas & Parceiros Institucionais
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={dynamicCounters.partnerCompaniesCount ?? 0}
+                    onChange={(e) =>
+                      updateDynamicCounters({
+                        ...dynamicCounters,
+                        partnerCompaniesCount: Number(e.target.value),
+                      })
+                    }
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono-tabular font-bold text-[#061A2D]"
+                  />
+                  <label className="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={dynamicCounters.partnerCompaniesValidated}
+                      onChange={(e) =>
+                        updateDynamicCounters({
+                          ...dynamicCounters,
+                          partnerCompaniesValidated: e.target.checked,
+                        })
+                      }
+                      className="rounded border-slate-300 text-[#0077C8]"
+                    />
+                    <span>Dado Validado</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Gestão dos 6 Indicadores Estatísticos de Empregabilidade */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div>
+                  <h2 className="text-lg font-extrabold text-[#061A2D]">
+                    2. Gestão de Indicadores de Empregabilidade & Evidências Documentais
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Sempre que um indicador não possuir dados validados («Validado» desmarcado), o site apresenta automaticamente «Dados em actualização», sem inventar estatísticas.
+                  </p>
+                </div>
+                <Link
+                  to="/portefolio-impacto"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold shrink-0"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Ver Página Pública de Impacto</span>
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {employabilityIndicators.map((ind) => (
+                  <div
+                    key={ind.id}
+                    className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 space-y-3 text-xs"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] font-mono-tabular font-bold uppercase text-[#0077C8]">
+                          Indicador #{ind.key} · Período {ind.referencePeriod}
+                        </span>
+                        <h3 className="text-sm font-extrabold text-[#061A2D] mt-0.5">{ind.label}</h3>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                          ind.validated && ind.value !== null
+                            ? 'bg-emerald-100 text-emerald-900'
+                            : 'bg-amber-100 text-amber-900'
+                        }`}
+                      >
+                        {ind.validated && ind.value !== null
+                          ? `Publicado: ${ind.value} ${ind.unit}`
+                          : 'Dados em actualização'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          Valor Quantitativo ({ind.unit})
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={ind.value ?? ''}
+                          placeholder="Sem dados validados"
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            saveEmployabilityIndicator({
+                              ...ind,
+                              value: raw === '' ? null : Number(raw),
+                            });
+                          }}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono-tabular font-bold text-[#061A2D]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          Período de Referência
+                        </label>
+                        <input
+                          type="text"
+                          value={ind.referencePeriod}
+                          onChange={(e) =>
+                            saveEmployabilityIndicator({
+                              ...ind,
+                              referencePeriod: e.target.value,
+                            })
+                          }
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-[#061A2D]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200">
+                      <label className="inline-flex items-center gap-2 font-bold text-[#061A2D] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={ind.validated}
+                          onChange={(e) =>
+                            saveEmployabilityIndicator({
+                              ...ind,
+                              validated: e.target.checked,
+                              value:
+                                e.target.checked && ind.value === null ? 1 : ind.value,
+                            })
+                          }
+                          className="rounded border-slate-300 text-[#0077C8]"
+                        />
+                        <span>Validado com Evidência Documental</span>
+                      </label>
+                      <span className="text-[10px] font-mono-tabular text-slate-500">
+                        Actualizado: {new Date(ind.updatedAt).toLocaleDateString('pt-AO')}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 3. Gestão de Relatórios Públicos de Impacto e Empregabilidade */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div>
+                  <h2 className="text-lg font-extrabold text-[#061A2D]">
+                    3. Publicação e Aprovação de Relatórios de Impacto e Empregabilidade
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Gerencie os relatórios anuais disponíveis para leitura online em <code>/relatorio-impacto</code>, incluindo edições de anos anteriores.
+                  </p>
+                </div>
+                <Link
+                  to="/relatorio-impacto"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold shrink-0"
+                >
+                  <FileText className="w-3.5 h-3.5 text-[#19B5FE]" />
+                  <span>Ler Relatório Público Online</span>
+                </Link>
+              </div>
+
+              <div className="space-y-3">
+                {impactReports.map((rep) => (
+                  <div
+                    key={rep.id}
+                    className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-xs"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-[#061A2D] text-[#19B5FE] font-mono-tabular font-extrabold text-[10px]">
+                          ANO {rep.editionYear}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded font-extrabold text-[10px] uppercase ${
+                            rep.status === 'APROVADO_PUBLICADO'
+                              ? 'bg-emerald-100 text-emerald-900'
+                              : 'bg-amber-100 text-amber-900'
+                          }`}
+                        >
+                          {rep.status === 'APROVADO_PUBLICADO' ? 'Publicado' : rep.status}
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-mono-tabular">
+                          Período: {rep.referencePeriod} · Publicado em {rep.publishedAt}
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-extrabold text-[#061A2D]">{rep.title}</h3>
+                      <p className="text-slate-600">{rep.subtitle}</p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          saveImpactReport({
+                            ...rep,
+                            status:
+                              rep.status === 'APROVADO_PUBLICADO'
+                                ? 'RASCUNHO'
+                                : 'APROVADO_PUBLICADO',
+                          })
+                        }
+                        className={`px-3 py-1.5 rounded-lg font-bold text-xs ${
+                          rep.status === 'APROVADO_PUBLICADO'
+                            ? 'bg-amber-100 hover:bg-amber-200 text-amber-900'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        }`}
+                      >
+                        {rep.status === 'APROVADO_PUBLICADO'
+                          ? 'Colocar em Revisão (Rascunho)'
+                          : '✓ Aprovar e Publicar Online'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 4. Aprovação Administrativa de Testemunhos (Antigos Formandos e Empresas) */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div>
+                  <h2 className="text-lg font-extrabold text-[#061A2D]">
+                    4. Governance & Aprovação Administrativa de Testemunhos ({testimonials.length})
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Apenas testemunhos com consentimento de dados pessoais e aprovados pelo Administrador ficam visíveis no site público.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {testimonials.map((t) => {
+                  const st = t.approvalStatus || 'aprovado';
+                  return (
+                    <div
+                      key={t.id}
+                      className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex flex-col justify-between gap-3 text-xs"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-extrabold text-[#061A2D]">{t.clientName}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                              st === 'aprovado'
+                                ? 'bg-emerald-100 text-emerald-900'
+                                : st === 'rejeitado'
+                                ? 'bg-rose-100 text-rose-900'
+                                : 'bg-amber-100 text-amber-900'
+                            }`}
+                          >
+                            {st}
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-semibold text-[#0077C8] mt-0.5">
+                          {t.role} · {t.companyName}
+                        </p>
+                        <p className="text-slate-700 italic mt-1.5">«{t.feedback}»</p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
+                        {st !== 'aprovado' && (
+                          <button
+                            type="button"
+                            onClick={() => updateTestimonialApprovalStatus(t.id, 'aprovado')}
+                            className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold"
+                          >
+                            ✓ Aprovar e Publicar
+                          </button>
+                        )}
+                        {st !== 'rejeitado' && (
+                          <button
+                            type="button"
+                            onClick={() => updateTestimonialApprovalStatus(t.id, 'rejeitado')}
+                            className="px-2.5 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-bold"
+                          >
+                            Ocultar / Rejeitar
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => deleteTestimonial(t.id)}
+                          className="px-2.5 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold ml-auto"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 5. Registo de Acompanhamento de Antigos Formandos & Histórico de Governance */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3">
+                <h3 className="text-sm font-extrabold text-[#061A2D]">
+                  5. Registos Validados de Empregabilidade de Antigos Formandos ({alumniTrackingRecords.length})
+                </h3>
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {alumniTrackingRecords.map((rec) => (
+                    <div
+                      key={rec.id}
+                      className="p-3 rounded-xl bg-[#F5F9FC] border border-slate-200 text-xs flex items-start justify-between gap-2"
+                    >
+                      <div>
+                        <p className="font-bold text-[#061A2D]">
+                          {rec.studentName} · <span className="text-[#0077C8]">{rec.outcomeCategory}</span>
+                        </p>
+                        <p className="text-[11px] text-slate-600">{rec.courseTitle}</p>
+                        <p className="text-[10px] font-mono-tabular text-slate-500 mt-0.5">
+                          Entidade: {rec.employerOrActivityName} · Fonte: {rec.verificationSource}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => deleteAlumniTrackingRecord(rec.id)}
+                        className="text-rose-600 hover:text-rose-800 p-1"
+                        title="Eliminar registo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3">
+                <h3 className="text-sm font-extrabold text-[#061A2D]">
+                  6. Histórico de Actualizações de Governance & Compliance ({impactAuditLogs.length})
+                </h3>
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {impactAuditLogs.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="p-3 rounded-xl bg-[#F5F9FC] border border-slate-200 text-xs"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-[#061A2D]">{entry.action}</span>
+                        <span className="text-[10px] font-mono-tabular text-slate-500">
+                          {new Date(entry.timestamp).toLocaleString('pt-AO')}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-0.5">{entry.details}</p>
+                      <p className="text-[10px] text-[#0077C8] font-semibold mt-0.5">
+                        Responsável: {entry.actorName}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

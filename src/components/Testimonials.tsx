@@ -39,8 +39,14 @@ export const Testimonials: React.FC = () => {
   const [feedback, setFeedback] = useState('');
   const [projectOutcome, setProjectOutcome] = useState('');
 
-  const count = testimonials.length;
-  const current: TestimonialItem = testimonials[currentIndex] || testimonials[0];
+  const approvedTestimonials = testimonials.filter(
+    (t) =>
+      t.approvalStatus !== 'pendente' &&
+      t.approvalStatus !== 'rejeitado' &&
+      t.authorizedForPublication !== false
+  );
+  const count = Math.max(1, approvedTestimonials.length);
+  const current: TestimonialItem = approvedTestimonials[currentIndex] || approvedTestimonials[0];
 
   const nextSlide = useCallback(() => {
     setCurrentIndex((prev) => (prev + 1) % count);
@@ -258,15 +264,15 @@ export const Testimonials: React.FC = () => {
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col justify-between h-full">
                 <div>
                   <p className="text-xs font-semibold text-[#19B5FE] uppercase tracking-wider">
-                    Organizações em Destaque ({testimonials.length})
+                    Organizações & Formandos em Destaque ({approvedTestimonials.length})
                   </p>
                   <p className="text-xs text-[#9AA6AE] mt-1 mb-4">
-                    Clique para visualizar o depoimento de cada organização parceira:
+                    Clique para visualizar o depoimento autorizado:
                   </p>
 
                   {/* Company list */}
                   <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
-                    {testimonials.map((item, idx) => {
+                    {approvedTestimonials.map((item, idx) => {
                       const isActive = currentIndex === idx;
                       return (
                         <button
@@ -326,7 +332,7 @@ export const Testimonials: React.FC = () => {
 
         {/* Carousel Slide Dots Indicator */}
         <div className="mt-8 flex items-center justify-center gap-2">
-          {testimonials.map((item, idx) => (
+          {approvedTestimonials.map((item, idx) => (
             <button
               key={item.id}
               type="button"
@@ -381,7 +387,7 @@ export const Testimonials: React.FC = () => {
                 <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto animate-bounce" />
                 <h4 className="text-lg font-bold text-white">Muito Obrigado pelo Seu Testemunho!</h4>
                 <p className="text-xs text-slate-300">
-                  O seu depoimento foi registado com sucesso e já se encontra publicado na plataforma ALHAN.
+                  O seu depoimento foi enviado para validação e aprovação da Administração da ALHAN antes da publicação oficial.
                 </p>
               </div>
             ) : (

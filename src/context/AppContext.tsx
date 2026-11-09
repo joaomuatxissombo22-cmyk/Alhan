@@ -66,8 +66,23 @@ import {
   PanelCredentialItem,
   INITIAL_PANEL_CREDENTIALS,
   AdminEmailNotificationItem,
+  DynamicCountersConfig,
+  EmployabilityIndicatorItem,
+  AlumniTrackingRecord,
+  ImpactEvidenceDocument,
+  PublicImpactReportItem,
+  ImpactGovernanceAuditEntry,
+  TrainingPortfolioHistoryItem,
+  InstitutionalPartnershipItem,
+  INITIAL_DYNAMIC_COUNTERS,
+  INITIAL_EMPLOYABILITY_INDICATORS,
+  INITIAL_ALUMNI_TRACKING,
+  INITIAL_IMPACT_EVIDENCES,
+  INITIAL_PUBLIC_IMPACT_REPORTS,
+  INITIAL_IMPACT_AUDIT_LOGS,
+  INITIAL_TRAINING_PORTFOLIO_HISTORY,
+  INITIAL_INSTITUTIONAL_PARTNERSHIPS,
 } from '../data/initialData';
-import { generateOfficialCertificatePdfDataUrl } from '../utils/pdfCertificateGenerator';
 
 export type AccountApprovalState = 'pendente' | 'aprovado' | 'rejeitado' | 'suspenso' | 'bloqueado';
 
@@ -304,7 +319,34 @@ interface AppContextValue {
     rating: number;
     feedback: string;
     projectOutcome?: string;
+    testimonialType?: 'FORMANDO' | 'CLIENTE_EMPRESARIAL';
+    authorizedForPublication?: boolean;
   }) => Promise<TestimonialItem>;
+  updateTestimonialApprovalStatus: (
+    id: string,
+    approvalStatus: 'pendente' | 'aprovado' | 'rejeitado'
+  ) => void;
+  deleteTestimonial: (id: string) => void;
+  dynamicCounters: DynamicCountersConfig;
+  updateDynamicCounters: (updates: Partial<DynamicCountersConfig>) => void;
+  employabilityIndicators: EmployabilityIndicatorItem[];
+  saveEmployabilityIndicator: (item: EmployabilityIndicatorItem) => void;
+  alumniTrackingRecords: AlumniTrackingRecord[];
+  saveAlumniTrackingRecord: (item: AlumniTrackingRecord) => void;
+  deleteAlumniTrackingRecord: (id: string) => void;
+  impactEvidences: ImpactEvidenceDocument[];
+  saveImpactEvidence: (item: ImpactEvidenceDocument) => void;
+  deleteImpactEvidence: (id: string) => void;
+  trainingPortfolioHistory: TrainingPortfolioHistoryItem[];
+  saveTrainingPortfolioHistoryItem: (item: TrainingPortfolioHistoryItem) => void;
+  deleteTrainingPortfolioHistoryItem: (id: string) => void;
+  institutionalPartnerships: InstitutionalPartnershipItem[];
+  saveInstitutionalPartnership: (item: InstitutionalPartnershipItem) => void;
+  deleteInstitutionalPartnership: (id: string) => void;
+  impactReports: PublicImpactReportItem[];
+  saveImpactReport: (report: PublicImpactReportItem) => void;
+  deleteImpactReport: (id: string) => void;
+  impactAuditLogs: ImpactGovernanceAuditEntry[];
   createEnrollment: (payload: {
     course: CourseItem;
     modality: 'Online' | 'Presencial' | 'Híbrida';
@@ -395,9 +437,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [authReady, setAuthReady] = useState(false);
 
-  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUserAccount[]>(() =>
-    loadLocal<RegisteredUserAccount[]>('alhan_registered_users', [])
-  );
+  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUserAccount[]>(() => {
+    const stored = loadLocal<RegisteredUserAccount[]>('alhan_registered_users', []);
+    const storedEnrollments = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
+    const merged = [...stored];
+    // Ensure every enrolled student also has a RegisteredUserAccount record visible in the Admin Panel
+    storedEnrollments.forEach((enr) => {
+      const cleanEmail = (enr.studentEmail || '').trim().toLowerCase();
+      const exists = merged.some(
+        (u) =>
+          u.uid === enr.studentId ||
+          (cleanEmail && u.email.toLowerCase() === cleanEmail)
+      );
+      if (!exists && enr.studentName) {
+        merged.push({
+          uid: enr.studentId || `usr-${enr.id}`,
+          fullName: enr.studentName.replace('[DEMO] ', ''),
+          username: cleanEmail ? cleanEmail.split('@')[0] : `aluno.${enr.id}`,
+          email: cleanEmail || 'aluno@alhan.pro',
+          phone: enr.studentPhone || '+244 922 021 211',
+          studentBI: enr.studentBI,
+          password: 'Alhan@Aluno2026',
+          role: 'ALUNO',
+          companyId: 'alhan-aluno',
+          approvalStatus: enr.enrollmentApprovalStatus || 'pendente',
+          createdAt: enr.createdAt || new Date().toISOString(),
+        });
+      }
+    });
+    return merged;
+  });
 
   const [courses, setCourses] = useState<CourseItem[]>(() => {
     const stored = loadLocal<CourseItem[]>('alhan_courses', INITIAL_COURSES);
@@ -482,18 +551,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...c,
       code: c.code === 'ALHAN-DEMO-2026-001' ? 'ALHAN-SGI-2026-001' : c.code,
       studentName: c.studentName.replace('[DEMO] ', ''),
-      certificateFileUrl:
-        c.certificateFileUrl ||
-        generateOfficialCertificatePdfDataUrl({
-          code: c.code,
-          studentName: c.studentName.replace('[DEMO] ', ''),
-          studentBI: c.studentBI,
-          courseTitle: c.courseTitle,
-          modality: c.modality || 'Online',
-          workloadHours: c.workloadHours || 40,
-          grade: c.grade || 'Aprovado com Distinção',
-          issuedDate: c.issuedDate,
-        }),
+      // Certificates for students cannot be generated online automatically; only Admin-uploaded PDFs are valid
+      certificateFileUrl: c.certificateFileUrl || '',
       isDemo: false,
     }));
   });
@@ -502,26 +561,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'alhan_certificate_requests',
       INITIAL_CERTIFICATE_REQUESTS
     );
-    return stored.map((req) => ({
-      ...req,
-      certificateFileUrl:
-        req.certificateFileUrl ||
-        (req.status === 'DISPONÍVEL'
-          ? generateOfficialCertificatePdfDataUrl({
-              code: req.certificateCode || 'ALHAN-SGI-2026-001',
-              studentName: req.studentName,
-              studentBI: req.studentBI,
-              courseTitle: req.courseName,
-              modality: req.modality || 'Híbrida',
-              workloadHours: req.workloadHours || 40,
-              grade: 'Aprovado com Distinção',
-              issuedDate: req.issuedAt ? req.issuedAt.split('T')[0] : '2026-02-15',
-            })
-          : ''),
-    }));
+    return stored.map((req) => {
+      // Do NOT auto-generate online PDFs. If a request has no Admin-uploaded PDF file URL, keep it PENDENTE for Admin emission
+      const hasAdminUploadedPdf = Boolean(req.certificateFileUrl && req.certificateFileUrl.trim().length > 0);
+      return {
+        ...req,
+        status: req.status === 'DISPONÍVEL' && !hasAdminUploadedPdf ? 'PENDENTE' : req.status,
+        certificateFileUrl: hasAdminUploadedPdf ? req.certificateFileUrl : '',
+      };
+    });
   });
   const [adminNotifications, setAdminNotifications] = useState<AdminNotificationRecord[]>(() =>
     loadLocal<AdminNotificationRecord[]>('alhan_admin_notifications', INITIAL_ADMIN_NOTIFICATIONS)
+  );
+  const [dynamicCounters, setDynamicCounters] = useState<DynamicCountersConfig>(() =>
+    loadLocal<DynamicCountersConfig>('alhan_dynamic_counters', INITIAL_DYNAMIC_COUNTERS)
+  );
+  const [employabilityIndicators, setEmployabilityIndicators] = useState<EmployabilityIndicatorItem[]>(() =>
+    loadLocal<EmployabilityIndicatorItem[]>('alhan_employability_indicators', INITIAL_EMPLOYABILITY_INDICATORS)
+  );
+  const [alumniTrackingRecords, setAlumniTrackingRecords] = useState<AlumniTrackingRecord[]>(() =>
+    loadLocal<AlumniTrackingRecord[]>('alhan_alumni_tracking', INITIAL_ALUMNI_TRACKING)
+  );
+  const [impactEvidences, setImpactEvidences] = useState<ImpactEvidenceDocument[]>(() =>
+    loadLocal<ImpactEvidenceDocument[]>('alhan_impact_evidences', INITIAL_IMPACT_EVIDENCES)
+  );
+  const [trainingPortfolioHistory, setTrainingPortfolioHistory] = useState<TrainingPortfolioHistoryItem[]>(() =>
+    loadLocal<TrainingPortfolioHistoryItem[]>('alhan_training_portfolio_history', INITIAL_TRAINING_PORTFOLIO_HISTORY)
+  );
+  const [institutionalPartnerships, setInstitutionalPartnerships] = useState<InstitutionalPartnershipItem[]>(() =>
+    loadLocal<InstitutionalPartnershipItem[]>('alhan_institutional_partnerships', INITIAL_INSTITUTIONAL_PARTNERSHIPS)
+  );
+  const [impactReports, setImpactReports] = useState<PublicImpactReportItem[]>(() =>
+    loadLocal<PublicImpactReportItem[]>('alhan_impact_reports', INITIAL_PUBLIC_IMPACT_REPORTS)
+  );
+  const [impactAuditLogs, setImpactAuditLogs] = useState<ImpactGovernanceAuditEntry[]>(() =>
+    loadLocal<ImpactGovernanceAuditEntry[]>('alhan_impact_audit_logs', INITIAL_IMPACT_AUDIT_LOGS)
   );
   const [selectedAdminCertificateRequestId, setSelectedAdminCertificateRequestId] = useState<string | null>(null);
   const [isoProjects, setIsoProjects] = useState<IsoProjectItem[]>(() => {
@@ -633,6 +708,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         else if (key === 'alhan_courses') setCourses(parsed);
         else if (key === 'alhan_diagnostics') setDiagnosticRequests(parsed);
         else if (key === 'alhan_activity_logs') setActivityLogs(parsed);
+        else if (key === 'alhan_dynamic_counters') setDynamicCounters(parsed);
+        else if (key === 'alhan_employability_indicators') setEmployabilityIndicators(parsed);
+        else if (key === 'alhan_alumni_tracking') setAlumniTrackingRecords(parsed);
+        else if (key === 'alhan_impact_evidences') setImpactEvidences(parsed);
+        else if (key === 'alhan_training_portfolio_history') setTrainingPortfolioHistory(parsed);
+        else if (key === 'alhan_institutional_partnerships') setInstitutionalPartnerships(parsed);
+        else if (key === 'alhan_impact_reports') setImpactReports(parsed);
+        else if (key === 'alhan_impact_audit_logs') setImpactAuditLogs(parsed);
       } catch {
         // Ignore parse error
       } finally {
@@ -686,6 +769,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { persistAndBroadcast('alhan_notifications', notifications); }, [notifications, persistAndBroadcast]);
   useEffect(() => { persistAndBroadcast('alhan_email_notifications', emailNotifications); }, [emailNotifications, persistAndBroadcast]);
   useEffect(() => { persistAndBroadcast('alhan_activity_logs', activityLogs); }, [activityLogs, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_dynamic_counters', dynamicCounters); }, [dynamicCounters, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_employability_indicators', employabilityIndicators); }, [employabilityIndicators, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_alumni_tracking', alumniTrackingRecords); }, [alumniTrackingRecords, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_impact_evidences', impactEvidences); }, [impactEvidences, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_training_portfolio_history', trainingPortfolioHistory); }, [trainingPortfolioHistory, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_institutional_partnerships', institutionalPartnerships); }, [institutionalPartnerships, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_impact_reports', impactReports); }, [impactReports, persistAndBroadcast]);
+  useEffect(() => { persistAndBroadcast('alhan_impact_audit_logs', impactAuditLogs); }, [impactAuditLogs, persistAndBroadcast]);
 
   const logActivity = (action: string, actorName?: string) => {
     setActivityLogs((prev) => [
@@ -1810,12 +1901,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
-    if (!enrollment.completed && enrollment.progressPercent < 100) {
-      throw new Error(
-        'Requisitos pendentes: Para solicitar o certificado, é necessário concluir 100% das aulas/módulos e cumprir os requisitos de participação da formação.'
-      );
-    }
-
+    // Certificates are NEVER generated online automatically. Any enrolled student can submit a certificate request
+    // in their panel so the Administrator receives the request in the Admin Panel and sends the official PDF file.
     const existingBlockingRequest = certificateRequests.find(
       (r) =>
         r.courseId === enrollment.courseId &&
@@ -2037,6 +2124,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetReq.certificateCode ||
       `ALHAN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
+    if (!payload.pdfFile && (!payload.certificateFileUrl || !payload.certificateFileUrl.trim())) {
+      throw new Error(
+        'Atenção: Os certificados para alunos não podem ser gerados automaticamente online. O Administrador deve anexar o ficheiro PDF oficial do certificado para enviá-lo ao painel do aluno.'
+      );
+    }
+
     // Validate via backend endpoint if pdfFile is provided
     if (payload.pdfFile) {
       const isPdf =
@@ -2062,24 +2155,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }).catch(() => null);
     }
 
-    const autoGeneratedPdfUrl =
-      payload.certificateFileUrl ||
-      generateOfficialCertificatePdfDataUrl({
-        code: certCode,
-        studentName: targetReq.studentName,
-        studentBI: payload.studentBI || targetReq.studentBI || '',
-        courseTitle: targetReq.courseName,
-        modality: targetReq.modality || 'Online',
-        workloadHours: targetReq.workloadHours || 40,
-        grade: payload.grade || 'Aprovado com Distinção',
-        issuedDate,
-      });
-
     const { storagePath, downloadUrl } = await uploadCertificatePdfToStorage({
       userId: targetReq.userId,
       courseId: targetReq.courseId,
       file: payload.pdfFile,
-      fallbackDataUrl: autoGeneratedPdfUrl,
+      fallbackDataUrl: payload.certificateFileUrl || '',
     });
 
     const finalFileName =
@@ -2715,6 +2795,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     rating: number;
     feedback: string;
     projectOutcome?: string;
+    testimonialType?: 'FORMANDO' | 'CLIENTE_EMPRESARIAL';
+    authorizedForPublication?: boolean;
   }) => {
     const initials = item.clientName
       .replace('Eng.º ', '')
@@ -2727,6 +2809,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .join('')
       .toUpperCase();
 
+    const isAdminActor = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+
     const newTestimonial: TestimonialItem = {
       id: `test-${Date.now()}`,
       clientName: item.clientName.trim(),
@@ -2738,19 +2822,244 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       standardImplemented: item.serviceType || 'Sistema de Gestão Integrado (SGI)',
       rating: Math.min(5, Math.max(1, item.rating || 5)),
       feedback: item.feedback.trim(),
-      projectOutcome: item.projectOutcome?.trim() || 'Excelência operacional e conformidade comprovada.',
-      verified: true,
+      projectOutcome: item.projectOutcome?.trim() || 'Qualificação profissional e conformidade verificada.',
+      verified: isAdminActor,
+      testimonialType: item.testimonialType || 'FORMANDO',
+      approvalStatus: isAdminActor ? 'aprovado' : 'pendente',
+      authorizedForPublication: item.authorizedForPublication !== false,
+      approvedBy: isAdminActor ? user?.fullName || 'Direcção Geral ALHAN' : undefined,
+      approvedAt: isAdminActor ? new Date().toISOString() : undefined,
       createdAt: new Date().toISOString(),
     };
     setTestimonials((prev) => [newTestimonial, ...prev]);
     triggerNotification(
       'Novo registo',
-      'Novo Testemunho Recebido',
-      `${newTestimonial.clientName} (${newTestimonial.companyName}) avaliou os serviços da ALHAN.`,
+      isAdminActor ? 'Testemunho Publicado pelo ADM' : 'Novo Testemunho Pendente de Aprovação',
+      `${newTestimonial.clientName} (${newTestimonial.companyName}) submeteu um testemunho (${newTestimonial.approvalStatus}).`,
       'ADMIN'
     );
-    logActivity(`Novo testemunho registado: ${newTestimonial.clientName}`);
+    logActivity(`Testemunho registado (${newTestimonial.approvalStatus}): ${newTestimonial.clientName}`);
     return newTestimonial;
+  };
+
+  const updateTestimonialApprovalStatus = (
+    id: string,
+    approvalStatus: 'pendente' | 'aprovado' | 'rejeitado'
+  ) => {
+    const nowIso = new Date().toISOString();
+    const actorName = user?.fullName || 'Administrador Geral ALHAN – SGI';
+    setTestimonials((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              approvalStatus,
+              verified: approvalStatus === 'aprovado',
+              authorizedForPublication: approvalStatus === 'aprovado',
+              approvedBy: approvalStatus === 'aprovado' ? actorName : t.approvedBy,
+              approvedAt: approvalStatus === 'aprovado' ? nowIso : t.approvedAt,
+            }
+          : t
+      )
+    );
+    setImpactAuditLogs((prev) => [
+      {
+        id: `imp-log-${Date.now()}`,
+        action: `TESTEMUNHO_${approvalStatus.toUpperCase()}`,
+        actorName,
+        details: `Testemunho ${id} alterado para estado "${approvalStatus}" pela Administração.`,
+        timestamp: nowIso,
+      },
+      ...prev,
+    ]);
+    logActivity(`Estado de aprovação do testemunho ${id} alterado para ${approvalStatus}`, actorName);
+  };
+
+  const deleteTestimonial = (id: string) => {
+    const actorName = user?.fullName || 'Administrador Geral ALHAN – SGI';
+    setTestimonials((prev) => prev.filter((t) => t.id !== id));
+    logActivity(`Testemunho eliminado: ${id}`, actorName);
+  };
+
+  const recordImpactAudit = (action: string, details: string) => {
+    const actorName = user?.fullName || 'Administrador Geral ALHAN – SGI';
+    const nowIso = new Date().toISOString();
+    setImpactAuditLogs((prev) => [
+      {
+        id: `imp-log-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        action,
+        actorName,
+        details,
+        timestamp: nowIso,
+      },
+      ...prev.slice(0, 199),
+    ]);
+    logActivity(`[Governance & Impacto] ${action}: ${details}`, actorName);
+  };
+
+  const updateDynamicCounters = (updates: Partial<DynamicCountersConfig>) => {
+    const nowIso = new Date().toISOString();
+    const actorName = user?.fullName || 'Direcção Geral – ALHAN SGI';
+    setDynamicCounters((prev) => ({
+      ...prev,
+      ...updates,
+      updatedAt: nowIso,
+      updatedBy: actorName,
+    }));
+    recordImpactAudit(
+      'ACTUALIZACAO_CONTADOR_DINAMICO',
+      `Contadores dinâmicos actualizados (Formandos: ${
+        updates.trainedStudentsValidated === false
+          ? 'Dados em actualização'
+          : updates.trainedStudentsCount ?? dynamicCounters.trainedStudentsCount
+      }, Implementações: ${
+        updates.sgiImplementationsValidated === false
+          ? 'Dados em actualização'
+          : updates.sgiImplementationsCount ?? dynamicCounters.sgiImplementationsCount
+      }).`
+    );
+  };
+
+  const saveEmployabilityIndicator = (item: EmployabilityIndicatorItem) => {
+    const nowIso = new Date().toISOString();
+    const actorName = user?.fullName || 'Direcção Geral – ALHAN SGI';
+    const normalized: EmployabilityIndicatorItem = {
+      ...item,
+      value: item.validated ? item.value : null,
+      updatedAt: nowIso,
+      updatedBy: actorName,
+    };
+    setEmployabilityIndicators((prev) => {
+      const exists = prev.some((i) => i.id === normalized.id || i.key === normalized.key);
+      return exists
+        ? prev.map((i) => (i.id === normalized.id || i.key === normalized.key ? normalized : i))
+        : [...prev, normalized];
+    });
+    recordImpactAudit(
+      'ACTUALIZACAO_INDICADOR_EMPREGABILIDADE',
+      `Indicador "${normalized.label}" actualizado (${
+        normalized.validated && normalized.value !== null
+          ? `${normalized.value} ${normalized.unit} · Fonte: ${normalized.sourceMethod}`
+          : 'Dados em actualização'
+      }).`
+    );
+  };
+
+  const saveAlumniTrackingRecord = (item: AlumniTrackingRecord) => {
+    const nowIso = new Date().toISOString();
+    const normalized: AlumniTrackingRecord = {
+      ...item,
+      updatedAt: nowIso,
+    };
+    setAlumniTrackingRecords((prev) => {
+      const exists = prev.some((r) => r.id === normalized.id);
+      return exists ? prev.map((r) => (r.id === normalized.id ? normalized : r)) : [normalized, ...prev];
+    });
+    recordImpactAudit(
+      'REGISTO_ACOMPANHAMENTO_FORMANDO',
+      `Registo de empregabilidade pós-formação guardado: ${normalized.studentName} (${normalized.outcomeCategory} · Consentimento Protecção de Dados: ${
+        normalized.dataProtectionConsent ? 'Sim' : 'Não'
+      }).`
+    );
+  };
+
+  const deleteAlumniTrackingRecord = (id: string) => {
+    const target = alumniTrackingRecords.find((r) => r.id === id);
+    setAlumniTrackingRecords((prev) => prev.filter((r) => r.id !== id));
+    recordImpactAudit(
+      'ELIMINACAO_REGISTO_ACOMPANHAMENTO',
+      `Registo de acompanhamento eliminado: ${target?.studentName || id}`
+    );
+  };
+
+  const saveImpactEvidence = (item: ImpactEvidenceDocument) => {
+    const nowIso = new Date().toISOString();
+    const actorName = user?.fullName || 'Direcção Geral – ALHAN SGI';
+    const normalized: ImpactEvidenceDocument = {
+      ...item,
+      uploadedAt: item.uploadedAt || nowIso,
+      uploadedBy: actorName,
+    };
+    setImpactEvidences((prev) => {
+      const exists = prev.some((e) => e.id === normalized.id);
+      return exists ? prev.map((e) => (e.id === normalized.id ? normalized : e)) : [normalized, ...prev];
+    });
+    recordImpactAudit(
+      'DOCUMENTO_EVIDENCIA_IMPACTO',
+      `Evidência documental "${normalized.code} – ${normalized.title}" guardada/actualizada.`
+    );
+  };
+
+  const deleteImpactEvidence = (id: string) => {
+    const target = impactEvidences.find((e) => e.id === id);
+    setImpactEvidences((prev) => prev.filter((e) => e.id !== id));
+    recordImpactAudit(
+      'ELIMINACAO_EVIDENCIA_IMPACTO',
+      `Evidência documental eliminada: ${target?.code || id}`
+    );
+  };
+
+  const saveTrainingPortfolioHistoryItem = (item: TrainingPortfolioHistoryItem) => {
+    setTrainingPortfolioHistory((prev) => {
+      const exists = prev.some((h) => h.id === item.id);
+      return exists ? prev.map((h) => (h.id === item.id ? item : h)) : [item, ...prev];
+    });
+    recordImpactAudit(
+      'PORTEFOLIO_HISTORICO_FORMACAO',
+      `Registo do portefólio formativo actualizado: ${item.courseTitle} (${item.period})`
+    );
+  };
+
+  const deleteTrainingPortfolioHistoryItem = (id: string) => {
+    setTrainingPortfolioHistory((prev) => prev.filter((h) => h.id !== id));
+    recordImpactAudit('ELIMINACAO_PORTEFOLIO_FORMACAO', `Item de portefólio eliminado: ${id}`);
+  };
+
+  const saveInstitutionalPartnership = (item: InstitutionalPartnershipItem) => {
+    setInstitutionalPartnerships((prev) => {
+      const exists = prev.some((p) => p.id === item.id);
+      return exists ? prev.map((p) => (p.id === item.id ? item : p)) : [item, ...prev];
+    });
+    recordImpactAudit(
+      'PARCERIA_INSTITUCIONAL',
+      `Parceria institucional actualizada: ${item.organizationName} (${item.partnershipType})`
+    );
+  };
+
+  const deleteInstitutionalPartnership = (id: string) => {
+    setInstitutionalPartnerships((prev) => prev.filter((p) => p.id !== id));
+    recordImpactAudit('ELIMINACAO_PARCERIA_INSTITUCIONAL', `Parceria eliminada: ${id}`);
+  };
+
+  const saveImpactReport = (report: PublicImpactReportItem) => {
+    const nowIso = new Date().toISOString();
+    const actorName = user?.fullName || 'Direcção Geral – ALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA';
+    const normalized: PublicImpactReportItem = {
+      ...report,
+      approvedBy: report.status === 'APROVADO_PUBLICADO' ? actorName : report.approvedBy || actorName,
+      publishedAt:
+        report.status === 'APROVADO_PUBLICADO'
+          ? report.publishedAt || nowIso
+          : report.publishedAt || nowIso,
+      updatedAt: nowIso,
+    };
+    setImpactReports((prev) => {
+      const exists = prev.some((r) => r.id === normalized.id);
+      return exists ? prev.map((r) => (r.id === normalized.id ? normalized : r)) : [normalized, ...prev];
+    });
+    recordImpactAudit(
+      normalized.status === 'APROVADO_PUBLICADO' ? 'PUBLICACAO_RELATORIO_IMPACTO' : 'EDICAO_RELATORIO_IMPACTO',
+      `Relatório "${normalized.title}" (${normalized.editionYear}) guardado com estado ${normalized.status}.`
+    );
+  };
+
+  const deleteImpactReport = (id: string) => {
+    const target = impactReports.find((r) => r.id === id);
+    setImpactReports((prev) => prev.filter((r) => r.id !== id));
+    recordImpactAudit(
+      'ELIMINACAO_RELATORIO_IMPACTO',
+      `Relatório de impacto eliminado: ${target?.title || id}`
+    );
   };
 
   const createEnrollment = async (payload: {
@@ -2771,10 +3080,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const nowIso = new Date().toISOString();
     const studentId = auth.currentUser?.uid || user?.uid || `inscrito-${Date.now()}`;
     const studentName = payload.studentName?.trim() || user?.fullName || 'Formando Inscrito';
+    const studentEmail = (payload.studentEmail || user?.email || 'aluno@alhan.pro').trim().toLowerCase();
+    const studentPhone = (payload.studentPhone || user?.phone || '+244 922 021 211').trim();
+    const studentBI = (payload.studentBI || user?.studentBI || '').trim().toUpperCase();
     const enrollmentId = `enr-${Date.now()}`;
     const calc = computeCourseInstallments(payload.course, nowIso);
     const chosenInstallment = payload.installmentOption || payload.installmentTarget || '1ª Parcela';
     const refCode = payload.paymentReference || `REF-${Date.now().toString().slice(-6)}`;
+
+    // Ensure every student enrollment also registers/updates a student account in registeredUsers
+    // so that ALL student registrations appear in the Admin Panel for approval
+    setRegisteredUsers((prev) => {
+      const exists = prev.some(
+        (u) => u.uid === studentId || (studentEmail && u.email.toLowerCase() === studentEmail)
+      );
+      if (exists) return prev;
+      const autoStudentAccount: RegisteredUserAccount = {
+        uid: studentId,
+        fullName: studentName,
+        username: studentEmail.split('@')[0] || `aluno.${Date.now().toString().slice(-4)}`,
+        email: studentEmail,
+        phone: studentPhone,
+        studentBI: studentBI || undefined,
+        password: 'Alhan@Aluno2026',
+        role: 'ALUNO',
+        companyId: 'alhan-aluno',
+        approvalStatus: 'pendente',
+        createdAt: nowIso,
+      };
+      return [autoStudentAccount, ...prev];
+    });
 
     const initialHistory: PaymentHistoryEntry[] = [
       {
@@ -2807,9 +3142,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: enrollmentId,
       studentId,
       studentName,
-      studentPhone: payload.studentPhone || user?.phone || '+244 922 021 211',
-      studentEmail: payload.studentEmail || user?.email || 'aluno@alhan.pro',
-      studentBI: payload.studentBI || user?.studentBI,
+      studentPhone,
+      studentEmail,
+      studentBI: studentBI || undefined,
       courseId: payload.course.id,
       courseTitle: payload.course.title,
       modality: payload.modality,
@@ -3084,36 +3419,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         (enrollment.certificateId && c.id === enrollment.certificateId)
     );
 
+    const uploadedPdfUrl = pdfOptions?.certificateFileUrl || existingCert?.certificateFileUrl || '';
+    if (!uploadedPdfUrl.trim()) {
+      throw new Error(
+        'Os certificados não podem ser gerados automaticamente online. O Administrador deve anexar o ficheiro PDF do certificado (máx. 2 MB) antes de enviá-lo para o painel do aluno.'
+      );
+    }
+
     const course = courses.find((c) => c.id === enrollment.courseId);
     const resolvedBI =
       pdfOptions?.studentBI?.trim().toUpperCase() ||
       enrollment.certificateRequestBI ||
+      enrollment.studentBI ||
       existingCert?.studentBI ||
       '';
     const resolvedName =
       enrollment.certificateRequestName || enrollment.studentName;
     const resolvedGrade = pdfOptions?.grade?.trim() || existingCert?.grade || 'Aprovado com Distinção';
     const issuedDate = new Date().toISOString().split('T')[0];
+    const nowIso = new Date().toISOString();
+    const adminActor = user?.fullName || 'Administrador Geral ALHAN – SGI';
 
     if (existingCert) {
-      const generatedPdfUrl =
-        pdfOptions?.certificateFileUrl ||
-        existingCert.certificateFileUrl ||
-        generateOfficialCertificatePdfDataUrl({
-          code: existingCert.code,
-          studentName: resolvedName,
-          studentBI: resolvedBI,
-          courseTitle: enrollment.courseTitle,
-          modality: enrollment.modality,
-          workloadHours: course?.durationHours || existingCert.workloadHours || 24,
-          grade: resolvedGrade,
-          issuedDate: existingCert.issuedDate || issuedDate,
-        });
-
       const updatedCert: CertificateItem = {
         ...existingCert,
         studentName: resolvedName,
-        certificateFileUrl: generatedPdfUrl,
+        certificateFileUrl: uploadedPdfUrl,
         certificateFileName:
           pdfOptions?.certificateFileName ||
           existingCert.certificateFileName ||
@@ -3131,37 +3462,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 completed: true,
                 progressPercent: 100,
                 certificateId: updatedCert.id,
-                certificateSentAt: new Date().toISOString(),
+                certificateSentAt: nowIso,
               }
             : e
         )
       );
+      setCertificateRequests((prev) =>
+        prev.map((r) =>
+          r.enrollmentId === enrollment.id ||
+          (r.userId === enrollment.studentId && r.courseId === enrollment.courseId)
+            ? {
+                ...r,
+                status: 'DISPONÍVEL',
+                certificateFileUrl: uploadedPdfUrl,
+                certificateFileName:
+                  updatedCert.certificateFileName ||
+                  `Certificado_ALHAN_${updatedCert.code}.pdf`,
+                certificateCode: updatedCert.code,
+                issuedAt: nowIso,
+                issuedBy: adminActor,
+              }
+            : r
+        )
+      );
       triggerNotification(
         'Certificado disponível',
-        `Certificado em PDF Enviado para o Seu Painel: ${updatedCert.code}`,
-        `O Painel Administrativo enviou o seu Certificado em PDF da formação "${enrollment.courseTitle}" (${resolvedName}). Já pode baixá-lo em PDF no seu Painel do Aluno!`,
+        `Certificado em PDF Enviado pelo ADM: ${updatedCert.code}`,
+        `O Administrador enviou o seu Certificado em PDF da formação "${enrollment.courseTitle}" (${resolvedName}). Já pode baixá-lo no seu Painel do Aluno!`,
         'ALUNO'
       );
       logActivity(
-        `Certificado em PDF enviado para o Painel do Aluno (${updatedCert.code}) — ${resolvedName}`
+        `Certificado em PDF anexado pelo Administrador e enviado para o Painel do Aluno (${updatedCert.code}) — ${resolvedName}`
       );
       return updatedCert;
     }
 
     const code = `ALHAN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const workloadHours = course?.durationHours || 24;
-    const pdfDataUrl =
-      pdfOptions?.certificateFileUrl ||
-      generateOfficialCertificatePdfDataUrl({
-        code,
-        studentName: resolvedName,
-        studentBI: resolvedBI,
-        courseTitle: enrollment.courseTitle,
-        modality: enrollment.modality || 'Online',
-        workloadHours,
-        grade: resolvedGrade,
-        issuedDate,
-      });
+    const workloadHours = course?.durationHours || 40;
+    const finalFileName =
+      pdfOptions?.certificateFileName ||
+      `Certificado_ALHAN_${code}_${resolvedName.replace(/\s+/g, '_')}.pdf`;
 
     const newCert: CertificateItem = {
       id: `cert-${Date.now()}`,
@@ -3180,12 +3520,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       responsibleName: 'Direcção Pedagógica – ALHAN SGI',
       responsibleRole: 'Coordenação de Formação Profissional',
       status: 'valido',
-      certificateFileUrl: pdfDataUrl,
-      certificateFileName:
-        pdfOptions?.certificateFileName ||
-        `Certificado_ALHAN_${code}_${resolvedName.replace(/\s+/g, '_')}.pdf`,
+      certificateFileUrl: uploadedPdfUrl,
+      certificateFileName: finalFileName,
       isDemo: false,
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
     };
 
     setCertificates((prev) => [newCert, ...prev]);
@@ -3197,18 +3535,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               completed: true,
               progressPercent: 100,
               certificateId: newCert.id,
-              certificateSentAt: new Date().toISOString(),
+              certificateSentAt: nowIso,
             }
           : e
       )
     );
+    setCertificateRequests((prev) => {
+      const hasExistingReq = prev.some(
+        (r) =>
+          r.enrollmentId === enrollment.id ||
+          (r.userId === enrollment.studentId && r.courseId === enrollment.courseId)
+      );
+      if (hasExistingReq) {
+        return prev.map((r) =>
+          r.enrollmentId === enrollment.id ||
+          (r.userId === enrollment.studentId && r.courseId === enrollment.courseId)
+            ? {
+                ...r,
+                status: 'DISPONÍVEL',
+                certificateFileUrl: uploadedPdfUrl,
+                certificateFileName: finalFileName,
+                certificateCode: code,
+                issuedAt: nowIso,
+                issuedBy: adminActor,
+              }
+            : r
+        );
+      }
+      const newReqRecord: CertificateRequestItem = {
+        id: `cert-req-${Date.now()}`,
+        enrollmentId: enrollment.id,
+        userId: enrollment.studentId,
+        studentName: resolvedName,
+        studentEmail: enrollment.studentEmail || '',
+        studentPhone: enrollment.studentPhone || '',
+        studentBI: resolvedBI,
+        courseId: enrollment.courseId,
+        courseName: enrollment.courseTitle,
+        modality: enrollment.modality,
+        workloadHours,
+        enrollmentDate: (enrollment.createdAt || nowIso).slice(0, 10),
+        completionDate: issuedDate,
+        requestDate: nowIso,
+        studentNotes: enrollment.certificateRequestNotes || '',
+        status: 'DISPONÍVEL',
+        certificateStoragePath: `certificates/${enrollment.studentId}/${enrollment.courseId}/certificate.pdf`,
+        certificateFileUrl: uploadedPdfUrl,
+        certificateFileName: finalFileName,
+        certificateCode: code,
+        issuedAt: nowIso,
+        issuedBy: adminActor,
+        adminNotes: 'Certificado PDF anexado e enviado pelo Administrador.',
+        auditHistory: [
+          {
+            id: `aud-${Date.now()}`,
+            action: 'EMITIDO_E_DISPONIBILIZADO',
+            statusAfter: 'DISPONÍVEL',
+            actorName: adminActor,
+            actorRole: 'ADMIN',
+            notes: 'Certificado PDF anexado pelo Administrador e enviado ao Painel do Aluno.',
+            timestamp: nowIso,
+          },
+        ],
+        createdAt: nowIso,
+      };
+      return [newReqRecord, ...prev];
+    });
     triggerNotification(
       'Certificado disponível',
-      `Certificado em PDF Enviado para o Seu Painel: ${code}`,
-      `O Painel Administrativo enviou o seu Certificado de Conclusão da formação "${enrollment.courseTitle}" em PDF para o seu Painel do Aluno. Já pode baixá-lo!`,
+      `Certificado em PDF Enviado pelo ADM: ${code}`,
+      `O Administrador enviou o seu Certificado de Conclusão da formação "${enrollment.courseTitle}" em PDF para o seu Painel do Aluno. Já pode baixá-lo!`,
       'ALUNO'
     );
-    logActivity(`Certificado em PDF emitido e enviado para o Painel do Aluno (${code}) — ${resolvedName}`);
+    logActivity(`Certificado em PDF anexado pelo Administrador e enviado para o Painel do Aluno (${code}) — ${resolvedName}`);
     return newCert;
   };
 
@@ -3503,6 +3902,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteCourse,
         addIsoStandard,
         addTestimonial,
+        updateTestimonialApprovalStatus,
+        deleteTestimonial,
+        dynamicCounters,
+        updateDynamicCounters,
+        employabilityIndicators,
+        saveEmployabilityIndicator,
+        alumniTrackingRecords,
+        saveAlumniTrackingRecord,
+        deleteAlumniTrackingRecord,
+        impactEvidences,
+        saveImpactEvidence,
+        deleteImpactEvidence,
+        trainingPortfolioHistory,
+        saveTrainingPortfolioHistoryItem,
+        deleteTrainingPortfolioHistoryItem,
+        institutionalPartnerships,
+        saveInstitutionalPartnership,
+        deleteInstitutionalPartnership,
+        impactReports,
+        saveImpactReport,
+        deleteImpactReport,
+        impactAuditLogs,
         createEnrollment,
         submitStudentPaymentProof,
         updateEnrollmentStatus,

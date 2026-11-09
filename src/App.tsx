@@ -29,6 +29,10 @@ import {
   CompanyPortal,
   AdminPortal,
 } from './pages/PortalsPages';
+import {
+  PortfolioImpactPage,
+  PublicImpactReportPage,
+} from './pages/PortfolioAndImpactPages';
 
 const ScrollToTop: React.FC = () => {
   const { pathname } = useLocation();
@@ -56,6 +60,9 @@ export default function App() {
             />
             <Route path="/quem-somos" element={<AboutPage />} />
             <Route path="/formacoes" element={<CoursesCatalogPage />} />
+            <Route path="/academia" element={<CoursesCatalogPage />} />
+            <Route path="/portefolio-impacto" element={<PortfolioImpactPage />} />
+            <Route path="/relatorio-impacto" element={<PublicImpactReportPage />} />
             <Route path="/consultoria-iso" element={<ConsultoriaIsoPage />} />
             <Route path="/normas-iso" element={<NormasIsoPage />} />
             <Route path="/empresas" element={<CompaniesCasesPage />} />
