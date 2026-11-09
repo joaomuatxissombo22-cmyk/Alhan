@@ -25,7 +25,16 @@ import {
   Check,
 } from 'lucide-react';
 import { useApp, computeCourseInstallments } from '../context/AppContext';
-import { COMPANY_INFO, CourseItem, EnrollmentItem, UserRole } from '../data/initialData';
+import {
+  COMPANY_INFO,
+  CourseItem,
+  EnrollmentItem,
+  UserRole,
+  ALHAN_COUPON_CODE,
+  ALHAN_COUPON_DISCOUNT_PERCENT,
+  ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT,
+  calculateCourseDiscountedPricing,
+} from '../data/initialData';
 
 export const CoursesCatalogPage: React.FC = () => {
   const { courses, createEnrollment, submitStudentPaymentProof, submitDiagnosticOrContact, user } = useApp();
@@ -35,6 +44,12 @@ export const CoursesCatalogPage: React.FC = () => {
   const initialCourseId = searchParams.get('curso');
   const [modalityFilter, setModalityFilter] = useState<'Todas' | 'Online' | 'Presencial' | 'Híbrida'>('Todas');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Discount State: Black Friday Novembro (15% OFF) & Cupom SOUALHAN (25% OFF)
+  const [applyBlackFriday, setApplyBlackFriday] = useState<boolean>(true);
+  const [couponInput, setCouponInput] = useState<string>('');
+  const [appliedCouponCode, setAppliedCouponCode] = useState<string>('');
+  const [couponFeedback, setCouponFeedback] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
 
   const [selectedCourse, setSelectedCourse] = useState<CourseItem | null>(() => {
     if (initialCourseId) {
@@ -91,6 +106,32 @@ export const CoursesCatalogPage: React.FC = () => {
     }
   }, [user]);
 
+  const handleApplyCouponCode = (rawCode?: string) => {
+    const codeToTest = (rawCode !== undefined ? rawCode : couponInput).trim().toUpperCase();
+    if (!codeToTest) {
+      setAppliedCouponCode('');
+      setCouponFeedback({
+        type: 'err',
+        msg: `Introduza o código do cupom «${ALHAN_COUPON_CODE}» para activar ${ALHAN_COUPON_DISCOUNT_PERCENT}% de desconto.`,
+      });
+      return;
+    }
+    if (codeToTest === ALHAN_COUPON_CODE) {
+      setCouponInput(ALHAN_COUPON_CODE);
+      setAppliedCouponCode(ALHAN_COUPON_CODE);
+      setCouponFeedback({
+        type: 'ok',
+        msg: `✓ Cupom «${ALHAN_COUPON_CODE}» aplicado com sucesso! Desconto de ${ALHAN_COUPON_DISCOUNT_PERCENT}% activado sobre o valor total e sobre as 2 parcelas.`,
+      });
+    } else {
+      setAppliedCouponCode('');
+      setCouponFeedback({
+        type: 'err',
+        msg: `Cupom «${codeToTest}» inválido. Utilize o cupom oficial «${ALHAN_COUPON_CODE}» (${ALHAN_COUPON_DISCOUNT_PERCENT}% de desconto) ou aproveite a Black Friday Novembro (${ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT}% de desconto).`,
+      });
+    }
+  };
+
   const openDirectEnrollment = (course: CourseItem) => {
     setSelectedCourse(course);
     setChosenModality(course.modality);
@@ -141,16 +182,28 @@ export const CoursesCatalogPage: React.FC = () => {
     const cleanName = studentNameInput.trim() || user?.fullName || 'Formando Inscrito';
     const cleanPhone = studentWhatsapp.trim() || user?.phone || '+244 922 021 211';
     const cleanEmail = studentEmailInput.trim() || user?.email || 'aluno@alhan.pro';
+    const activeCoupon =
+      appliedCouponCode ||
+      (couponInput.trim().toUpperCase() === ALHAN_COUPON_CODE ? ALHAN_COUPON_CODE : undefined);
+    const pricing = calculateCourseDiscountedPricing(
+      selectedCourse.priceKz,
+      activeCoupon,
+      applyBlackFriday
+    );
 
     const created = await createEnrollment({
       course: selectedCourse,
       modality: chosenModality,
       paymentMethod: 'Express Angola',
       paymentReference: 'INSCRICAO-DIRECTA',
-      receiptNote: `Inscrição directa realizada (${chosenModality} · Turno: ${presShift}). Aguardando pagamento pelo formando.`,
+      receiptNote: `Inscrição directa realizada (${chosenModality} · Turno: ${presShift}${
+        pricing.discountBadgeLabel ? ` · ${pricing.discountBadgeLabel}` : ''
+      }). Estado Firestore: PENDENTE.`,
       studentName: cleanName,
       studentPhone: cleanPhone,
       studentEmail: cleanEmail,
+      couponCode: activeCoupon,
+      applyBlackFriday,
     });
 
     if (chosenModality === 'Presencial' || chosenModality === 'Híbrida') {
@@ -166,7 +219,7 @@ export const CoursesCatalogPage: React.FC = () => {
         sector: 'Formação Profissional',
         employeesCount: '1',
         targetStandard: selectedCourse.title,
-        objective: `Inscrição Directa (${selectedCourse.durationHours}h - ${selectedCourse.priceKz.toLocaleString('pt-AO')} Kz)`,
+        objective: `Inscrição Directa (${selectedCourse.durationHours}h - ${pricing.finalPriceKz.toLocaleString('pt-AO')} Kz ${pricing.discountBadgeLabel})`,
         message: presNotes || `Inscrição directa na formação ${selectedCourse.title} (${chosenModality}, ${presShift}).`,
       });
     }
@@ -198,7 +251,7 @@ export const CoursesCatalogPage: React.FC = () => {
 
     setCreatedEnrollment(updated);
     setPaymentCompletedMsg(
-      `Comprovativo (${installmentTarget}) da inscrição #${updated.id} submetido com sucesso! A sua inscrição encontra-se com estado PENDENTE até aprovação e confirmação do pagamento pelo Administrador Principal da ALHAN.`
+      `Comprovativo (${installmentTarget}) da inscrição #${updated.id} submetido com sucesso! A sua inscrição encontra-se com estado PENDENTE no Firebase Firestore até aprovação e confirmação pelo Administrador Principal da ALHAN.`
     );
   };
 
@@ -212,7 +265,7 @@ export const CoursesCatalogPage: React.FC = () => {
             Nossas Formações Profissionais (Online, Presencial e Híbrida)
           </h1>
           <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-            <strong>Clique em qualquer curso</strong> para realizar logo a sua <strong>inscrição directa</strong> e, em seguida, efectuar o pagamento da formação pelos canais oficiais (Multicaixa Express ou BANCO SOL).
+            <strong>Clique em qualquer curso</strong> para realizar logo a sua <strong>inscrição directa</strong> (registada no Firebase Firestore com estado <strong>PENDENTE</strong> até aprovação do Administrador) e aproveitar o desconto de <strong>Black Friday Novembro (-15%)</strong> ou o cupom <strong>{ALHAN_COUPON_CODE} (-25%)</strong>.
           </p>
         </div>
 
@@ -247,109 +300,211 @@ export const CoursesCatalogPage: React.FC = () => {
         </div>
       </div>
 
+      {/* BANNER OFICIAL: BLACK FRIDAY NOVEMBRO (15% DE DESCONTO) + CUPOM SOUALHAN (25% DE DESCONTO) */}
+      <div className="rounded-2xl bg-gradient-to-r from-[#061A2D] via-[#0A2540] to-[#061A2D] border-2 border-[#C8A951] p-6 text-white shadow-lg space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="space-y-1.5 max-w-3xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-2.5 py-1 rounded bg-[#C8A951] text-[#061A2D] text-[11px] font-extrabold uppercase tracking-wider">
+                🔥 Black Friday Novembro · -{ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT}% nas Formações
+              </span>
+              <span className="px-2.5 py-1 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[11px] font-extrabold uppercase tracking-wider">
+                🎟️ Cupom de Desconto: {ALHAN_COUPON_CODE} (-{ALHAN_COUPON_DISCOUNT_PERCENT}% OFF)
+              </span>
+            </div>
+            <h2 className="text-lg sm:text-2xl font-extrabold text-white">
+              Aproveite a Black Friday Novembro (-15%) ou aplique o Cupom «{ALHAN_COUPON_CODE}» para 25% de Desconto!
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+              Introduza o título do cupom <strong className="text-[#E5C97B] font-mono-tabular">{ALHAN_COUPON_CODE}</strong> abaixo ou no formulário de inscrição para reduzir automaticamente <strong>25% no valor total, na 1.ª Parcela e na 2.ª Parcela</strong> de qualquer formação.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-xl p-1.5">
+              <input
+                type="text"
+                value={couponInput}
+                onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                placeholder={`Cupom: ${ALHAN_COUPON_CODE}`}
+                className="bg-transparent px-3 py-1.5 text-xs font-mono-tabular font-extrabold text-white placeholder:text-slate-400 focus:outline-none uppercase w-36"
+              />
+              <button
+                type="button"
+                onClick={() => handleApplyCouponCode()}
+                className="px-3.5 py-2 rounded-lg bg-[#C8A951] hover:bg-[#d8b960] text-[#061A2D] text-xs font-extrabold transition-colors whitespace-nowrap"
+              >
+                Aplicar Cupom
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleApplyCouponCode(ALHAN_COUPON_CODE)}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold transition-colors whitespace-nowrap"
+            >
+              Activar {ALHAN_COUPON_CODE} (-25%)
+            </button>
+          </div>
+        </div>
+
+        {couponFeedback && (
+          <div
+            className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between gap-3 ${
+              couponFeedback.type === 'ok'
+                ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-200'
+                : 'bg-amber-500/20 border-amber-400/40 text-amber-200'
+            }`}
+          >
+            <span>{couponFeedback.msg}</span>
+            {appliedCouponCode && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAppliedCouponCode('');
+                  setCouponInput('');
+                  setCouponFeedback(null);
+                }}
+                className="text-[11px] underline text-white/80 hover:text-white shrink-0"
+              >
+                Remover cupom (manter Black Friday -15%)
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Course Grid — Clicking ANY course card opens Direct Enrollment immediately */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredCourses.map((course) => (
-          <div
-            key={course.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => openDirectEnrollment(course)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                openDirectEnrollment(course);
-              }
-            }}
-            className={`bg-white rounded-xl cursor-pointer ${
-              course.featured
-                ? 'border-2 border-[#0077C8] ring-4 ring-[#0077C8]/10 shadow-md'
-                : 'border border-slate-200'
-            } overflow-hidden flex flex-col justify-between hover:border-[#0077C8] hover:shadow-lg transition-all group`}
-          >
-            <div>
-              <div className="relative h-52 w-full bg-[#061A2D] overflow-hidden border-b border-slate-200">
-                <img
-                  src={course.imageUrl}
-                  alt={course.title}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
-                />
-                {course.featured && (
-                  <div className="absolute top-3 left-3 px-3 py-1 rounded-md bg-[#061A2D]/90 border border-[#19B5FE]/50 text-[#19B5FE] text-[11px] font-extrabold shadow-md">
-                    ★ {course.featuredBadge || 'Formação em Destaque'}
+        {filteredCourses.map((course) => {
+          const activeCoupon =
+            appliedCouponCode ||
+            (couponInput.trim().toUpperCase() === ALHAN_COUPON_CODE ? ALHAN_COUPON_CODE : undefined);
+          const pricing = calculateCourseDiscountedPricing(
+            course.priceKz,
+            activeCoupon,
+            applyBlackFriday
+          );
+          const couponPreviewPricing = calculateCourseDiscountedPricing(
+            course.priceKz,
+            ALHAN_COUPON_CODE,
+            true
+          );
+
+          return (
+            <div
+              key={course.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => openDirectEnrollment(course)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  openDirectEnrollment(course);
+                }
+              }}
+              className={`bg-white rounded-xl cursor-pointer ${
+                course.featured
+                  ? 'border-2 border-[#0077C8] ring-4 ring-[#0077C8]/10 shadow-md'
+                  : 'border border-slate-200'
+              } overflow-hidden flex flex-col justify-between hover:border-[#0077C8] hover:shadow-lg transition-all group`}
+            >
+              <div>
+                <div className="relative h-52 w-full bg-[#061A2D] overflow-hidden border-b border-slate-200">
+                  <img
+                    src={course.imageUrl}
+                    alt={course.title}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                  />
+                  {course.featured && (
+                    <div className="absolute top-3 left-3 px-3 py-1 rounded-md bg-[#061A2D]/90 border border-[#19B5FE]/50 text-[#19B5FE] text-[11px] font-extrabold shadow-md">
+                      ★ {course.featuredBadge || 'Formação em Destaque'}
+                    </div>
+                  )}
+                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-md bg-amber-500 text-[#061A2D] text-[10px] font-extrabold shadow-sm">
+                    {pricing.couponValid
+                      ? `🎟️ Cupom ${ALHAN_COUPON_CODE} -${ALHAN_COUPON_DISCOUNT_PERCENT}%`
+                      : `🔥 Black Friday Novembro -${ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT}%`}
                   </div>
-                )}
-                <div className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded bg-[#061A2D]/85 text-[#19B5FE] text-[10px] font-bold border border-white/15">
-                  Clique para Inscrição Directa →
+                  <div className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded bg-[#061A2D]/85 text-[#19B5FE] text-[10px] font-bold border border-white/15">
+                    Clique para Inscrição Directa →
+                  </div>
+                </div>
+
+                <div className="p-6">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span className="font-semibold text-[#0077C8]">{course.category}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{course.modality}</span>
+                    <span aria-hidden="true">·</span>
+                    <span className="font-mono-tabular">{course.durationHours}h ({course.lessonsCount} aulas)</span>
+                  </div>
+
+                  <h2 className="text-xl font-bold text-[#061A2D] group-hover:text-[#0077C8] transition-colors mt-2">
+                    {course.title}
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-2 leading-relaxed">{course.description}</p>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5 text-xs text-slate-600">
+                    <p><strong>Objectivos:</strong> {course.objectives}</p>
+                    <p><strong>Conteúdo programático:</strong> {course.syllabus}</p>
+                    <p className="text-slate-500"><strong>Formador:</strong> {course.instructorName}</p>
+                  </div>
                 </div>
               </div>
 
-              <div className="p-6">
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span className="font-semibold text-[#0077C8]">{course.category}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{course.modality}</span>
-                  <span aria-hidden="true">·</span>
-                  <span className="font-mono-tabular">{course.durationHours}h ({course.lessonsCount} aulas)</span>
+              <div className="px-6 pb-6 pt-4 border-t border-slate-200 space-y-2.5">
+                <div className="p-2.5 rounded-lg bg-[#F5F9FC] border border-slate-200/80 grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <p className="text-slate-500 font-semibold">1.ª Parcela (Acto Inscrição)</p>
+                    <p className="font-mono-tabular font-extrabold text-[#0077C8]">
+                      {pricing.firstInstallmentKz.toLocaleString('pt-AO')} Kz
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500 font-semibold">2.ª Parcela (+7 dias início)</p>
+                    <p className="font-mono-tabular font-extrabold text-[#061A2D]">
+                      {pricing.secondInstallmentKz.toLocaleString('pt-AO')} Kz
+                    </p>
+                  </div>
                 </div>
 
-                <h2 className="text-xl font-bold text-[#061A2D] group-hover:text-[#0077C8] transition-colors mt-2">
-                  {course.title}
-                </h2>
-                <p className="text-xs text-slate-600 mt-2 leading-relaxed">{course.description}</p>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5 text-xs text-slate-600">
-                  <p><strong>Objectivos:</strong> {course.objectives}</p>
-                  <p><strong>Conteúdo programático:</strong> {course.syllabus}</p>
-                  <p className="text-slate-500"><strong>Formador:</strong> {course.instructorName}</p>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] text-slate-500">
+                      Normal: <span className="line-through">{course.priceKz.toLocaleString('pt-AO')} Kz</span> ·{' '}
+                      <span className="font-bold text-amber-700">
+                        {pricing.couponValid
+                          ? `Cupom ${ALHAN_COUPON_CODE} (-25%)`
+                          : 'Black Friday Novembro (-15%)'}
+                      </span>
+                    </p>
+                    <p className="text-lg font-extrabold font-mono-tabular text-[#061A2D]">
+                      {pricing.finalPriceKz.toLocaleString('pt-AO')} Kz
+                    </p>
+                    {!pricing.couponValid && (
+                      <p className="text-[11px] font-bold text-emerald-700 font-mono-tabular">
+                        Com Cupom {ALHAN_COUPON_CODE} (-25%): {couponPreviewPricing.finalPriceKz.toLocaleString('pt-AO')} Kz
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDirectEnrollment(course);
+                      }}
+                      className="px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors whitespace-nowrap shadow-sm"
+                    >
+                      Inscrever-se Directo
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-
-            <div className="px-6 pb-6 pt-4 border-t border-slate-200 space-y-2.5">
-              {(() => {
-                const inst = computeCourseInstallments(course);
-                return (
-                  <div className="p-2.5 rounded-lg bg-[#F5F9FC] border border-slate-200/80 grid grid-cols-2 gap-2 text-[11px]">
-                    <div>
-                      <p className="text-slate-500 font-semibold">1.ª Parcela (Acto Inscrição)</p>
-                      <p className="font-mono-tabular font-extrabold text-[#0077C8]">
-                        {inst.firstKz.toLocaleString('pt-AO')} Kz
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500 font-semibold">2.ª Parcela (+7 dias início)</p>
-                      <p className="font-mono-tabular font-extrabold text-[#061A2D]">
-                        {inst.secondKz.toLocaleString('pt-AO')} Kz
-                      </p>
-                    </div>
-                  </div>
-                );
-              })()}
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] text-slate-500">Valor Total (ou em 2 Parcelas)</p>
-                  <p className="text-lg font-extrabold font-mono-tabular text-[#061A2D]">
-                    {course.priceKz.toLocaleString('pt-AO')} Kz
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openDirectEnrollment(course);
-                    }}
-                    className="px-4 py-2.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold transition-colors whitespace-nowrap shadow-sm"
-                  >
-                    Inscrever-se Directo
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* 2-STEP MODAL: PASSO 1 (INSCRIÇÃO DIRECTA) -> PASSO 2 (PAGAMENTO DA FORMAÇÃO) */}
@@ -367,13 +522,33 @@ export const CoursesCatalogPage: React.FC = () => {
                 <div>
                   <p className="text-xs font-semibold text-[#19B5FE]">
                     {enrollStep === 'inscricao_directa'
-                      ? 'Passo 1 de 2 · Inscrição Directa Imediata na Formação'
+                      ? 'Passo 1 de 2 · Inscrição Directa Imediata na Formação (Firestore: PENDENTE)'
                       : 'Passo 2 de 2 · Pagamento da Formação para Liberar Acesso'}
                   </p>
                   <h2 className="text-lg sm:text-xl font-bold mt-0.5">{selectedCourse.title}</h2>
-                  <p className="text-xs font-mono-tabular text-[#9AA6AE] mt-1">
-                    Valor: {selectedCourse.priceKz.toLocaleString('pt-AO')} Kz · Carga Horária: {selectedCourse.durationHours}h · Formador: {selectedCourse.instructorName}
-                  </p>
+                  {(() => {
+                    const activeCoupon =
+                      appliedCouponCode ||
+                      (couponInput.trim().toUpperCase() === ALHAN_COUPON_CODE
+                        ? ALHAN_COUPON_CODE
+                        : undefined);
+                    const modalPricing = calculateCourseDiscountedPricing(
+                      selectedCourse.priceKz,
+                      activeCoupon,
+                      applyBlackFriday
+                    );
+                    return (
+                      <p className="text-xs font-mono-tabular text-[#9AA6AE] mt-1">
+                        Valor Final: <strong className="text-emerald-400">{modalPricing.finalPriceKz.toLocaleString('pt-AO')} Kz</strong>{' '}
+                        {modalPricing.effectiveDiscountPercent > 0 && (
+                          <span className="line-through text-slate-500 mr-1">
+                            ({selectedCourse.priceKz.toLocaleString('pt-AO')} Kz)
+                          </span>
+                        )}
+                        · Carga Horária: {selectedCourse.durationHours}h · Formador: {selectedCourse.instructorName}
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
               <button
@@ -417,40 +592,104 @@ export const CoursesCatalogPage: React.FC = () => {
               {enrollStep === 'inscricao_directa' ? (
                 /* PASSO 1: INSCRIÇÃO DIRECTA (Sem exigir pagamento prévio) */
                 <form onSubmit={handleDirectEnrollmentSubmit} className="space-y-4">
-                  <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 space-y-2.5">
+                  <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 space-y-3">
                     <div className="flex items-start gap-3">
                       <CheckCircle2 className="w-5 h-5 text-[#0077C8] shrink-0 mt-0.5" />
                       <div className="space-y-1 text-xs">
                         <p className="font-bold text-[#061A2D]">
-                          Inscrição Directa & Plano de Pagamento em Duas Parcelas
+                          Inscrição Directa (Estado Firestore: PENDENTE) & Plano de Pagamento em Duas Parcelas
                         </p>
                         <p className="text-slate-600 leading-relaxed">
-                          Qualquer formando pode preencher o formulário de inscrição abaixo. A inscrição fica com o estado <strong>PENDENTE</strong> até aprovação do Administrador. Para confirmar a vaga, o pagamento da <strong>1.ª Parcela</strong> é obrigatório no acto da inscrição, sendo a <strong>2.ª Parcela</strong> paga 1 semana após o início da formação.
+                          Qualquer formando pode preencher o formulário de inscrição abaixo. A inscrição fica com o estado <strong>PENDENTE</strong> no Firebase Firestore até aprovação do Administrador. Para confirmar a vaga, o pagamento da <strong>1.ª Parcela</strong> é obrigatório no acto da inscrição, sendo a <strong>2.ª Parcela</strong> paga 1 semana após o início da formação.
                         </p>
                       </div>
                     </div>
+
+                    {/* Interactive Coupon SOUALHAN (25% OFF) & Black Friday Novembro (15% OFF) inside Modal */}
+                    <div className="p-3 rounded-xl bg-[#061A2D] text-white space-y-2.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#E5C97B]">
+                            🎟️ Cupom de Desconto (25% OFF) & Black Friday Novembro (15% OFF)
+                          </span>
+                          <p className="text-xs font-bold text-white mt-0.5">
+                            Título do Cupom de 25%: <span className="font-mono-tabular text-emerald-400">{ALHAN_COUPON_CODE}</span>
+                          </p>
+                        </div>
+                        <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={applyBlackFriday}
+                            onChange={(e) => setApplyBlackFriday(e.target.checked)}
+                            className="rounded border-white/30 text-[#0077C8]"
+                          />
+                          <span>Black Friday Novembro (-{ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT}%)</span>
+                        </label>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          value={couponInput}
+                          onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                          placeholder={`Digite o cupom ${ALHAN_COUPON_CODE}`}
+                          className="flex-1 min-w-[160px] rounded-lg bg-white/10 border border-white/20 px-3 py-1.5 text-xs font-mono-tabular font-bold text-white placeholder:text-slate-400 uppercase focus:outline-none focus:border-[#19B5FE]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleApplyCouponCode()}
+                          className="px-3.5 py-1.5 rounded-lg bg-[#C8A951] hover:bg-[#d8b960] text-[#061A2D] text-xs font-extrabold"
+                        >
+                          Aplicar Cupom
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleApplyCouponCode(ALHAN_COUPON_CODE)}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
+                        >
+                          Usar {ALHAN_COUPON_CODE} (-25%)
+                        </button>
+                      </div>
+                    </div>
+
                     {(() => {
                       const inst = computeCourseInstallments(selectedCourse);
+                      const activeCoupon =
+                        appliedCouponCode ||
+                        (couponInput.trim().toUpperCase() === ALHAN_COUPON_CODE
+                          ? ALHAN_COUPON_CODE
+                          : undefined);
+                      const pr = calculateCourseDiscountedPricing(
+                        selectedCourse.priceKz,
+                        activeCoupon,
+                        applyBlackFriday
+                      );
                       return (
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-sky-200/80 text-xs">
                           <div className="p-2.5 rounded-lg bg-white border border-sky-200">
-                            <p className="text-[10px] font-bold uppercase text-slate-500">Valor Total</p>
-                            <p className="text-sm font-extrabold font-mono-tabular text-[#061A2D]">
-                              {inst.totalKz.toLocaleString('pt-AO')} Kz
+                            <p className="text-[10px] font-bold uppercase text-slate-500">
+                              Valor Total {pr.effectiveDiscountPercent > 0 ? `(-${pr.effectiveDiscountPercent}%)` : ''}
                             </p>
-                            <p className="text-[10px] text-slate-500">Início: {inst.startDate}</p>
+                            <p className="text-sm font-extrabold font-mono-tabular text-[#061A2D]">
+                              {pr.finalPriceKz.toLocaleString('pt-AO')} Kz
+                            </p>
+                            {pr.effectiveDiscountPercent > 0 && (
+                              <p className="text-[10px] text-emerald-700 font-bold">
+                                Poupança: {pr.savingsKz.toLocaleString('pt-AO')} Kz
+                              </p>
+                            )}
                           </div>
                           <div className="p-2.5 rounded-lg bg-white border border-[#0077C8]/40">
                             <p className="text-[10px] font-bold uppercase text-[#0077C8]">1.ª Parcela (Acto Inscrição)</p>
                             <p className="text-sm font-extrabold font-mono-tabular text-[#0077C8]">
-                              {inst.firstKz.toLocaleString('pt-AO')} Kz
+                              {pr.firstInstallmentKz.toLocaleString('pt-AO')} Kz
                             </p>
                             <p className="text-[10px] text-slate-500">Confirmação obrigatória da vaga</p>
                           </div>
                           <div className="p-2.5 rounded-lg bg-white border border-slate-200">
                             <p className="text-[10px] font-bold uppercase text-slate-600">2.ª Parcela (Restante)</p>
                             <p className="text-sm font-extrabold font-mono-tabular text-[#061A2D]">
-                              {inst.secondKz.toLocaleString('pt-AO')} Kz
+                              {pr.secondInstallmentKz.toLocaleString('pt-AO')} Kz
                             </p>
                             <p className="text-[10px] text-slate-500">Vence: {inst.secondDueDate} (+7 dias)</p>
                           </div>
@@ -584,13 +823,27 @@ export const CoursesCatalogPage: React.FC = () => {
                   </div>
 
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200">
-                    <p className="text-xs text-slate-500">
-                      Valor da formação:{' '}
-                      <strong className="font-mono-tabular text-[#061A2D]">
-                        {selectedCourse.priceKz.toLocaleString('pt-AO')} Kz
-                      </strong>{' '}
-                      (pagamento no passo seguinte)
-                    </p>
+                    {(() => {
+                      const activeCoupon =
+                        appliedCouponCode ||
+                        (couponInput.trim().toUpperCase() === ALHAN_COUPON_CODE
+                          ? ALHAN_COUPON_CODE
+                          : undefined);
+                      const pr = calculateCourseDiscountedPricing(
+                        selectedCourse.priceKz,
+                        activeCoupon,
+                        applyBlackFriday
+                      );
+                      return (
+                        <p className="text-xs text-slate-500">
+                          Valor final da formação:{' '}
+                          <strong className="font-mono-tabular text-[#061A2D]">
+                            {pr.finalPriceKz.toLocaleString('pt-AO')} Kz
+                          </strong>{' '}
+                          {pr.discountBadgeLabel ? `(${pr.discountBadgeLabel})` : ''}
+                        </p>
+                      );
+                    })()}
                     <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                       <button
                         type="button"
@@ -617,12 +870,11 @@ export const CoursesCatalogPage: React.FC = () => {
                         <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                         <div>
                           <h3 className="text-xs sm:text-sm font-bold text-emerald-950">
-                            ✓ Inscrição Directa Confirmada (#{createdEnrollment.id})!
+                            ✓ Inscrição Directa Confirmada (#{createdEnrollment.id}) — Estado Firestore: PENDENTE!
                           </h3>
                           <p className="text-xs text-emerald-800 mt-0.5 leading-relaxed">
-                            O aluno <strong>{createdEnrollment.studentName}</strong> já está inscrito em{' '}
-                            <strong>{selectedCourse.title}</strong>. Realize o pagamento agora abaixo ou aceda ao seu{' '}
-                            <strong>Painel do Aluno</strong> para pagar e liberar a formação.
+                            O formando <strong>{createdEnrollment.studentName}</strong> foi registado com o estado <strong>PENDENTE</strong> no Firebase Firestore em{' '}
+                            <strong>{selectedCourse.title}</strong>. Realize o pagamento da 1.ª Parcela abaixo e aguarde a aprovação do Administrador.
                           </p>
                         </div>
                       </div>
@@ -677,6 +929,20 @@ export const CoursesCatalogPage: React.FC = () => {
                       {/* Selector of 1st Installment, 2nd Installment or Full Payment */}
                       {(() => {
                         const inst = computeCourseInstallments(selectedCourse, createdEnrollment?.enrolledAt);
+                        const activeCoupon =
+                          createdEnrollment?.appliedCoupon ||
+                          appliedCouponCode ||
+                          (couponInput.trim().toUpperCase() === ALHAN_COUPON_CODE
+                            ? ALHAN_COUPON_CODE
+                            : undefined);
+                        const pr = calculateCourseDiscountedPricing(
+                          selectedCourse.priceKz,
+                          activeCoupon,
+                          createdEnrollment?.blackFridayApplied ?? applyBlackFriday
+                        );
+                        const firstKz = createdEnrollment?.firstInstallmentAmountKz ?? pr.firstInstallmentKz;
+                        const secondKz = createdEnrollment?.secondInstallmentAmountKz ?? pr.secondInstallmentKz;
+                        const totalKz = createdEnrollment?.amountKz ?? pr.finalPriceKz;
                         return (
                           <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-200 space-y-2.5">
                             <p className="text-xs font-extrabold text-[#061A2D]">
@@ -688,19 +954,19 @@ export const CoursesCatalogPage: React.FC = () => {
                                   {
                                     key: '1ª Parcela',
                                     title: '1.ª Parcela (Confirmar Vaga)',
-                                    amount: inst.firstKz,
+                                    amount: firstKz,
                                     sub: `Obrigatória na inscrição · Vence: ${inst.firstDueDate}`,
                                   },
                                   {
                                     key: '2ª Parcela',
                                     title: '2.ª Parcela (Valor Restante)',
-                                    amount: inst.secondKz,
+                                    amount: secondKz,
                                     sub: `1 semana após início · Vence: ${inst.secondDueDate}`,
                                   },
                                   {
                                     key: 'Pagamento Integral',
                                     title: 'Pagamento Integral (100%)',
-                                    amount: inst.totalKz,
+                                    amount: totalKz,
                                     sub: 'Liquida 1.ª + 2.ª Parcelas',
                                   },
                                 ] as const

@@ -59,6 +59,10 @@ import {
   IsoAuditItem,
   NonConformityItem,
   UserRole,
+  ALHAN_COUPON_CODE,
+  ALHAN_COUPON_DISCOUNT_PERCENT,
+  ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT,
+  calculateCourseDiscountedPricing,
 } from '../data/initialData';
 
 // ==========================================
@@ -71,7 +75,15 @@ const PanelAccessGate: React.FC<{
   panelSubtitle: string;
   children: (onLockPanel: () => void) => React.ReactNode;
 }> = ({ allowedRoles, defaultRole, panelTitle, panelSubtitle, children }) => {
-  const { user, loginWithCredentials, registerAccount, resetPasswordByEmail, logout } = useApp();
+  const {
+    user,
+    registeredUsers,
+    enrollments,
+    loginWithCredentials,
+    registerAccount,
+    resetPasswordByEmail,
+    logout,
+  } = useApp();
   const navigate = useNavigate();
 
   const isRegistrationRequiredRole =
@@ -101,25 +113,63 @@ const PanelAccessGate: React.FC<{
   const [forceLocked, setForceLocked] = useState(false);
 
   const isRoleMatch = !forceLocked && user && allowedRoles.includes(user.role);
+
+  // Resolve Firestore state ('PENDENTE' | 'APROVADO' | 'REJEITADO') for ALUNO and PROFESSOR
+  const matchedRegisteredAcc = user
+    ? registeredUsers.find(
+        (u) =>
+          u.uid === user.uid ||
+          (user.email && u.email.toLowerCase() === user.email.toLowerCase() && u.role === user.role)
+      )
+    : undefined;
+  const matchedStudentEnrollment =
+    user && user.role === 'ALUNO'
+      ? enrollments.find(
+          (e) =>
+            e.studentId === user.uid ||
+            (user.email && e.studentEmail?.toLowerCase() === user.email.toLowerCase())
+        )
+      : undefined;
+
+  const resolvedApprovalStatus: AccountApprovalState =
+    matchedRegisteredAcc?.approvalStatus ||
+    user?.approvalStatus ||
+    matchedStudentEnrollment?.enrollmentApprovalStatus ||
+    'pendente';
+
+  const resolvedFirestoreStatus: 'PENDENTE' | 'APROVADO' | 'REJEITADO' =
+    matchedRegisteredAcc?.firestoreStatus ||
+    user?.firestoreStatus ||
+    matchedStudentEnrollment?.firestoreStatus ||
+    (resolvedApprovalStatus === 'aprovado'
+      ? 'APROVADO'
+      : resolvedApprovalStatus === 'rejeitado' ||
+        resolvedApprovalStatus === 'suspenso' ||
+        resolvedApprovalStatus === 'bloqueado'
+      ? 'REJEITADO'
+      : 'PENDENTE');
+
   const isUnapprovedAccount =
     isRoleMatch &&
     (user.role === 'PROFESSOR' || user.role === 'ALUNO') &&
-    user.approvalStatus !== undefined &&
-    user.approvalStatus !== 'aprovado';
+    (resolvedFirestoreStatus !== 'APROVADO' || resolvedApprovalStatus !== 'aprovado');
 
   if (isUnapprovedAccount && user) {
-    const status = user.approvalStatus || 'pendente';
+    const status = resolvedApprovalStatus || 'pendente';
     const isRejectedOrBlocked =
-      status === 'rejeitado' || status === 'suspenso' || status === 'bloqueado';
+      resolvedFirestoreStatus === 'REJEITADO' ||
+      status === 'rejeitado' ||
+      status === 'suspenso' ||
+      status === 'bloqueado';
     const isProfessor = user.role === 'PROFESSOR';
     const statusLabel =
       status === 'bloqueado'
-        ? 'Conta Bloqueada pela Administração'
+        ? 'FIREBASE FIRESTORE: REJEITADO / CONTA BLOQUEADA'
         : status === 'suspenso'
-        ? 'Conta Suspensa pela Administração'
-        : status === 'rejeitado'
-        ? 'Solicitação Rejeitada pela Administração'
-        : 'PENDENTE — Aguardando Aprovação do Administrador';
+        ? 'FIREBASE FIRESTORE: REJEITADO / CONTA SUSPENSA'
+        : isRejectedOrBlocked
+        ? 'FIREBASE FIRESTORE: REJEITADO PELA ADMINISTRAÇÃO'
+        : 'FIREBASE FIRESTORE: PENDENTE — AGUARDANDO APROVAÇÃO DO ADMINISTRADOR';
 
     return (
       <div className="py-14 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -127,7 +177,7 @@ const PanelAccessGate: React.FC<{
           <div className="bg-[#061A2D] text-white p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 flex items-center justify-center shrink-0">
-                <Clock className="w-6 h-6" />
+                <Lock className="w-6 h-6" />
               </div>
               <div>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-400/20 text-amber-300 text-[11px] font-bold">
@@ -135,11 +185,11 @@ const PanelAccessGate: React.FC<{
                 </span>
                 <h1 className="text-xl sm:text-2xl font-extrabold text-white mt-1.5">
                   {isRejectedOrBlocked
-                    ? `Acesso ao ${isProfessor ? 'Painel do Professor' : 'Painel do Formando'} Indisponível (${status.toUpperCase()})`
-                    : `Solicitação de ${isProfessor ? 'Professor / Formador' : 'Novo Formando'} Recebida — Estado PENDENTE`}
+                    ? `Acesso ao ${isProfessor ? 'Painel do Professor' : 'Painel do Aluno'} Bloqueado (${resolvedFirestoreStatus})`
+                    : `Acesso ao ${isProfessor ? 'Painel do Professor' : 'Painel do Aluno'} Bloqueado — Estado no Firestore: PENDENTE`}
                 </h1>
                 <p className="text-xs text-slate-300 mt-1">
-                  {isProfessor ? 'Painel do Professor' : 'Painel do Formando'} · ALHAN – Sistema de Gestão Integrado
+                  {isProfessor ? 'Painel do Professor' : 'Painel do Formando'} · Controlo de Acesso Firebase Firestore ALHAN – SGI
                 </p>
               </div>
             </div>
@@ -155,16 +205,16 @@ const PanelAccessGate: React.FC<{
             >
               {isRejectedOrBlocked ? (
                 <p>
-                  Prezado(a) <strong>{user.fullName}</strong>, a sua conta encontra-se com o estado{' '}
-                  <strong>{status.toUpperCase()}</strong> pelo Administrador Principal da ALHAN. Para esclarecimentos adicionais, contacte a Direcção da ALHAN.
+                  Prezado(a) <strong>{user.fullName}</strong>, o seu registo no <strong>Firebase Firestore</strong> encontra-se com o estado{' '}
+                  <strong>{resolvedFirestoreStatus}</strong> pelo Administrador Principal da ALHAN. O acesso ao painel permanece bloqueado até que o estado no Firestore seja alterado para <strong>APROVADO</strong>.
                 </p>
               ) : isProfessor ? (
                 <p>
-                  Prezado(a) <strong>{user.fullName}</strong>, a sua solicitação de acesso ao <strong>Painel do Professor</strong> foi registada com o estado <strong>PENDENTE</strong>. O professor só poderá aceder ao painel depois da autorização do Administrador Principal da ALHAN.
+                  Prezado(a) <strong>{user.fullName}</strong>, a sua solicitação de acesso ao <strong>Painel do Professor</strong> foi gravada no <strong>Firebase Firestore</strong> com o estado <strong>PENDENTE</strong>. O acesso ao painel está bloqueado até que o Administrador altere o estado no Firestore para <strong>APROVADO</strong>.
                 </p>
               ) : (
                 <p>
-                  Prezado(a) <strong>{user.fullName}</strong>, a sua inscrição foi registada com o estado <strong>PENDENTE</strong> até à aprovação do Administrador Principal da ALHAN. <strong>Apenas após aprovação o formando poderá aceder ao painel e aos cursos.</strong>
+                  Prezado(a) <strong>{user.fullName}</strong>, a sua inscrição de novo formando foi gravada no <strong>Firebase Firestore</strong> com o estado <strong>PENDENTE</strong>. <strong>O acesso ao Painel do Aluno e aos cursos está bloqueado até que o estado no Firestore seja alterado para APROVADO pelo Administrador Principal da ALHAN.</strong>
                 </p>
               )}
             </div>
@@ -638,6 +688,7 @@ export const StudentPortal: React.FC = () => {
     certificateRequests,
     notifications,
     createEnrollment,
+    applyDiscountToEnrollment,
     submitStudentPaymentProof,
     completeLesson,
     issueCertificate,
@@ -646,6 +697,9 @@ export const StudentPortal: React.FC = () => {
     logout,
   } = useApp();
   const navigate = useNavigate();
+
+  const [studentCouponInput, setStudentCouponInput] = useState<string>('');
+  const [studentCouponMsg, setStudentCouponMsg] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
     | 'Dashboard'
@@ -1481,9 +1535,26 @@ export const StudentPortal: React.FC = () => {
             {/* Cartões Detalhados de Valor Total, 1.ª Parcela, 2.ª Parcela, Vencimentos e Estados por Inscrição */}
             {myEnrollments.length > 0 && (
               <div className="space-y-4">
-                <h3 className="text-sm font-extrabold text-[#061A2D]">
-                  Resumo Financeiro das Suas Inscrições (Valor Total, 1.ª Parcela e 2.ª Parcela)
-                </h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <h3 className="text-sm font-extrabold text-[#061A2D]">
+                    Resumo Financeiro das Suas Inscrições (Valor Total, 1.ª Parcela e 2.ª Parcela)
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="px-2.5 py-1 rounded bg-amber-100 text-amber-900 font-extrabold text-[11px]">
+                      🔥 Black Friday Novembro (-{ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT}%)
+                    </span>
+                    <span className="px-2.5 py-1 rounded bg-emerald-100 text-emerald-900 font-extrabold text-[11px]">
+                      🎟️ Cupom {ALHAN_COUPON_CODE} (-{ALHAN_COUPON_DISCOUNT_PERCENT}%)
+                    </span>
+                  </div>
+                </div>
+
+                {studentCouponMsg && (
+                  <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-900">
+                    {studentCouponMsg}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 gap-4">
                   {myEnrollments.map((enr) => {
                     const courseObj = courses.find((c) => c.id === enr.courseId);
@@ -1526,8 +1597,15 @@ export const StudentPortal: React.FC = () => {
                                     : 'bg-amber-100 text-amber-800'
                                 }`}
                               >
-                                Inscrição: {approvalSt.toUpperCase()}
+                                Firestore: {(enr.firestoreStatus || approvalSt).toUpperCase()}
                               </span>
+                              {enr.discountPercent && enr.discountPercent > 0 ? (
+                                <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-extrabold">
+                                  {enr.appliedCoupon
+                                    ? `Cupom ${enr.appliedCoupon} (-${enr.discountPercent}%)`
+                                    : `Black Friday Novembro (-${enr.discountPercent}%)`}
+                                </span>
+                              ) : null}
                             </div>
                             <p className="text-[11px] text-slate-500 mt-0.5">
                               Inscrição #{enr.id} · Data de Inscrição: {enr.enrolledAt} · Início da Formação:{' '}
@@ -1538,11 +1616,63 @@ export const StudentPortal: React.FC = () => {
                             <p className="text-[10px] uppercase font-bold text-slate-500">
                               Valor Total da Formação
                             </p>
+                            {enr.originalAmountKz && enr.originalAmountKz > enr.amountKz && (
+                              <p className="text-[11px] line-through text-slate-400 font-mono-tabular">
+                                {enr.originalAmountKz.toLocaleString('pt-AO')} Kz
+                              </p>
+                            )}
                             <p className="text-lg font-extrabold font-mono-tabular text-[#061A2D]">
                               {enr.amountKz.toLocaleString('pt-AO')} Kz
                             </p>
                           </div>
                         </div>
+
+                        {/* Barra de Aplicação do Cupom SOUALHAN (25%) ou Black Friday Novembro (15%) */}
+                        {enr.paymentStatus !== 'Pago' && (
+                          <div className="p-3 rounded-xl bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                            <div>
+                              <p className="font-extrabold text-[#061A2D]">
+                                🎟️ Cupom de Desconto «{ALHAN_COUPON_CODE}» (-25%) & Black Friday Novembro (-15%)
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                Aplique o cupom <strong>{ALHAN_COUPON_CODE}</strong> para obter 25% de desconto sobre as 2 parcelas desta formação.
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 shrink-0">
+                              <input
+                                type="text"
+                                value={studentCouponInput}
+                                onChange={(e) => setStudentCouponInput(e.target.value.toUpperCase())}
+                                placeholder={`Cupom: ${ALHAN_COUPON_CODE}`}
+                                className="w-32 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-mono-tabular font-bold uppercase text-[#061A2D]"
+                              />
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const code = studentCouponInput.trim() || ALHAN_COUPON_CODE;
+                                  await applyDiscountToEnrollment(enr.id, code, true);
+                                  const pr = calculateCourseDiscountedPricing(
+                                    enr.originalAmountKz || courseObj?.priceKz || enr.amountKz,
+                                    code,
+                                    true
+                                  );
+                                  setStudentCouponMsg(
+                                    `✓ Desconto aplicado na inscrição #${enr.id}! Novo valor total: ${pr.finalPriceKz.toLocaleString(
+                                      'pt-AO'
+                                    )} Kz (1.ª Parcela: ${pr.firstInstallmentKz.toLocaleString(
+                                      'pt-AO'
+                                    )} Kz · 2.ª Parcela: ${pr.secondInstallmentKz.toLocaleString(
+                                      'pt-AO'
+                                    )} Kz).`
+                                  );
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold"
+                              >
+                                Aplicar Cupom {ALHAN_COUPON_CODE} (-25%)
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                           {/* Valor Total */}
@@ -3664,6 +3794,7 @@ export const AdminPortal: React.FC = () => {
     resetPasswordByEmail,
     deleteRegisteredUser,
     deleteEnrollment,
+    purgeStudentAccountByEmail,
     courses,
     isoStandards,
     enrollments,
@@ -3726,6 +3857,13 @@ export const AdminPortal: React.FC = () => {
     deleteImpactReport,
     impactAuditLogs,
   } = useApp();
+
+  // Mecanismo Firebase Firestore — Filtro da Tabela de Pendências (Formandos e Professores) & Exclusão de Conta para Novo Cadastro
+  const [firestorePendingFilter, setFirestorePendingFilter] = useState<
+    'TODOS' | 'PENDENTE' | 'APROVADO' | 'REJEITADO'
+  >('TODOS');
+  const [purgeEmailTarget, setPurgeEmailTarget] = useState<string>('joaomuatxissombo22@gmail.com');
+  const [purgeFeedbackMsg, setPurgeFeedbackMsg] = useState<string | null>(null);
 
   // MÓDULO 2 & 5 — Estado para "GESTÃO DE CERTIFICADOS" no Painel Administrativo
   const [certFilterName, setCertFilterName] = useState('');
@@ -4490,133 +4628,316 @@ export const AdminPortal: React.FC = () => {
           </div>
         </div>
 
-        {/* CENTRAL GLOBAL DE APROVAÇÃO DE TODOS OS CADASTROS DE ALUNOS E SOLICITAÇÕES DE CERTIFICADOS (SEMPRE VISÍVEL NO DASHBOARD) */}
-        {activeModule === 'Dashboard & Indicadores' && (
+        {/* MECANISMO FIREBASE FIRESTORE — TABELA UNIFICADA DE PENDÊNCIAS (INSCRIÇÕES DE NOVOS FORMANDOS & SOLICITAÇÕES DE PROFESSORES) */}
+        {(activeModule === 'Dashboard & Indicadores' ||
+          activeModule === 'Inscrições & Pagamentos Angola' ||
+          activeModule === 'Utilizadores, Parceiros & Configurações') && (
           <div className="bg-white rounded-2xl border-2 border-[#0077C8] p-6 space-y-5 shadow-xs">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#0077C8]/10 text-[#0077C8] text-[11px] font-extrabold uppercase tracking-wider">
-                    <Users className="w-3.5 h-3.5" />
-                    <span>Controlo de Cadastros de Formandos & Solicitações de Certificados</span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#061A2D] text-[#19B5FE] text-[11px] font-extrabold uppercase tracking-wider">
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>Mecanismo Firebase Firestore · Estado PENDENTE → APROVADO / REJEITADO / ELIMINAR</span>
                   </span>
-                  {(pendingStudentsCount > 0 || pendingEnrollmentsApprovalCount > 0) && (
+                  {(pendingStudentsCount > 0 ||
+                    pendingEnrollmentsApprovalCount > 0 ||
+                    pendingProfessorsCount > 0) && (
                     <span className="px-2.5 py-1 rounded bg-amber-100 text-amber-900 text-[11px] font-extrabold">
-                      {Math.max(pendingStudentsCount, pendingEnrollmentsApprovalCount)} Cadastro(s) de Aluno Aguardam Aprovação
+                      {Math.max(pendingStudentsCount, pendingEnrollmentsApprovalCount) +
+                        pendingProfessorsCount}{' '}
+                      Pendência(s) no Firestore Aguardam Decisão
                     </span>
                   )}
                 </div>
                 <h2 className="text-lg font-extrabold text-[#061A2D]">
-                  Todos os Cadastros de Alunos (Para Aprovação do ADM) e Solicitações de Certificados PDF
+                  Tabela de Pendências no Firebase Firestore (Inscrições de Novos Formandos e Solicitações de Professores)
                 </h2>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  Todos os cadastros de alunos aparecem abaixo para aprovação pelo Administrador. Os certificados nunca são gerados online pelo aluno — o ADM deve anexar e enviar o certificado em PDF após a solicitação do aluno.
+                <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                  Novas inscrições de formandos e solicitações de professores entram automaticamente com o estado{' '}
+                  <strong className="text-amber-700">PENDENTE</strong> no Firebase Firestore. O acesso ao Painel do Aluno (<code>/aluno</code>) e ao Painel do Professor (<code>/professor</code>) permanece bloqueado até que o estado seja alterado para{' '}
+                  <strong className="text-emerald-700">APROVADO</strong>.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                {(['TODOS', 'PENDENTE', 'APROVADO', 'REJEITADO'] as const).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setFirestorePendingFilter(st)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors ${
+                      firestorePendingFilter === st
+                        ? 'bg-[#0077C8] text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {st === 'TODOS' ? 'Todos os Registos' : `Estado: ${st}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Ferramenta de Exclusão de Conta de Formando para Novo Cadastro (joaomuatxissombo22@gmail.com) */}
+            <div className="p-4 rounded-xl bg-[#F5F9FC] border border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-1 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 text-[10px] font-extrabold uppercase">
+                    ✓ Conta de Formando Excluída para Novo Cadastro
+                  </span>
+                  <span className="font-mono-tabular font-bold text-[#0077C8]">
+                    joaomuatxissombo22@gmail.com
+                  </span>
+                </div>
+                <p className="text-slate-600">
+                  A conta de formando e inscrições associadas a <strong>joaomuatxissombo22@gmail.com</strong> foram excluídas do sistema e do Firestore para permitir novo cadastro do zero (com estado inicial <strong>PENDENTE</strong>). Pode também excluir qualquer outro e-mail de formando abaixo:
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <input
+                  type="email"
+                  value={purgeEmailTarget}
+                  onChange={(e) => setPurgeEmailTarget(e.target.value)}
+                  placeholder="E-mail do formando a excluir..."
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-mono-tabular text-[#061A2D] w-60"
+                />
                 <button
                   type="button"
-                  onClick={() => setActiveModule('Inscrições & Pagamentos Angola')}
-                  className="px-3.5 py-2 rounded-lg bg-[#061A2D] hover:bg-[#0077C8] text-white text-xs font-bold"
+                  onClick={async () => {
+                    const removedCount = await purgeStudentAccountByEmail(purgeEmailTarget);
+                    setPurgeFeedbackMsg(
+                      `✓ Conta de formando «${purgeEmailTarget}» excluída com sucesso (${removedCount} registo(s) removido(s) do sistema e do Firestore). Já pode cadastrar-se novamente!`
+                    );
+                    setTimeout(() => setPurgeFeedbackMsg(null), 6000);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold"
                 >
-                  Ver Gestão Completa de Alunos ({registeredStudents.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveModule('GESTÃO DE CERTIFICADOS')}
-                  className="px-3.5 py-2 rounded-lg bg-[#0077C8] hover:bg-[#008FEA] text-white text-xs font-bold"
-                >
-                  Ver Solicitações de Certificados ({certificateRequests.length})
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Excluir Conta de Formando para Novo Cadastro</span>
                 </button>
               </div>
             </div>
 
+            {purgeFeedbackMsg && (
+              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-900">
+                {purgeFeedbackMsg}
+              </div>
+            )}
+
+            {/* Tabela Unificada Firebase Firestore: Formandos (ALUNO) + Professores (PROFESSOR) */}
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-[#F5F9FC] border-b border-slate-200 text-slate-600">
-                    <th className="py-2.5 px-3">Formando / Aluno Cadastrado</th>
-                    <th className="py-2.5 px-3">Curso Inscrito & Pagamento</th>
-                    <th className="py-2.5 px-3">Estado do Cadastro / Inscrição</th>
+                  <tr className="bg-[#061A2D] text-white">
+                    <th className="py-2.5 px-3">Tipo de Registo</th>
+                    <th className="py-2.5 px-3">Nome Completo & Contacto</th>
+                    <th className="py-2.5 px-3">Curso Inscrito / Especialidade & Desconto</th>
+                    <th className="py-2.5 px-3">Estado no Firebase Firestore</th>
                     <th className="py-2.5 px-3">Solicitação de Certificado PDF</th>
-                    <th className="py-2.5 px-3">Acções Administrativas (Aprovar Aluno / Enviar PDF)</th>
+                    <th className="py-2.5 px-3">Acções no Firestore (Aprovar / Rejeitar / Eliminar)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {registeredStudents.map((stu) => {
-                    const stuEnr = enrollments.find(
-                      (e) =>
-                        e.studentEmail?.toLowerCase() === stu.email.toLowerCase() ||
-                        e.studentId === stu.uid
-                    );
-                    const stuReq = certificateRequests.find(
-                      (r) =>
-                        r.studentEmail.toLowerCase() === stu.email.toLowerCase() ||
-                        (stuEnr && r.enrollmentId === stuEnr.id)
-                    );
-                    const appState: AccountApprovalState =
-                      stu.approvalStatus || stuEnr?.enrollmentApprovalStatus || 'pendente';
+                  {(() => {
+                    // Build unified rows combining all registered ALUNO / PROFESSOR accounts and any orphan enrollments
+                    const unifiedRows: {
+                      key: string;
+                      role: 'ALUNO' | 'PROFESSOR';
+                      uid?: string;
+                      enrollment?: EnrollmentItem;
+                      fullName: string;
+                      email: string;
+                      phone: string;
+                      detailTitle: string;
+                      detailSub: string;
+                      firestoreState: 'PENDENTE' | 'APROVADO' | 'REJEITADO';
+                      certReq?: CertificateRequestItem;
+                    }[] = [];
 
-                    return (
+                    registeredUsers
+                      .filter((u) => u.role === 'ALUNO' || u.role === 'PROFESSOR')
+                      .forEach((u) => {
+                        const stuEnr =
+                          u.role === 'ALUNO'
+                            ? enrollments.find(
+                                (e) =>
+                                  e.studentId === u.uid ||
+                                  (u.email && e.studentEmail?.toLowerCase() === u.email.toLowerCase())
+                              )
+                            : undefined;
+                        const stuReq =
+                          u.role === 'ALUNO'
+                            ? certificateRequests.find(
+                                (r) =>
+                                  r.studentEmail.toLowerCase() === u.email.toLowerCase() ||
+                                  (stuEnr && r.enrollmentId === stuEnr.id)
+                              )
+                            : undefined;
+                        const rawState =
+                          u.approvalStatus || stuEnr?.enrollmentApprovalStatus || 'pendente';
+                        const fsState: 'PENDENTE' | 'APROVADO' | 'REJEITADO' =
+                          u.firestoreStatus ||
+                          stuEnr?.firestoreStatus ||
+                          (rawState === 'aprovado'
+                            ? 'APROVADO'
+                            : rawState === 'rejeitado' ||
+                              rawState === 'suspenso' ||
+                              rawState === 'bloqueado'
+                            ? 'REJEITADO'
+                            : 'PENDENTE');
+
+                        unifiedRows.push({
+                          key: `usr-${u.uid}`,
+                          role: u.role === 'PROFESSOR' ? 'PROFESSOR' : 'ALUNO',
+                          uid: u.uid,
+                          enrollment: stuEnr,
+                          fullName: u.fullName,
+                          email: u.email,
+                          phone: u.phone,
+                          detailTitle:
+                            u.role === 'PROFESSOR'
+                              ? u.specialty || 'Formador / Professor SGI & HSE'
+                              : stuEnr?.courseTitle || 'Conta de Formando Cadastrada',
+                          detailSub:
+                            u.role === 'PROFESSOR'
+                              ? `Utilizador: ${u.username} · Acesso ao Painel do Professor`
+                              : stuEnr
+                              ? `Total: ${stuEnr.amountKz.toLocaleString('pt-AO')} Kz${
+                                  stuEnr.appliedCoupon
+                                    ? ` (Cupom ${stuEnr.appliedCoupon} -25%)`
+                                    : stuEnr.blackFridayApplied
+                                    ? ' (Black Friday -15%)'
+                                    : ''
+                                } · 1.ª Parc: ${stuEnr.firstInstallmentStatus || stuEnr.paymentStatus}`
+                              : `Utilizador: ${u.username}`,
+                          firestoreState: fsState,
+                          certReq: stuReq,
+                        });
+                      });
+
+                    // Also include any enrollment whose student is not yet in registeredUsers
+                    enrollments.forEach((enr) => {
+                      const alreadyListed = unifiedRows.some(
+                        (r) =>
+                          r.enrollment?.id === enr.id ||
+                          (enr.studentEmail &&
+                            r.email.toLowerCase() === enr.studentEmail.toLowerCase())
+                      );
+                      if (!alreadyListed) {
+                        const rawState = enr.enrollmentApprovalStatus || 'pendente';
+                        const fsState: 'PENDENTE' | 'APROVADO' | 'REJEITADO' =
+                          enr.firestoreStatus ||
+                          (rawState === 'aprovado'
+                            ? 'APROVADO'
+                            : rawState === 'rejeitado'
+                            ? 'REJEITADO'
+                            : 'PENDENTE');
+                        const stuReq = certificateRequests.find((r) => r.enrollmentId === enr.id);
+                        unifiedRows.push({
+                          key: `enr-${enr.id}`,
+                          role: 'ALUNO',
+                          enrollment: enr,
+                          fullName: enr.studentName,
+                          email: enr.studentEmail || '—',
+                          phone: enr.studentPhone || '—',
+                          detailTitle: enr.courseTitle,
+                          detailSub: `Total: ${enr.amountKz.toLocaleString('pt-AO')} Kz${
+                            enr.appliedCoupon
+                              ? ` (Cupom ${enr.appliedCoupon} -25%)`
+                              : enr.blackFridayApplied
+                              ? ' (Black Friday -15%)'
+                              : ''
+                          } · 1.ª Parc: ${enr.firstInstallmentStatus || enr.paymentStatus}`,
+                          firestoreState: fsState,
+                          certReq: stuReq,
+                        });
+                      }
+                    });
+
+                    const filteredRows = unifiedRows.filter(
+                      (r) =>
+                        firestorePendingFilter === 'TODOS' ||
+                        r.firestoreState === firestorePendingFilter
+                    );
+
+                    if (filteredRows.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={6} className="py-6 px-4 text-center text-slate-500">
+                            Nenhum registo de formando ou professor encontrado com o filtro «{firestorePendingFilter}».
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return filteredRows.map((row) => (
                       <tr
-                        key={stu.uid}
+                        key={row.key}
                         className={
-                          appState === 'pendente' ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-slate-50'
+                          row.firestoreState === 'PENDENTE'
+                            ? 'bg-amber-50/50 hover:bg-amber-50/80'
+                            : 'hover:bg-slate-50'
                         }
                       >
                         <td className="py-3 px-3">
-                          <p className="font-extrabold text-[#061A2D]">{stu.fullName}</p>
-                          <p className="text-[11px] text-slate-500">
-                            {stu.email} · Tel: {stu.phone}
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                              row.role === 'PROFESSOR'
+                                ? 'bg-indigo-100 text-indigo-900 border border-indigo-300'
+                                : 'bg-sky-100 text-[#0077C8] border border-sky-300'
+                            }`}
+                          >
+                            {row.role === 'PROFESSOR' ? 'Solicitação Professor' : 'Inscrição Formando'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <p className="font-extrabold text-[#061A2D]">{row.fullName}</p>
+                          <p className="text-[11px] text-slate-500 font-mono-tabular">
+                            {row.email} · {row.phone}
                           </p>
                         </td>
                         <td className="py-3 px-3">
-                          {stuEnr ? (
-                            <>
-                              <p className="font-bold text-[#0077C8]">{stuEnr.courseTitle}</p>
-                              <p className="text-[11px] text-slate-500 font-mono-tabular">
-                                1.ª Parcela: {stuEnr.firstInstallmentStatus || stuEnr.paymentStatus} · 2.ª Parcela:{' '}
-                                {stuEnr.secondInstallmentStatus || 'Pendente'}
-                              </p>
-                            </>
-                          ) : (
-                            <span className="text-slate-400">Conta registada (sem curso activo)</span>
-                          )}
+                          <p className="font-bold text-[#0077C8]">{row.detailTitle}</p>
+                          <p className="text-[11px] text-slate-500 font-mono-tabular">{row.detailSub}</p>
                         </td>
                         <td className="py-3 px-3">
                           <span
                             className={`inline-flex px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                              appState === 'aprovado'
+                              row.firestoreState === 'APROVADO'
                                 ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                                : appState === 'rejeitado' || appState === 'suspenso'
+                                : row.firestoreState === 'REJEITADO'
                                 ? 'bg-rose-100 text-rose-900 border border-rose-300'
                                 : 'bg-amber-100 text-amber-900 border border-amber-300'
                             }`}
                           >
-                            {appState.toUpperCase()}
+                            {row.firestoreState}
                           </span>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            {row.firestoreState === 'APROVADO'
+                              ? 'Acesso ao painel liberado'
+                              : 'Painel bloqueado até APROVADO'}
+                          </p>
                         </td>
                         <td className="py-3 px-3">
-                          {stuReq ? (
+                          {row.role === 'PROFESSOR' ? (
+                            <span className="text-[11px] text-slate-400">N/A (Docente)</span>
+                          ) : row.certReq ? (
                             <div>
                               <span
                                 className={`inline-block px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                                  stuReq.status === 'DISPONÍVEL' && stuReq.certificateFileUrl
+                                  row.certReq.status === 'DISPONÍVEL' && row.certReq.certificateFileUrl
                                     ? 'bg-emerald-100 text-emerald-900'
                                     : 'bg-amber-100 text-amber-900'
                                 }`}
                               >
-                                {stuReq.status === 'DISPONÍVEL' && stuReq.certificateFileUrl
+                                {row.certReq.status === 'DISPONÍVEL' && row.certReq.certificateFileUrl
                                   ? 'PDF ENVIADO PELO ADM'
-                                  : `SOLICITADO (${stuReq.status})`}
+                                  : `SOLICITADO (${row.certReq.status})`}
                               </span>
-                              <p className="text-[10px] text-slate-500 mt-0.5 font-mono-tabular">
-                                Pedido em {new Date(stuReq.requestDate).toLocaleDateString('pt-AO')}
-                              </p>
                             </div>
-                          ) : stuEnr?.certificateRequested ? (
+                          ) : row.enrollment?.certificateRequested ? (
                             <span className="inline-block px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-extrabold uppercase">
-                              SOLICITADO PELO ALUNO (AGUARDA PDF DO ADM)
+                              AGUARDA PDF DO ADM
                             </span>
                           ) : (
                             <span className="text-[11px] text-slate-400">Não solicitado</span>
@@ -4624,62 +4945,81 @@ export const AdminPortal: React.FC = () => {
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            {appState !== 'aprovado' && (
+                            {row.firestoreState !== 'APROVADO' && (
                               <button
                                 type="button"
                                 onClick={async () => {
-                                  await updateUserApprovalStatus(stu.uid, 'aprovado');
-                                  if (stuEnr) {
-                                    await updateEnrollmentApprovalStatus(stuEnr.id, 'aprovado');
+                                  if (row.uid) {
+                                    await updateUserApprovalStatus(row.uid, 'aprovado');
+                                  }
+                                  if (row.enrollment) {
+                                    await updateEnrollmentApprovalStatus(row.enrollment.id, 'aprovado');
                                   }
                                 }}
                                 className="px-2.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold"
                               >
-                                ✓ Aprovar Cadastro do Aluno
+                                ✓ Aprovar (APROVADO)
                               </button>
                             )}
-                            {appState !== 'rejeitado' && (
+                            {row.firestoreState !== 'REJEITADO' && (
                               <button
                                 type="button"
                                 onClick={async () => {
-                                  await updateUserApprovalStatus(stu.uid, 'rejeitado');
-                                  if (stuEnr) {
-                                    await updateEnrollmentApprovalStatus(stuEnr.id, 'rejeitado');
+                                  if (row.uid) {
+                                    await updateUserApprovalStatus(row.uid, 'rejeitado');
+                                  }
+                                  if (row.enrollment) {
+                                    await updateEnrollmentApprovalStatus(row.enrollment.id, 'rejeitado');
                                   }
                                 }}
                                 className="px-2.5 py-1.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-bold"
                               >
-                                Rejeitar
+                                Rejeitar (REJEITADO)
                               </button>
                             )}
-                            {stuReq ? (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (row.enrollment) {
+                                  await deleteEnrollment(row.enrollment.id);
+                                }
+                                if (row.uid) {
+                                  await deleteRegisteredUser(row.uid);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Eliminar</span>
+                            </button>
+                            {row.certReq ? (
                               <button
                                 type="button"
                                 onClick={() => {
-                                  openAdminCertificateRequest(stuReq);
+                                  openAdminCertificateRequest(row.certReq!);
                                   const el = document.getElementById('gestao-certificados');
                                   el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                                 }}
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold"
                               >
                                 <Upload className="w-3 h-3" />
-                                <span>Anexar e Enviar Certificado PDF</span>
+                                <span>Enviar PDF</span>
                               </button>
-                            ) : stuEnr ? (
+                            ) : row.enrollment ? (
                               <button
                                 type="button"
-                                onClick={() => handleInstantReturnCertificateToStudent(stuEnr)}
+                                onClick={() => handleInstantReturnCertificateToStudent(row.enrollment!)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#061A2D] hover:bg-[#0077C8] text-white text-[11px] font-bold"
                               >
                                 <Upload className="w-3 h-3" />
-                                <span>Enviar Certificado PDF</span>
+                                <span>Enviar PDF</span>
                               </button>
                             ) : null}
                           </div>
                         </td>
                       </tr>
-                    );
-                  })}
+                    ));
+                  })()}
                 </tbody>
               </table>
             </div>

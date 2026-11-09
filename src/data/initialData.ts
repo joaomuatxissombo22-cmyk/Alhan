@@ -47,7 +47,76 @@ export interface CourseItem {
   firstInstallmentKz?: number;
   secondInstallmentKz?: number;
   courseStartDate?: string;
+  blackFridayDiscountPercent?: number;
   createdAt: string;
+}
+
+export const ALHAN_COUPON_CODE = 'SOUALHAN';
+export const ALHAN_COUPON_DISCOUNT_PERCENT = 25;
+export const ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT = 15;
+
+export interface CourseDiscountCalculation {
+  originalPriceKz: number;
+  blackFridayApplied: boolean;
+  blackFridayPercent: number;
+  blackFridayPriceKz: number;
+  couponCode: string;
+  couponValid: boolean;
+  couponPercent: number;
+  effectiveDiscountPercent: number;
+  finalPriceKz: number;
+  savingsKz: number;
+  firstInstallmentKz: number;
+  secondInstallmentKz: number;
+  discountBadgeLabel: string;
+}
+
+export function calculateCourseDiscountedPricing(
+  basePriceKz: number,
+  rawCouponCode?: string,
+  applyBlackFriday = true
+): CourseDiscountCalculation {
+  const safeBase = Math.max(0, Number(basePriceKz) || 0);
+  const normalizedCoupon = (rawCouponCode || '').trim().toUpperCase();
+  const couponValid = normalizedCoupon === ALHAN_COUPON_CODE;
+  const blackFridayPercent = applyBlackFriday ? ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT : 0;
+  const couponPercent = couponValid ? ALHAN_COUPON_DISCOUNT_PERCENT : 0;
+
+  // Black Friday Novembro gives 15% off all training courses; Coupon SOUALHAN gives 25% off
+  // When coupon SOUALHAN is applied on top of Black Friday or standalone, we apply 25% coupon (or 15% Black Friday + 25% Coupon = 25% or combined; let's make SOUALHAN apply 25% off, and if both are active let's clearly show both and apply the 25% SOUALHAN or cumulative 36.25% / 25% — wait: user asked "incluir cupom de disconto de 25% de desconto tilo do cupom SOUALHAN, e incluir blackfriday Novembro nas formaçãoes desconto de 15%").
+  // Let's make Black Friday Novembro (15% off) the automatic campaign price on courses, and when the user enters SOUALHAN (25% off), they get the 25% discount (or if they stack, let's check: 25% discount when SOUALHAN is used, or 15% Black Friday default). Even better: let's support both clearly! If couponValid is true, effectiveDiscountPercent = 25 (or if stacking is desired, let's check: usually a 25% coupon `SOUALHAN` gives 25% discount, while Black Friday Novembro gives 15% discount on courses by default). Let's also allow the user/student to see the Black Friday 15% price and apply `SOUALHAN` for 25% discount (or 15% + 25% = 40% if stacked? Wait: "incluir cupom de disconto de 25% de desconto tilo do cupom SOUALHAN, e incluir blackfriday Novembro nas formaçãoes desconto de 15%"). Having Black Friday 15% by default on formations and 25% when coupon SOUALHAN is applied (or 15% Black Friday + 25% Coupon SOUALHAN) — let's make `blackFridayPriceKz = Math.round(safeBase * 0.85)` (15% off) and when `SOUALHAN` is applied, `finalPriceKz = Math.round(safeBase * 0.75)` (25% off) or if applied on Black Friday course price, let's check what is clearest: showing Original Price, Black Friday Novembro (-15%), and Cupom SOUALHAN (-25%). Let's make `effectiveDiscountPercent = couponValid ? 25 : (applyBlackFriday ? 15 : 0)` AND also expose `blackFridayPriceKz` so both 15% (Black Friday Novembro) and 25% (Cupom SOUALHAN) are crystal-clear!
+  const blackFridayPriceKz = Math.round(safeBase * (1 - ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT / 100));
+  const effectiveDiscountPercent = couponValid
+    ? ALHAN_COUPON_DISCOUNT_PERCENT
+    : applyBlackFriday
+    ? ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT
+    : 0;
+  const finalPriceKz = Math.round(safeBase * (1 - effectiveDiscountPercent / 100));
+  const savingsKz = Math.max(0, safeBase - finalPriceKz);
+  const firstInstallmentKz = Math.round(finalPriceKz / 2);
+  const secondInstallmentKz = Math.max(0, finalPriceKz - firstInstallmentKz);
+
+  const discountBadgeLabel = couponValid
+    ? `Cupom ${ALHAN_COUPON_CODE} (-25%) Aplicado`
+    : applyBlackFriday
+    ? 'Black Friday Novembro (-15%)'
+    : 'Preço Normal';
+
+  return {
+    originalPriceKz: safeBase,
+    blackFridayApplied: applyBlackFriday,
+    blackFridayPercent,
+    blackFridayPriceKz,
+    couponCode: couponValid ? ALHAN_COUPON_CODE : normalizedCoupon,
+    couponValid,
+    couponPercent,
+    effectiveDiscountPercent,
+    finalPriceKz,
+    savingsKz,
+    firstInstallmentKz,
+    secondInstallmentKz,
+    discountBadgeLabel,
+  };
 }
 
 export interface IsoStandardItem {
@@ -106,6 +175,10 @@ export interface EnrollmentItem {
   courseTitle: string;
   modality: 'Online' | 'Presencial' | 'Híbrida';
   amountKz: number;
+  originalAmountKz?: number;
+  discountPercent?: number;
+  appliedCoupon?: string;
+  blackFridayApplied?: boolean;
   paymentMethod:
     | 'Express Angola'
     | 'BANCO SOL (IBAN)'
@@ -117,8 +190,9 @@ export interface EnrollmentItem {
   receiptNote: string;
   receiptFileUrl?: string;
   receiptFileName?: string;
-  paymentStatus: 'Pendente' | 'Pago' | 'Falhado' | 'Cancelado' | 'Reembolsado';
+  paymentStatus: 'PENDENTE' | 'APROVADO' | 'REJEITADO' | 'Pendente' | 'Pago' | 'Falhado' | 'Cancelado' | 'Reembolsado';
   enrollmentApprovalStatus?: 'pendente' | 'aprovado' | 'rejeitado';
+  firestoreStatus?: 'PENDENTE' | 'APROVADO' | 'REJEITADO';
   courseStartDate?: string;
   firstInstallmentAmountKz?: number;
   firstInstallmentDueDate?: string;

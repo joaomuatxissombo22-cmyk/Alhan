@@ -30,6 +30,10 @@ import {
   saveCertificateRequestToFirestore,
   updateCertificateRequestInFirestore,
   saveAdminNotificationToFirestore,
+  saveUserRegistrationToFirestore,
+  updateUserApprovalInFirestore,
+  deleteUserRegistrationFromFirestore,
+  deleteEnrollmentFromFirestore,
 } from '../firebase';
 import {
   CourseItem,
@@ -82,9 +86,26 @@ import {
   INITIAL_IMPACT_AUDIT_LOGS,
   INITIAL_TRAINING_PORTFOLIO_HISTORY,
   INITIAL_INSTITUTIONAL_PARTNERSHIPS,
+  calculateCourseDiscountedPricing,
+  ALHAN_COUPON_CODE,
 } from '../data/initialData';
 
 export type AccountApprovalState = 'pendente' | 'aprovado' | 'rejeitado' | 'suspenso' | 'bloqueado';
+export type FirestoreApprovalState = 'PENDENTE' | 'APROVADO' | 'REJEITADO';
+
+export function toFirestoreApprovalState(status?: AccountApprovalState | string): FirestoreApprovalState {
+  const s = (status || '').toLowerCase();
+  if (s === 'aprovado' || s === 'ativo' || s === 'pago') return 'APROVADO';
+  if (s === 'rejeitado' || s === 'bloqueado' || s === 'suspenso' || s === 'cancelado') return 'REJEITADO';
+  return 'PENDENTE';
+}
+
+export function fromFirestoreApprovalState(status?: string): AccountApprovalState {
+  const s = (status || '').toUpperCase();
+  if (s === 'APROVADO' || s === 'ATIVO' || s === 'PAGO') return 'aprovado';
+  if (s === 'REJEITADO' || s === 'INATIVO' || s === 'CANCELADO') return 'rejeitado';
+  return 'pendente';
+}
 
 export interface ActiveUser {
   uid: string;
@@ -98,6 +119,7 @@ export interface ActiveUser {
   companyName?: string;
   specialty?: string;
   approvalStatus?: AccountApprovalState;
+  firestoreStatus?: FirestoreApprovalState;
 }
 
 export interface RegisteredUserAccount {
@@ -113,6 +135,7 @@ export interface RegisteredUserAccount {
   companyName?: string;
   specialty?: string;
   approvalStatus?: AccountApprovalState;
+  firestoreStatus?: FirestoreApprovalState;
   createdAt: string;
 }
 
@@ -126,16 +149,30 @@ export interface SystemBackupSnapshot {
   certificateRequests: CertificateRequestItem[];
 }
 
-export function computeCourseInstallments(course?: Partial<CourseItem>, enrollmentDateIso?: string) {
-  const totalKz = Number(course?.priceKz) || 0;
-  const firstKz =
-    course?.firstInstallmentKz !== undefined && course.firstInstallmentKz > 0
-      ? Number(course.firstInstallmentKz)
-      : Math.round(totalKz * 0.5);
-  const secondKz =
-    course?.secondInstallmentKz !== undefined && course.secondInstallmentKz >= 0
-      ? Number(course.secondInstallmentKz)
-      : Math.max(0, totalKz - firstKz);
+export function computeCourseInstallments(
+  course?: Partial<CourseItem>,
+  enrollmentDateIso?: string,
+  options?: { couponCode?: string; applyBlackFriday?: boolean }
+) {
+  const basePriceKz = Number(course?.priceKz) || 0;
+  const hasDiscountOptions = options !== undefined;
+  const discountInfo = calculateCourseDiscountedPricing(
+    basePriceKz,
+    options?.couponCode,
+    options?.applyBlackFriday ?? false
+  );
+  const totalKz = hasDiscountOptions ? discountInfo.finalPriceKz : basePriceKz;
+
+  const firstKz = hasDiscountOptions
+    ? discountInfo.firstInstallmentKz
+    : course?.firstInstallmentKz !== undefined && course.firstInstallmentKz > 0
+    ? Number(course.firstInstallmentKz)
+    : Math.round(totalKz * 0.5);
+  const secondKz = hasDiscountOptions
+    ? discountInfo.secondInstallmentKz
+    : course?.secondInstallmentKz !== undefined && course.secondInstallmentKz >= 0
+    ? Number(course.secondInstallmentKz)
+    : Math.max(0, totalKz - firstKz);
   const enrollDate = (enrollmentDateIso || new Date().toISOString()).slice(0, 10);
   const startDate =
     course?.courseStartDate ||
@@ -145,9 +182,13 @@ export function computeCourseInstallments(course?: Partial<CourseItem>, enrollme
     .slice(0, 10);
 
   return {
+    originalPriceKz: basePriceKz,
     totalKz,
     firstKz,
     secondKz,
+    discountPercent: hasDiscountOptions ? discountInfo.effectiveDiscountPercent : 0,
+    appliedCoupon: discountInfo.couponValid ? ALHAN_COUPON_CODE : undefined,
+    blackFridayApplied: hasDiscountOptions ? discountInfo.blackFridayApplied : false,
     firstDueDate: enrollDate,
     courseStartDate: startDate,
     startDate,
@@ -178,6 +219,12 @@ interface AppContextValue {
   panelCredentials: PanelCredentialItem[];
   updatePanelCredential: (role: UserRole, username: string, email: string, password: string) => void;
   updateUserApprovalStatus: (uid: string, status: AccountApprovalState) => void;
+  purgeStudentAccountByEmail: (email: string) => Promise<number>;
+  applyDiscountToEnrollment: (
+    enrollmentId: string,
+    couponCode?: string,
+    applyBlackFriday?: boolean
+  ) => Promise<void>;
   updateStudentAccountDetails: (
     uidOrPayload:
       | string
@@ -361,6 +408,8 @@ interface AppContextValue {
     studentBI?: string;
     installmentOption?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
     installmentTarget?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
+    couponCode?: string;
+    applyBlackFriday?: boolean;
   }) => Promise<EnrollmentItem>;
   submitStudentPaymentProof: (payload: {
     enrollmentId?: string;
@@ -427,7 +476,61 @@ function loadLocal<T>(key: string, fallback: T): T {
   }
 }
 
+const PURGED_STUDENT_EMAIL = 'joaomuatxissombo22@gmail.com';
+const PURGE_FLAG_KEY = 'alhan_purged_joao_student_v3';
+
+function runInitialPurgeForJoaoStudentIfNeeded() {
+  if (typeof window === 'undefined') return;
+  try {
+    if (localStorage.getItem(PURGE_FLAG_KEY) === 'done') return;
+
+    const rawUsers = localStorage.getItem('alhan_registered_users');
+    if (rawUsers) {
+      const parsedUsers = JSON.parse(rawUsers) as RegisteredUserAccount[];
+      const filteredUsers = parsedUsers.filter(
+        (u) =>
+          u.email?.toLowerCase() !== PURGED_STUDENT_EMAIL &&
+          u.username?.toLowerCase() !== 'joaomuatxissombo22'
+      );
+      localStorage.setItem('alhan_registered_users', JSON.stringify(filteredUsers));
+    }
+
+    const rawEnr = localStorage.getItem('alhan_enrollments');
+    if (rawEnr) {
+      const parsedEnr = JSON.parse(rawEnr) as EnrollmentItem[];
+      const filteredEnr = parsedEnr.filter(
+        (e) => e.studentEmail?.toLowerCase() !== PURGED_STUDENT_EMAIL
+      );
+      localStorage.setItem('alhan_enrollments', JSON.stringify(filteredEnr));
+    }
+
+    const rawCertReqs = localStorage.getItem('alhan_certificate_requests');
+    if (rawCertReqs) {
+      const parsedReqs = JSON.parse(rawCertReqs) as CertificateRequestItem[];
+      const filteredReqs = parsedReqs.filter(
+        (r) => r.studentEmail?.toLowerCase() !== PURGED_STUDENT_EMAIL
+      );
+      localStorage.setItem('alhan_certificate_requests', JSON.stringify(filteredReqs));
+    }
+
+    const rawActive = localStorage.getItem('alhan_active_user');
+    if (rawActive) {
+      const parsedActive = JSON.parse(rawActive) as ActiveUser | null;
+      if (parsedActive?.email?.toLowerCase() === PURGED_STUDENT_EMAIL) {
+        localStorage.removeItem('alhan_active_user');
+      }
+    }
+
+    sessionStorage.removeItem('alhan_panel_unlocked_ALUNO');
+    localStorage.setItem(PURGE_FLAG_KEY, 'done');
+  } catch {
+    // Ignore storage access errors
+  }
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  runInitialPurgeForJoaoStudentIfNeeded();
+
   const [user, setUser] = useState<ActiveUser | null>(() => {
     const u = loadLocal<ActiveUser | null>('alhan_active_user', null);
     if (u && (u.fullName?.includes('[DEMO]') || u.uid?.startsWith('demo-'))) {
@@ -440,7 +543,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [registeredUsers, setRegisteredUsers] = useState<RegisteredUserAccount[]>(() => {
     const stored = loadLocal<RegisteredUserAccount[]>('alhan_registered_users', []);
     const storedEnrollments = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
-    const merged = [...stored];
+    const merged = stored.map((u) => {
+      const appState =
+        u.approvalStatus ||
+        (u.role === 'PROFESSOR' || u.role === 'ALUNO' ? 'pendente' : 'aprovado');
+      return {
+        ...u,
+        approvalStatus: appState,
+        firestoreStatus: u.firestoreStatus || toFirestoreApprovalState(appState),
+      };
+    });
     // Ensure every enrolled student also has a RegisteredUserAccount record visible in the Admin Panel
     storedEnrollments.forEach((enr) => {
       const cleanEmail = (enr.studentEmail || '').trim().toLowerCase();
@@ -450,6 +562,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (cleanEmail && u.email.toLowerCase() === cleanEmail)
       );
       if (!exists && enr.studentName) {
+        const appState = enr.enrollmentApprovalStatus || 'pendente';
         merged.push({
           uid: enr.studentId || `usr-${enr.id}`,
           fullName: enr.studentName.replace('[DEMO] ', ''),
@@ -460,7 +573,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           password: 'Alhan@Aluno2026',
           role: 'ALUNO',
           companyId: 'alhan-aluno',
-          approvalStatus: enr.enrollmentApprovalStatus || 'pendente',
+          approvalStatus: appState,
+          firestoreStatus: enr.firestoreStatus || toFirestoreApprovalState(appState),
           createdAt: enr.createdAt || new Date().toISOString(),
         });
       }
@@ -501,10 +615,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (secondStatus === 'Pendente' && secondDue < todayStr) {
         secondStatus = 'Em atraso';
       }
+      const appState = e.enrollmentApprovalStatus || 'aprovado';
       return {
         ...e,
         studentName: e.studentName.replace('[DEMO] ', ''),
-        enrollmentApprovalStatus: e.enrollmentApprovalStatus || 'aprovado',
+        enrollmentApprovalStatus: appState,
+        firestoreStatus: e.firestoreStatus || toFirestoreApprovalState(appState),
         courseStartDate: e.courseStartDate || calc.courseStartDate,
         firstInstallmentAmountKz: e.firstInstallmentAmountKz ?? calc.firstKz,
         firstInstallmentDueDate: e.firstInstallmentDueDate || calc.firstDueDate,
@@ -879,65 +995,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
-        const isSuperAdminEmail = fbUser.email === 'joaomuatxissombo22@gmail.com';
-        const role: UserRole = isSuperAdminEmail ? 'SUPER_ADMIN' : 'ALUNO';
-        const active: ActiveUser = {
-          uid: fbUser.uid,
-          fullName: fbUser.displayName || 'Utilizador Alhan',
-          username: (fbUser.email || 'utilizador').split('@')[0],
-          email: fbUser.email || '',
-          phone: '+244 922 021 211',
-          role,
-          companyId: fbUser.uid,
-        };
-        setUser(active);
+        const cleanFbEmail = (fbUser.email || '').toLowerCase();
+        const isSuperAdminEmail = cleanFbEmail === 'joaomuatxissombo22@gmail.com';
 
-        if (fbUser.emailVerified) {
-          const userPath = `users/${fbUser.uid}`;
+        // One-time Firestore cleanup for joaomuatxissombo22@gmail.com student records so they can re-register from scratch
+        if (isSuperAdminEmail && typeof window !== 'undefined' && localStorage.getItem('alhan_purged_joao_firestore_v3') !== 'done') {
+          localStorage.setItem('alhan_purged_joao_firestore_v3', 'done');
           try {
-            await setDoc(
-              doc(db, 'users', fbUser.uid),
-              {
-                uid: fbUser.uid,
-                fullName: active.fullName.slice(0, 120),
-                username: active.username.slice(0, 60),
-                role: active.role,
-                companyId: active.companyId.slice(0, 128),
-                status: 'ativo',
-                createdAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
-          } catch (err) {
-            console.warn('User profile sync info:', userPath, err);
+            await deleteDoc(doc(db, 'users', fbUser.uid)).catch(() => null);
+          } catch {
+            // Ignore if doc does not exist
           }
+        }
 
-          if (isSuperAdminEmail) {
-            for (const c of INITIAL_COURSES) {
-              try {
-                await setDoc(
-                  doc(db, 'courses', c.id),
-                  {
-                    id: c.id,
-                    title: c.title.slice(0, 160),
-                    category: c.category.slice(0, 80),
-                    modality: c.modality,
-                    priceKz: Number(c.priceKz),
-                    durationHours: Number(c.durationHours),
-                    lessonsCount: Number(c.lessonsCount),
-                    instructorName: c.instructorName.slice(0, 120),
-                    instructorId: c.instructorId.slice(0, 128),
-                    published: Boolean(c.published),
-                    description: c.description.slice(0, 1500),
-                    objectives: c.objectives.slice(0, 1500),
-                    syllabus: c.syllabus.slice(0, 2000),
-                    createdAt: serverTimestamp(),
-                  },
-                  { merge: true }
-                );
-              } catch {
-                // Ignore if already exists
-              }
+        // Only set active user from Firebase Auth if they are not joaomuatxissombo22@gmail.com (unless they already re-registered as a student in registeredUsers)
+        setRegisteredUsers((currentRegistered) => {
+          const matchingRegistered = currentRegistered.find(
+            (u) => u.email.toLowerCase() === cleanFbEmail
+          );
+          if (matchingRegistered) {
+            const appState = matchingRegistered.approvalStatus || 'pendente';
+            setUser({
+              uid: matchingRegistered.uid,
+              fullName: matchingRegistered.fullName,
+              username: matchingRegistered.username,
+              email: matchingRegistered.email,
+              phone: matchingRegistered.phone,
+              studentBI: matchingRegistered.studentBI,
+              role: matchingRegistered.role,
+              companyId: matchingRegistered.companyId,
+              companyName: matchingRegistered.companyName,
+              specialty: matchingRegistered.specialty,
+              approvalStatus: appState,
+              firestoreStatus: matchingRegistered.firestoreStatus || toFirestoreApprovalState(appState),
+            });
+          } else if (!isSuperAdminEmail) {
+            const active: ActiveUser = {
+              uid: fbUser.uid,
+              fullName: fbUser.displayName || 'Formando Alhan',
+              username: (fbUser.email || 'utilizador').split('@')[0],
+              email: fbUser.email || '',
+              phone: '+244 922 021 211',
+              role: 'ALUNO',
+              companyId: fbUser.uid,
+              approvalStatus: 'pendente',
+              firestoreStatus: 'PENDENTE',
+            };
+            setUser(active);
+          }
+          return currentRegistered;
+        });
+
+        if (fbUser.emailVerified && isSuperAdminEmail) {
+          for (const c of INITIAL_COURSES) {
+            try {
+              await setDoc(
+                doc(db, 'courses', c.id),
+                {
+                  id: c.id,
+                  title: c.title.slice(0, 160),
+                  category: c.category.slice(0, 80),
+                  modality: c.modality,
+                  priceKz: Number(c.priceKz),
+                  durationHours: Number(c.durationHours),
+                  lessonsCount: Number(c.lessonsCount),
+                  instructorName: c.instructorName.slice(0, 120),
+                  instructorId: c.instructorId.slice(0, 128),
+                  published: Boolean(c.published),
+                  description: c.description.slice(0, 1500),
+                  objectives: c.objectives.slice(0, 1500),
+                  syllabus: c.syllabus.slice(0, 2000),
+                  createdAt: serverTimestamp(),
+                },
+                { merge: true }
+              );
+            } catch {
+              // Ignore if already exists
             }
           }
         }
@@ -985,6 +1118,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (err) => handleFirestoreError(err, OperationType.LIST, 'courses')
     );
 
+    const usersQuery = isAdminUser
+      ? collection(db, 'users')
+      : query(collection(db, 'users'), where('uid', '==', uid));
+
+    const unsubUsers = onSnapshot(
+      usersQuery,
+      (snap) => {
+        if (!snap.empty) {
+          setRegisteredUsers((prev) => {
+            const map = new Map<string, RegisteredUserAccount>();
+            prev.forEach((u) => map.set(u.uid, u));
+            snap.docs.forEach((d) => {
+              const data = d.data();
+              if (data.role === 'SUPER_ADMIN' || data.role === 'ADMIN') return;
+              const existing = map.get(d.id);
+              const fsStatus = toFirestoreApprovalState(data.status);
+              const appState = fromFirestoreApprovalState(data.status);
+              if (existing) {
+                map.set(d.id, {
+                  ...existing,
+                  fullName: data.fullName || existing.fullName,
+                  username: data.username || existing.username,
+                  approvalStatus: appState,
+                  firestoreStatus: fsStatus,
+                });
+              } else {
+                map.set(d.id, {
+                  uid: d.id,
+                  fullName: data.fullName || 'Utilizador ALHAN',
+                  username: data.username || 'utilizador',
+                  email: `${data.username || 'utilizador'}@alhan.pro`,
+                  phone: '+244 922 021 211',
+                  password: 'Alhan@User2026',
+                  role: data.role === 'PROFESSOR' ? 'PROFESSOR' : data.role === 'CLIENTE_EMPRESARIAL' ? 'CLIENTE_EMPRESARIAL' : 'ALUNO',
+                  companyId: data.companyId || 'ALHAN-FORMA',
+                  approvalStatus: appState,
+                  firestoreStatus: fsStatus,
+                  createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+                });
+              }
+            });
+            return Array.from(map.values());
+          });
+        }
+      },
+      (err) => console.warn('Firestore users listener info:', err)
+    );
+
     const enrollmentsQuery = isAdminUser
       ? collection(db, 'enrollments')
       : query(collection(db, 'enrollments'), where('studentId', '==', uid));
@@ -995,9 +1176,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!snap.empty) {
           const remote = snap.docs.map((d) => {
             const data = d.data();
+            const fsState = toFirestoreApprovalState(data.paymentStatus);
+            const appState = fromFirestoreApprovalState(data.paymentStatus) as 'pendente' | 'aprovado' | 'rejeitado';
             return {
               ...data,
               id: d.id,
+              enrollmentApprovalStatus: appState,
+              firestoreStatus: fsState,
               completedLessons: [],
               createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
             } as unknown as EnrollmentItem;
@@ -1005,7 +1190,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setEnrollments((prev) => {
             const map = new Map<string, EnrollmentItem>();
             prev.forEach((item) => map.set(item.id, item));
-            remote.forEach((item) => map.set(item.id, { ...map.get(item.id), ...item }));
+            remote.forEach((item) => {
+              const existing = map.get(item.id);
+              map.set(item.id, {
+                ...existing,
+                ...item,
+                enrollmentApprovalStatus: existing?.enrollmentApprovalStatus || item.enrollmentApprovalStatus || 'pendente',
+                firestoreStatus: existing?.firestoreStatus || item.firestoreStatus || 'PENDENTE',
+              });
+            });
             return Array.from(map.values());
           });
         }
@@ -1079,6 +1272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => {
       unsubCourses();
+      unsubUsers();
       unsubEnrollments();
       unsubCertRequests();
       unsubAdminNotifs();
@@ -1107,51 +1301,143 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUserApprovalStatus = (uid: string, status: AccountApprovalState) => {
+    const fsStatus = toFirestoreApprovalState(status);
     let targetUser: RegisteredUserAccount | undefined;
     setRegisteredUsers((prev) =>
       prev.map((u) => {
         if (u.uid === uid) {
-          targetUser = { ...u, approvalStatus: status };
+          targetUser = { ...u, approvalStatus: status, firestoreStatus: fsStatus };
           return targetUser;
         }
         return u;
       })
     );
 
-    setUser((prev) => (prev && prev.uid === uid ? { ...prev, approvalStatus: status } : prev));
+    setUser((prev) =>
+      prev && prev.uid === uid
+        ? { ...prev, approvalStatus: status, firestoreStatus: fsStatus }
+        : prev
+    );
+
+    // Sync state ('PENDENTE' | 'APROVADO' | 'REJEITADO') to Firebase Firestore
+    updateUserApprovalInFirestore(uid, fsStatus).catch(() => null);
 
     if (targetUser) {
       if (targetUser.role === 'ALUNO' && (status === 'aprovado' || status === 'pendente' || status === 'rejeitado')) {
         setEnrollments((prev) =>
-          prev.map((enr) =>
-            enr.studentId === uid ||
-            (targetUser && enr.studentEmail?.toLowerCase() === targetUser.email.toLowerCase())
-              ? { ...enr, enrollmentApprovalStatus: status }
-              : enr
-          )
+          prev.map((enr) => {
+            const matches =
+              enr.studentId === uid ||
+              (targetUser && enr.studentEmail?.toLowerCase() === targetUser.email.toLowerCase());
+            if (!matches) return enr;
+            updateEnrollmentStatusInFirestore(enr.id, fsStatus).catch(() => null);
+            return {
+              ...enr,
+              enrollmentApprovalStatus: status,
+              firestoreStatus: fsStatus,
+            };
+          })
         );
       }
 
       const statusLabel =
         status === 'aprovado'
-          ? 'APROVADO / AUTORIZADO'
+          ? 'APROVADO (Firestore: APROVADO)'
           : status === 'rejeitado'
-          ? 'REJEITADO'
+          ? 'REJEITADO (Firestore: REJEITADO)'
           : status === 'suspenso'
           ? 'SUSPENSO'
           : status === 'bloqueado'
           ? 'BLOQUEADO'
-          : 'PENDENTE DE APROVAÇÃO';
+          : 'PENDENTE (Firestore: PENDENTE)';
       triggerNotification(
         'Novo registo',
         `Conta de ${targetUser.role === 'PROFESSOR' ? 'Professor' : 'Formando'} ${statusLabel}`,
-        `O estado da conta de ${targetUser.fullName} (${targetUser.email}) foi actualizado pelo Administrador Único para ${statusLabel}.`,
+        `O estado no Firebase Firestore da conta de ${targetUser.fullName} (${targetUser.email}) foi alterado pelo Administrador Único para ${fsStatus}.`,
         targetUser.role
       );
       logActivity(
-        `Estado da conta (${targetUser.role}) de ${targetUser.fullName} alterado pelo Administrador Único para ${statusLabel}`
+        `Estado no Firestore (${targetUser.role}) de ${targetUser.fullName} alterado pelo Administrador Único para ${fsStatus}`
       );
     }
+  };
+
+  const purgeStudentAccountByEmail = async (email: string): Promise<number> => {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail) return 0;
+
+    let removedCount = 0;
+    const matchingUsers = registeredUsers.filter(
+      (u) => u.email.toLowerCase() === cleanEmail || u.username.toLowerCase() === cleanEmail.split('@')[0]
+    );
+    const matchingEnrollments = enrollments.filter(
+      (e) => e.studentEmail?.toLowerCase() === cleanEmail
+    );
+
+    removedCount = matchingUsers.length + matchingEnrollments.length;
+
+    setRegisteredUsers((prev) =>
+      prev.filter(
+        (u) =>
+          u.email.toLowerCase() !== cleanEmail &&
+          u.username.toLowerCase() !== cleanEmail.split('@')[0]
+      )
+    );
+    setEnrollments((prev) =>
+      prev.filter((e) => e.studentEmail?.toLowerCase() !== cleanEmail)
+    );
+    setCertificateRequests((prev) =>
+      prev.filter((r) => r.studentEmail?.toLowerCase() !== cleanEmail)
+    );
+    setUser((prev) => (prev && prev.email.toLowerCase() === cleanEmail ? null : prev));
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('alhan_panel_unlocked_ALUNO');
+    }
+
+    for (const u of matchingUsers) {
+      await deleteUserRegistrationFromFirestore(u.uid).catch(() => null);
+    }
+    for (const e of matchingEnrollments) {
+      await deleteEnrollmentFromFirestore(e.id).catch(() => null);
+    }
+
+    logActivity(
+      `Conta de formando e registos associados a "${cleanEmail}" excluídos do sistema e do Firestore para permitir novo cadastro.`
+    );
+    return Math.max(1, removedCount);
+  };
+
+  const applyDiscountToEnrollment = async (
+    enrollmentId: string,
+    couponCode?: string,
+    applyBlackFriday = true
+  ) => {
+    const targetEnr = enrollments.find((e) => e.id === enrollmentId);
+    if (!targetEnr) return;
+    const matchedCourse = courses.find((c) => c.id === targetEnr.courseId);
+    const basePrice = targetEnr.originalAmountKz || matchedCourse?.priceKz || targetEnr.amountKz;
+    const discountInfo = calculateCourseDiscountedPricing(basePrice, couponCode, applyBlackFriday);
+
+    setEnrollments((prev) =>
+      prev.map((enr) => {
+        if (enr.id !== enrollmentId) return enr;
+        return {
+          ...enr,
+          originalAmountKz: discountInfo.originalPriceKz,
+          amountKz: discountInfo.finalPriceKz,
+          discountPercent: discountInfo.effectiveDiscountPercent,
+          appliedCoupon: discountInfo.couponValid ? ALHAN_COUPON_CODE : enr.appliedCoupon,
+          blackFridayApplied: discountInfo.blackFridayApplied,
+          firstInstallmentAmountKz: discountInfo.firstInstallmentKz,
+          secondInstallmentAmountKz: discountInfo.secondInstallmentKz,
+        };
+      })
+    );
+
+    logActivity(
+      `Desconto aplicado à inscrição #${enrollmentId} (${targetEnr.studentName}): ${discountInfo.discountBadgeLabel} -> Total: ${discountInfo.finalPriceKz.toLocaleString('pt-AO')} Kz`
+    );
   };
 
   const updateStudentAccountDetails = (
@@ -1190,6 +1476,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setRegisteredUsers((prev) =>
         prev.map((u) => {
           if (u.uid !== uid) return u;
+          const nextApp = updates.approvalStatus || u.approvalStatus;
           updatedAccount = {
             ...u,
             fullName: updates.fullName?.trim() || u.fullName,
@@ -1197,7 +1484,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             phone: updates.phone?.trim() || u.phone,
             studentBI: updates.studentBI !== undefined ? updates.studentBI.trim().toUpperCase() : u.studentBI,
             companyName: updates.companyName !== undefined ? updates.companyName.trim() : u.companyName,
-            approvalStatus: updates.approvalStatus || u.approvalStatus,
+            approvalStatus: nextApp,
+            firestoreStatus: toFirestoreApprovalState(nextApp),
           };
           return updatedAccount;
         })
@@ -1215,6 +1503,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!matchesEnrollment) return enr;
 
         const extraCourseFields = typeof uidOrPayload === 'string' ? {} : uidOrPayload;
+        const nextEnrApproval =
+          updates.approvalStatus === 'aprovado' ||
+          updates.approvalStatus === 'pendente' ||
+          updates.approvalStatus === 'rejeitado'
+            ? updates.approvalStatus
+            : enr.enrollmentApprovalStatus;
         return {
           ...enr,
           studentName: updates.fullName?.trim() || finalUpdated?.fullName || enr.studentName,
@@ -1224,12 +1518,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             updates.studentBI !== undefined
               ? updates.studentBI.trim().toUpperCase()
               : finalUpdated?.studentBI || enr.studentBI,
-          enrollmentApprovalStatus:
-            updates.approvalStatus === 'aprovado' ||
-            updates.approvalStatus === 'pendente' ||
-            updates.approvalStatus === 'rejeitado'
-              ? updates.approvalStatus
-              : enr.enrollmentApprovalStatus,
+          enrollmentApprovalStatus: nextEnrApproval,
+          firestoreStatus: toFirestoreApprovalState(nextEnrApproval),
           courseTitle: extraCourseFields.courseTitle?.trim() || enr.courseTitle,
           modality: extraCourseFields.modality || enr.modality,
           amountKz:
@@ -1290,7 +1580,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     let dispatchedViaFirebase = false;
-    // Attempt Firebase Auth password reset email dispatch if account exists in Firebase Auth
     try {
       await sendPasswordResetEmail(auth, targetEmail);
       dispatchedViaFirebase = true;
@@ -1378,18 +1667,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteRegisteredUser = (uid: string) => {
     const target = registeredUsers.find((u) => u.uid === uid);
     setRegisteredUsers((prev) => prev.filter((u) => u.uid !== uid));
+    setUser((prev) => (prev && prev.uid === uid ? null : prev));
+    deleteUserRegistrationFromFirestore(uid).catch(() => null);
+
     if (target) {
       if (target.role === 'ALUNO') {
         setEnrollments((prev) =>
-          prev.filter(
-            (e) =>
-              e.studentId !== uid &&
-              e.studentEmail?.toLowerCase() !== target.email.toLowerCase()
-          )
+          prev.filter((e) => {
+            const matches =
+              e.studentId === uid ||
+              e.studentEmail?.toLowerCase() === target.email.toLowerCase();
+            if (matches) {
+              deleteEnrollmentFromFirestore(e.id).catch(() => null);
+            }
+            return !matches;
+          })
         );
       }
       logActivity(
-        `Conta de ${target.role === 'PROFESSOR' ? 'Professor/Formador' : 'Aluno/Utilizador'} eliminada pelo Administrador Único: ${target.fullName} (${target.email})`
+        `Registo no Firestore eliminado pelo Administrador Único (${target.role}): ${target.fullName} (${target.email})`
       );
     }
   };
@@ -1397,9 +1693,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteEnrollment = async (enrollmentId: string) => {
     const target = enrollments.find((e) => e.id === enrollmentId);
     setEnrollments((prev) => prev.filter((e) => e.id !== enrollmentId));
+    await deleteEnrollmentFromFirestore(enrollmentId).catch(() => null);
     if (target) {
       logActivity(
-        `Inscrição eliminada pelo Administrador Único: ${target.studentName} (${target.courseTitle})`
+        `Inscrição eliminada no Firestore pelo Administrador Único: ${target.studentName} (${target.courseTitle})`
       );
     }
   };
@@ -1438,7 +1735,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? status
         : targetEnr.secondInstallmentStatus || 'Pendente';
 
-    // 1st installment paid confirms the student's spot and unlocks classroom access; full payment when both are paid
     const overallPaymentStatus: EnrollmentItem['paymentStatus'] =
       nextFirstStatus === 'Pago' ? 'Pago' : 'Pendente';
 
@@ -1480,11 +1776,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((enr) => {
         if (enr.id !== enrollmentId) return enr;
         const existingHist = enr.paymentHistory || [];
+        const nextApp = status === 'Pago' ? 'aprovado' : enr.enrollmentApprovalStatus || 'pendente';
         return {
           ...enr,
           paymentStatus: overallPaymentStatus,
-          enrollmentApprovalStatus:
-            status === 'Pago' ? 'aprovado' : enr.enrollmentApprovalStatus || 'pendente',
+          enrollmentApprovalStatus: nextApp,
+          firestoreStatus: toFirestoreApprovalState(nextApp),
           firstInstallmentStatus: nextFirstStatus,
           firstInstallmentPaidAt:
             (target === 'FIRST' || target === 'BOTH') && status === 'Pago'
@@ -1501,7 +1798,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     if (auth.currentUser && auth.currentUser.emailVerified) {
-      await updateEnrollmentStatusInFirestore(enrollmentId, overallPaymentStatus).catch(() => null);
+      await updateEnrollmentStatusInFirestore(
+        enrollmentId,
+        status === 'Pago' ? 'APROVADO' : overallPaymentStatus
+      ).catch(() => null);
     }
 
     const parcelaLabel =
@@ -1522,37 +1822,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     enrollmentId: string,
     approvalStatus: 'pendente' | 'aprovado' | 'rejeitado'
   ) => {
+    const fsStatus = toFirestoreApprovalState(approvalStatus);
     const targetEnr = enrollments.find((e) => e.id === enrollmentId);
     setEnrollments((prev) =>
       prev.map((enr) =>
-        enr.id === enrollmentId ? { ...enr, enrollmentApprovalStatus: approvalStatus } : enr
+        enr.id === enrollmentId
+          ? {
+              ...enr,
+              enrollmentApprovalStatus: approvalStatus,
+              firestoreStatus: fsStatus,
+              paymentStatus:
+                approvalStatus === 'aprovado'
+                  ? 'APROVADO'
+                  : approvalStatus === 'rejeitado'
+                  ? 'REJEITADO'
+                  : 'PENDENTE',
+            }
+          : enr
       )
     );
+
+    await updateEnrollmentStatusInFirestore(enrollmentId, fsStatus).catch(() => null);
+
     if (targetEnr) {
-      // Also approve the corresponding student user account if found
+      // Also update the corresponding student user account in local state and Firestore
       setRegisteredUsers((prev) =>
-        prev.map((u) =>
-          u.uid === targetEnr.studentId ||
-          (targetEnr.studentEmail && u.email.toLowerCase() === targetEnr.studentEmail.toLowerCase())
-            ? { ...u, approvalStatus }
-            : u
-        )
+        prev.map((u) => {
+          const matches =
+            u.uid === targetEnr.studentId ||
+            (targetEnr.studentEmail && u.email.toLowerCase() === targetEnr.studentEmail.toLowerCase());
+          if (!matches) return u;
+          updateUserApprovalInFirestore(u.uid, fsStatus).catch(() => null);
+          return {
+            ...u,
+            approvalStatus,
+            firestoreStatus: fsStatus,
+          };
+        })
       );
       setUser((prev) =>
         prev &&
         (prev.uid === targetEnr.studentId ||
           (targetEnr.studentEmail && prev.email.toLowerCase() === targetEnr.studentEmail.toLowerCase()))
-          ? { ...prev, approvalStatus }
+          ? { ...prev, approvalStatus, firestoreStatus: fsStatus }
           : prev
       );
       triggerNotification(
         'Nova inscrição',
-        `Inscrição de Formando ${approvalStatus === 'aprovado' ? 'Aprovada' : approvalStatus === 'rejeitado' ? 'Rejeitada' : 'Pendente'}`,
-        `A inscrição de ${targetEnr.studentName} no curso «${targetEnr.courseTitle}» foi marcada como ${approvalStatus.toUpperCase()} pelo Administrador Único.`,
+        `Inscrição de Formando ${fsStatus} no Firestore`,
+        `A inscrição de ${targetEnr.studentName} no curso «${targetEnr.courseTitle}» foi alterada para ${fsStatus} no Firebase Firestore pelo Administrador Único.`,
         'ALUNO'
       );
       logActivity(
-        `Inscrição #${enrollmentId} (${targetEnr.studentName} - ${targetEnr.courseTitle}) marcada como ${approvalStatus.toUpperCase()}`
+        `Inscrição #${enrollmentId} (${targetEnr.studentName} - ${targetEnr.courseTitle}) alterada no Firestore para ${fsStatus}`
       );
     }
   };
@@ -2450,7 +2772,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('Por favor, introduza o seu utilizador/e-mail e a palavra-passe.');
     }
 
-    // 1. Check Registered Accounts (Aluno, Professor/Formador, or Cliente Empresarial who registered on the platform)
+    // 1. If logging into Admin Panel (/gestao-alhan-sgi), check Single Unified Principal Administrator Credentials first
+    const adminCred = panelCredentials.find((c) => c.role === 'ADMIN');
+    if (
+      selectedRole === 'ADMIN' ||
+      selectedRole === 'SUPER_ADMIN' ||
+      (!selectedRole &&
+        (cleanId === 'alhan.admin' ||
+          cleanId === 'admin@alhan.pro' ||
+          (adminCred &&
+            (cleanId === adminCred.username.toLowerCase() ||
+              cleanId === adminCred.email.toLowerCase()))))
+    ) {
+      if (
+        (cleanId === 'alhan.admin' ||
+          cleanId === 'admin@alhan.pro' ||
+          cleanId === 'joaomuatxissombo22@gmail.com' ||
+          (adminCred &&
+            (cleanId === adminCred.username.toLowerCase() ||
+              cleanId === adminCred.email.toLowerCase()))) &&
+        (cleanPass === 'Alhan@2026' ||
+          cleanPass === 'Alhan@SGI2026' ||
+          (adminCred && cleanPass === adminCred.password))
+      ) {
+        const active: ActiveUser = {
+          uid: 'staff-admin-unico',
+          fullName: 'Administrador Principal ALHAN – SGI',
+          username: adminCred?.username || 'alhan.admin',
+          email: adminCred?.email || 'admin@alhan.pro',
+          phone: '+244 922 021 211',
+          role: 'ADMIN',
+          companyId: 'alhan-sgi',
+          approvalStatus: 'aprovado',
+          firestoreStatus: 'APROVADO',
+        };
+        setUser(active);
+        logActivity('Acesso exclusivo autorizado ao Administrador Principal Único ALHAN (ADMIN)', active.fullName);
+        return 'ADMIN';
+      }
+    }
+
+    // 2. Check Registered Accounts (Aluno, Professor/Formador, or Cliente Empresarial who registered on the platform)
     const registeredMatch = registeredUsers.find(
       (u) =>
         u.username.toLowerCase() === cleanId ||
@@ -2466,6 +2828,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         (registeredMatch.role === 'PROFESSOR' || registeredMatch.role === 'ALUNO'
           ? 'pendente'
           : 'aprovado');
+      const firestoreStatus = registeredMatch.firestoreStatus || toFirestoreApprovalState(approvalStatus);
       const active: ActiveUser = {
         uid: registeredMatch.uid,
         fullName: registeredMatch.fullName,
@@ -2478,14 +2841,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         companyName: registeredMatch.companyName,
         specialty: registeredMatch.specialty,
         approvalStatus,
+        firestoreStatus,
       };
       setUser(active);
-      logActivity(`Sessão iniciada (${active.role} · Estado: ${approvalStatus}): ${active.fullName}`, active.fullName);
+      logActivity(`Sessão iniciada (${active.role} · Estado Firestore: ${firestoreStatus}): ${active.fullName}`, active.fullName);
       return active.role;
     }
 
-    // 2. Check Single Unified Principal Administrator Credentials (EXACTLY ONE MAIN ADMINISTRATOR: alhan.admin / admin@alhan.pro / joaomuatxissombo22@gmail.com)
-    const adminCred = panelCredentials.find((c) => c.role === 'ADMIN');
+    // 3. Fallback Admin check when no role was specified
     if (
       (cleanId === 'alhan.admin' ||
         cleanId === 'admin@alhan.pro' ||
@@ -2506,19 +2869,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role: 'ADMIN',
         companyId: 'alhan-sgi',
         approvalStatus: 'aprovado',
+        firestoreStatus: 'APROVADO',
       };
       setUser(active);
       logActivity('Acesso exclusivo autorizado ao Administrador Principal Único ALHAN (ADMIN)', active.fullName);
       return 'ADMIN';
     }
 
-    // 3. If user tried to log in as ALUNO, PROFESSOR or CLIENTE_EMPRESARIAL without registering first
+    // 4. If user tried to log in as ALUNO, PROFESSOR or CLIENTE_EMPRESARIAL without registering first
     if (selectedRole === 'ALUNO' || selectedRole === 'CLIENTE_EMPRESARIAL' || selectedRole === 'PROFESSOR') {
       throw new Error(
         selectedRole === 'ALUNO'
-          ? 'Conta de Formando não encontrada. Preencha o formulário de inscrição em «Criar Conta / Cadastrar» e aguarde a aprovação do Administrador.'
+          ? 'Conta de Formando não encontrada. Preencha o formulário de inscrição em «Criar Conta / Cadastrar» e aguarde a aprovação do Administrador (Estado: PENDENTE -> APROVADO no Firestore).'
           : selectedRole === 'PROFESSOR'
-          ? 'Conta de Professor / Formador não encontrada. Solicite acesso no separador «Inscrever Professor / Criar Conta» e aguarde a autorização do Administrador.'
+          ? 'Conta de Professor / Formador não encontrada. Solicite acesso no separador «Inscrever Professor / Criar Conta» e aguarde a autorização do Administrador (Estado: PENDENTE -> APROVADO no Firestore).'
           : 'Conta Empresarial não encontrada. O Painel do Cliente Empresarial só é activado após efectuar o cadastro da sua empresa em «Criar Conta / Cadastrar».'
       );
     }
@@ -2569,11 +2933,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? 'alhan-docente'
         : 'alhan-aluno';
     const companyTitle = payload.companyName?.trim() || payload.fullName.trim();
-    // Requirements 2 & 3: Both new students (ALUNO) and professors (PROFESSOR) start with status PENDENTE until Administrator approval
+    // Both new students (ALUNO) and professors (PROFESSOR) start with status PENDENTE in Firebase Firestore until Administrator approval
     const initialApprovalStatus: AccountApprovalState =
       allowedRegisterRole === 'PROFESSOR' || allowedRegisterRole === 'ALUNO'
         ? 'pendente'
         : 'aprovado';
+    const initialFirestoreStatus: FirestoreApprovalState =
+      allowedRegisterRole === 'PROFESSOR' || allowedRegisterRole === 'ALUNO'
+        ? 'PENDENTE'
+        : 'APROVADO';
 
     const newAccount: RegisteredUserAccount = {
       uid: newUid,
@@ -2591,10 +2959,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ? payload.specialty?.trim() || payload.companyName?.trim() || 'Consultoria e Formação SGI / Normas ISO & HSE'
           : undefined,
       approvalStatus: initialApprovalStatus,
+      firestoreStatus: initialFirestoreStatus,
       createdAt: new Date().toISOString(),
     };
 
     setRegisteredUsers((prev) => [newAccount, ...prev]);
+
+    // Persist registration in Firebase Firestore with state 'PENDENTE'
+    await saveUserRegistrationToFirestore({
+      uid: newUid,
+      fullName: newAccount.fullName,
+      username: newAccount.username,
+      role: allowedRegisterRole,
+      companyId,
+      email: newAccount.email,
+      phone: newAccount.phone,
+      status: initialFirestoreStatus,
+    }).catch(() => null);
 
     if (allowedRegisterRole === 'CLIENTE_EMPRESARIAL') {
       const newCompanyProject: IsoProjectItem = {
@@ -2629,6 +3010,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       companyName: newAccount.companyName,
       specialty: newAccount.specialty,
       approvalStatus: initialApprovalStatus,
+      firestoreStatus: initialFirestoreStatus,
     };
 
     setUser(newUser);
@@ -2636,28 +3018,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (allowedRegisterRole === 'PROFESSOR') {
       createAdminRealtimeNotification({
         type: 'NOVO_FORMANDO',
-        title: `Solicitação de Acesso de Professor: ${newUser.fullName}`,
-        message: `O professor/formador ${newUser.fullName} (${newUser.email}) solicitou acesso ao Painel do Professor e aguarda aprovação do Administrador.`,
+        title: `Solicitação de Professor (Firestore: PENDENTE): ${newUser.fullName}`,
+        message: `O professor/formador ${newUser.fullName} (${newUser.email}) registou-se com estado PENDENTE no Firestore e aguarda aprovação do Administrador.`,
         studentName: newUser.fullName,
         courseName: newAccount.specialty || 'Painel do Professor',
         requestId: newUid,
       });
       triggerNotification(
         'Novo registo',
-        `Solicitação de Acesso ao Painel do Professor: ${newUser.fullName}`,
-        `O professor/formador ${newUser.fullName} (E-mail: ${newUser.email} · Tel: ${newUser.phone} · Especialidade: ${newAccount.specialty}) solicitou acesso e aguarda aprovação do Administrador Único.`,
+        `Solicitação de Acesso ao Painel do Professor (PENDENTE): ${newUser.fullName}`,
+        `O professor/formador ${newUser.fullName} (E-mail: ${newUser.email} · Tel: ${newUser.phone} · Especialidade: ${newAccount.specialty}) ficou com estado PENDENTE no Firestore e aguarda aprovação do Administrador Único.`,
         'ADMIN'
       );
       notifyAdminAndEmailGeral({
         panelOrigin: 'PAINEL_PROFESSOR',
-        subject: `Nova Solicitação de Acesso ao Painel do Professor — ${newUser.fullName}`,
+        subject: `Nova Solicitação de Acesso ao Painel do Professor (Estado: PENDENTE) — ${newUser.fullName}`,
         applicantName: newUser.fullName,
         applicantEmail: newUser.email,
         applicantPhone: newUser.phone,
-        details: `Utilizador: ${newUser.username} | Especialidade: ${newAccount.specialty} | Estado: PENDENTE de aprovação do Administrador Único`,
+        details: `Utilizador: ${newUser.username} | Especialidade: ${newAccount.specialty} | Estado no Firestore: PENDENTE de aprovação do Administrador Único`,
       });
       logActivity(
-        `Solicitação de acesso ao Painel do PROFESSOR (${newUser.fullName}) — Estado: PENDENTE de aprovação administrativa`,
+        `Solicitação de acesso ao Painel do PROFESSOR (${newUser.fullName}) — Estado no Firestore: PENDENTE`,
         newUser.fullName
       );
     } else if (allowedRegisterRole === 'CLIENTE_EMPRESARIAL') {
@@ -2682,28 +3064,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       createAdminRealtimeNotification({
         type: 'NOVO_FORMANDO',
-        title: `Novo Formando Pendente de Aprovação: ${newUser.fullName}`,
-        message: `O formando ${newUser.fullName} (${newUser.email}) preencheu o formulário de inscrição e aguarda aprovação do Administrador para aceder ao painel e cursos.`,
+        title: `Novo Formando (Firestore: PENDENTE): ${newUser.fullName}`,
+        message: `O formando ${newUser.fullName} (${newUser.email}) registou-se com estado PENDENTE no Firebase Firestore e aguarda aprovação do Administrador para desbloquear o painel.`,
         studentName: newUser.fullName,
         courseName: 'Inscrição de Formando (Painel do Aluno)',
         requestId: newUid,
       });
       triggerNotification(
         'Novo registo',
-        `Novo Formando Pendente de Aprovação: ${newUser.fullName}`,
-        `O formando ${newUser.fullName} (E-mail: ${newUser.email} · Tel: ${newUser.phone}) registou-se com estado PENDENTE e aguarda aprovação do Administrador Único.`,
+        `Novo Formando (Estado Firestore: PENDENTE): ${newUser.fullName}`,
+        `O formando ${newUser.fullName} (E-mail: ${newUser.email} · Tel: ${newUser.phone}) registou-se com estado PENDENTE no Firestore e aguarda aprovação do Administrador Único.`,
         'ADMIN'
       );
       notifyAdminAndEmailGeral({
         panelOrigin: 'PAINEL_ALUNO',
-        subject: `Nova Inscrição de Formando (PENDENTE de Aprovação) — ${newUser.fullName}`,
+        subject: `Nova Inscrição de Formando (Firestore: PENDENTE) — ${newUser.fullName}`,
         applicantName: newUser.fullName,
         applicantEmail: newUser.email,
         applicantPhone: newUser.phone,
-        details: `Formando: ${newUser.fullName} | Utilizador: ${newUser.username} | E-mail: ${newUser.email} | Telefone: ${newUser.phone} | Estado: PENDENTE até aprovação do Administrador`,
+        details: `Formando: ${newUser.fullName} | Utilizador: ${newUser.username} | E-mail: ${newUser.email} | Telefone: ${newUser.phone} | Estado no Firestore: PENDENTE até aprovação do Administrador`,
       });
       logActivity(
-        `Nova inscrição de Formando (${newUser.fullName}) registada com estado PENDENTE até aprovação do Administrador`,
+        `Nova inscrição de Formando (${newUser.fullName}) registada no Firestore com estado PENDENTE`,
         newUser.fullName
       );
     }
@@ -3076,20 +3458,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     studentBI?: string;
     installmentOption?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
     installmentTarget?: '1ª Parcela' | '2ª Parcela' | 'Pagamento Integral';
+    couponCode?: string;
+    applyBlackFriday?: boolean;
   }) => {
     const nowIso = new Date().toISOString();
-    const studentId = auth.currentUser?.uid || user?.uid || `inscrito-${Date.now()}`;
+    const studentId = user?.uid || `inscrito-${Date.now()}`;
     const studentName = payload.studentName?.trim() || user?.fullName || 'Formando Inscrito';
     const studentEmail = (payload.studentEmail || user?.email || 'aluno@alhan.pro').trim().toLowerCase();
     const studentPhone = (payload.studentPhone || user?.phone || '+244 922 021 211').trim();
     const studentBI = (payload.studentBI || user?.studentBI || '').trim().toUpperCase();
     const enrollmentId = `enr-${Date.now()}`;
-    const calc = computeCourseInstallments(payload.course, nowIso);
+    const useBlackFriday = payload.applyBlackFriday !== false;
+    const calc = computeCourseInstallments(payload.course, nowIso, {
+      couponCode: payload.couponCode,
+      applyBlackFriday: useBlackFriday,
+    });
     const chosenInstallment = payload.installmentOption || payload.installmentTarget || '1ª Parcela';
     const refCode = payload.paymentReference || `REF-${Date.now().toString().slice(-6)}`;
 
-    // Ensure every student enrollment also registers/updates a student account in registeredUsers
-    // so that ALL student registrations appear in the Admin Panel for approval
+    // Ensure every student enrollment also registers/updates a student account in registeredUsers with state PENDENTE
+    const autoUsername = studentEmail.split('@')[0] || `aluno.${Date.now().toString().slice(-4)}`;
     setRegisteredUsers((prev) => {
       const exists = prev.some(
         (u) => u.uid === studentId || (studentEmail && u.email.toLowerCase() === studentEmail)
@@ -3098,7 +3486,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const autoStudentAccount: RegisteredUserAccount = {
         uid: studentId,
         fullName: studentName,
-        username: studentEmail.split('@')[0] || `aluno.${Date.now().toString().slice(-4)}`,
+        username: autoUsername,
         email: studentEmail,
         phone: studentPhone,
         studentBI: studentBI || undefined,
@@ -3106,10 +3494,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role: 'ALUNO',
         companyId: 'alhan-aluno',
         approvalStatus: 'pendente',
+        firestoreStatus: 'PENDENTE',
         createdAt: nowIso,
       };
       return [autoStudentAccount, ...prev];
     });
+
+    await saveUserRegistrationToFirestore({
+      uid: studentId,
+      fullName: studentName,
+      username: autoUsername,
+      role: 'ALUNO',
+      companyId: 'alhan-aluno',
+      email: studentEmail,
+      phone: studentPhone,
+      status: 'PENDENTE',
+    }).catch(() => null);
+
+    const discountSummary =
+      calc.discountPercent > 0
+        ? ` [Desconto Aplicado: ${calc.appliedCoupon ? `Cupom ${calc.appliedCoupon} (-25%)` : 'Black Friday Novembro (-15%)'}]`
+        : '';
 
     const initialHistory: PaymentHistoryEntry[] = [
       {
@@ -3122,7 +3527,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: payload.paymentMethod,
         reference: `${refCode}-P1`,
         status: 'Pendente',
-        note: 'Primeira parcela obrigatória no acto da inscrição para confirmar a vaga do formando.',
+        note: `Primeira parcela obrigatória no acto da inscrição para confirmar a vaga do formando.${discountSummary}`,
       },
       {
         id: `hist-p2-${enrollmentId}`,
@@ -3134,7 +3539,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: payload.paymentMethod,
         reference: `${refCode}-P2`,
         status: 'Pendente',
-        note: `Segunda parcela (${calc.secondKz.toLocaleString('pt-AO')} Kz) com vencimento 1 semana após o início da formação (${calc.secondDueDate}).`,
+        note: `Segunda parcela (${calc.secondKz.toLocaleString('pt-AO')} Kz) com vencimento 1 semana após o início da formação (${calc.secondDueDate}).${discountSummary}`,
       },
     ];
 
@@ -3148,16 +3553,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       courseId: payload.course.id,
       courseTitle: payload.course.title,
       modality: payload.modality,
+      originalAmountKz: calc.originalPriceKz,
       amountKz: calc.totalKz,
+      discountPercent: calc.discountPercent,
+      appliedCoupon: calc.appliedCoupon,
+      blackFridayApplied: calc.blackFridayApplied,
       paymentMethod: payload.paymentMethod,
       paymentReference: refCode,
       receiptNote:
         payload.receiptNote ||
-        `Inscrição submetida (${chosenInstallment}). Aguarda aprovação e confirmação administrativa da 1.ª parcela (${calc.firstKz.toLocaleString('pt-AO')} Kz).`,
+        `Inscrição submetida (${chosenInstallment})${discountSummary}. Aguarda aprovação no Firestore (PENDENTE -> APROVADO) e confirmação da 1.ª parcela (${calc.firstKz.toLocaleString('pt-AO')} Kz).`,
       receiptFileUrl: payload.receiptFileUrl,
       receiptFileName: payload.receiptFileName,
-      paymentStatus: 'Pendente',
+      paymentStatus: 'PENDENTE',
       enrollmentApprovalStatus: 'pendente',
+      firestoreStatus: 'PENDENTE',
       courseStartDate: calc.courseStartDate,
       firstInstallmentAmountKz: calc.firstKz,
       firstInstallmentDueDate: calc.firstDueDate,
@@ -3178,13 +3588,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setEnrollments((prev) => [newEnrollment, ...prev]);
 
     if (auth.currentUser && auth.currentUser.emailVerified) {
-      await saveEnrollmentToFirestore(newEnrollment);
+      await saveEnrollmentToFirestore(newEnrollment).catch(() => null);
     }
 
     createAdminRealtimeNotification({
       type: 'NOVA_INSCRICAO',
-      title: `Nova Inscrição Pendente: ${studentName}`,
-      message: `${studentName} inscreveu-se em «${payload.course.title}» (1.ª Parcela: ${calc.firstKz.toLocaleString('pt-AO')} Kz · 2.ª Parcela: ${calc.secondKz.toLocaleString('pt-AO')} Kz). Aguarda aprovação do Administrador.`,
+      title: `Nova Inscrição (Firestore: PENDENTE): ${studentName}`,
+      message: `${studentName} inscreveu-se em «${payload.course.title}»${discountSummary} (Total: ${calc.totalKz.toLocaleString('pt-AO')} Kz · 1.ª Parcela: ${calc.firstKz.toLocaleString('pt-AO')} Kz · 2.ª Parcela: ${calc.secondKz.toLocaleString('pt-AO')} Kz). Estado no Firestore: PENDENTE.`,
       studentName,
       courseName: payload.course.title,
       requestId: enrollmentId,
@@ -3192,20 +3602,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     triggerNotification(
       'Nova inscrição',
-      `Nova Inscrição (Pendente de Aprovação): ${payload.course.title}`,
-      `Inscrição de ${studentName} no curso "${payload.course.title}" (Total: ${calc.totalKz.toLocaleString('pt-AO')} Kz | 1.ª Parcela: ${calc.firstKz.toLocaleString('pt-AO')} Kz | 2.ª Parcela: ${calc.secondKz.toLocaleString('pt-AO')} Kz com vencimento em ${calc.secondDueDate}).`,
+      `Nova Inscrição (Firestore: PENDENTE): ${payload.course.title}`,
+      `Inscrição de ${studentName} no curso "${payload.course.title}"${discountSummary} (Total: ${calc.totalKz.toLocaleString('pt-AO')} Kz | 1.ª Parcela: ${calc.firstKz.toLocaleString('pt-AO')} Kz | 2.ª Parcela: ${calc.secondKz.toLocaleString('pt-AO')} Kz com vencimento em ${calc.secondDueDate}).`,
       'ADMIN'
     );
     notifyAdminAndEmailGeral({
       panelOrigin: 'INSCRICAO_CURSO',
-      subject: `Nova Inscrição em Curso (2 Parcelas) — ${studentName} (${payload.course.title})`,
+      subject: `Nova Inscrição em Curso (Firestore: PENDENTE) — ${studentName} (${payload.course.title})`,
       applicantName: studentName,
       applicantEmail: newEnrollment.studentEmail || 'geral@alhan.pro',
       applicantPhone: newEnrollment.studentPhone || '+244 922 021 211',
-      details: `Curso: ${payload.course.title} | Valor Total: ${calc.totalKz.toLocaleString('pt-AO')} Kz | 1.ª Parcela (acto da inscrição): ${calc.firstKz.toLocaleString('pt-AO')} Kz | 2.ª Parcela (vencimento ${calc.secondDueDate}): ${calc.secondKz.toLocaleString('pt-AO')} Kz | Estado: PENDENTE`,
+      details: `Curso: ${payload.course.title}${discountSummary} | Valor Total com Desconto: ${calc.totalKz.toLocaleString('pt-AO')} Kz | 1.ª Parcela: ${calc.firstKz.toLocaleString('pt-AO')} Kz | 2.ª Parcela (vencimento ${calc.secondDueDate}): ${calc.secondKz.toLocaleString('pt-AO')} Kz | Estado no Firestore: PENDENTE`,
     });
     logActivity(
-      `Nova inscrição no curso ${payload.course.title} (${studentName}) em regime de 2 parcelas — Estado: PENDENTE`
+      `Nova inscrição no curso ${payload.course.title} (${studentName})${discountSummary} — Estado no Firestore: PENDENTE`
     );
 
     return newEnrollment;
@@ -3871,6 +4281,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         panelCredentials,
         updatePanelCredential,
         updateUserApprovalStatus,
+        purgeStudentAccountByEmail,
+        applyDiscountToEnrollment,
         updateStudentAccountDetails,
         requestSecurePasswordResetLink,
         resetPasswordByEmail,

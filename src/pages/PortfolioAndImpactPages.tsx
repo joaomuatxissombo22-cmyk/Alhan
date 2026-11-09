@@ -57,6 +57,7 @@ export const PortfolioImpactPage: React.FC = () => {
     enrollments,
     isoProjects,
     testimonials,
+    addTestimonial,
     dynamicCounters,
     employabilityIndicators,
     alumniTrackingRecords,
@@ -68,6 +69,53 @@ export const PortfolioImpactPage: React.FC = () => {
   const [activePortfolioTab, setActivePortfolioTab] = useState<
     'todos' | 'historico' | 'cursos' | 'projectos' | 'parcerias'
   >('todos');
+
+  // Testimonial comment form states
+  const [commentName, setCommentName] = useState('');
+  const [commentRole, setCommentRole] = useState('');
+  const [commentCompanyOrCourse, setCommentCompanyOrCourse] = useState('');
+  const [commentType, setCommentType] = useState<'FORMANDO' | 'CLIENTE_EMPRESARIAL'>('FORMANDO');
+  const [commentRating, setCommentRating] = useState(5);
+  const [commentText, setCommentText] = useState('');
+  const [commentOutcome, setCommentOutcome] = useState('Qualificação Técnica SGI / Inserção Profissional');
+  const [commentConsent, setCommentConsent] = useState(true);
+  const [commentFeedbackMsg, setCommentFeedbackMsg] = useState<string | null>(null);
+  const [commentErrorMsg, setCommentErrorMsg] = useState<string | null>(null);
+
+  const handleTestimonialCommentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCommentErrorMsg(null);
+    setCommentFeedbackMsg(null);
+
+    if (!commentName.trim() || !commentText.trim()) {
+      setCommentErrorMsg('Por favor, preencha o seu nome completo e o comentário de testemunho.');
+      return;
+    }
+    if (!commentConsent) {
+      setCommentErrorMsg('É necessário autorizar a publicação do testemunho nos termos de Protecção de Dados.');
+      return;
+    }
+
+    await addTestimonial({
+      clientName: commentName.trim(),
+      role: commentRole.trim() || (commentType === 'FORMANDO' ? 'Antigo Formando Certificado' : 'Representante Empresarial'),
+      companyName: commentCompanyOrCourse.trim() || 'Formação ALHAN – SGI',
+      serviceType: commentCompanyOrCourse.trim() || 'Formação Profissional SGI & ISO',
+      rating: commentRating,
+      feedback: commentText.trim(),
+      projectOutcome: commentOutcome.trim(),
+      testimonialType: commentType,
+      authorizedForPublication: commentConsent,
+    });
+
+    setCommentName('');
+    setCommentRole('');
+    setCommentCompanyOrCourse('');
+    setCommentText('');
+    setCommentFeedbackMsg(
+      'O seu comentário de testemunho foi registado com sucesso e encaminhado ao Painel Administrativo para validação e publicação!'
+    );
+  };
 
   // Only show authorized & Admin-approved testimonials
   const approvedTestimonials = testimonials.filter(
@@ -756,7 +804,7 @@ export const PortfolioImpactPage: React.FC = () => {
       </section>
 
       {/* =====================================================================
-          TESTEMUNHOS AUTORIZADOS DE ANTIGOS FORMANDOS E CLIENTES
+          TESTEMUNHOS AUTORIZADOS DE ANTIGOS FORMANDOS E CLIENTES + CAMPO DE COMENTÁRIO DE TESTEMUNHO
       ===================================================================== */}
       <section className="py-14 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
@@ -768,11 +816,11 @@ export const PortfolioImpactPage: React.FC = () => {
             Testemunhos de Antigos Formandos e Clientes Empresariais
           </h2>
           <p className="text-sm text-slate-600 mt-1">
-            Todos os testemunhos publicados foram previamente autorizados pelos seus titulares e aprovados pela Administração da ALHAN.
+            Todos os testemunhos publicados foram previamente autorizados pelos seus titulares e aprovados pela Administração da ALHAN. Pode também deixar o seu comentário de testemunho abaixo.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
           {approvedTestimonials.map((item) => (
             <div
               key={item.id}
@@ -805,6 +853,191 @@ export const PortfolioImpactPage: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Interactive Testimonial Comment Submission Box inside Portefólio & Impacto */}
+        <div className="bg-white rounded-3xl border-2 border-[#0B4F6C]/20 shadow-md p-6 sm:p-8">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5 mb-6">
+            <div>
+              <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-widest text-[#0B4F6C] mb-1">
+                <Sparkles className="w-4 h-4 text-[#C8A951]" />
+                Espaço de Participação de Antigos Formandos e Clientes
+              </span>
+              <h3 className="text-xl font-extrabold text-slate-900">
+                Deixar Comentário de Testemunho no Portefólio e Impacto
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 mt-1">
+                Partilhe a sua experiência formativa ou o impacto da consultoria SGI/ISO na sua carreira ou empresa. Após revisão administrativa, o seu testemunho será publicado nesta secção.
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shrink-0">
+              <ShieldCheck className="w-4 h-4" />
+              Validação & Protecção de Dados
+            </span>
+          </div>
+
+          {commentFeedbackMsg && (
+            <div className="mb-5 rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-xs sm:text-sm font-bold text-emerald-900 flex items-center gap-2.5">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>{commentFeedbackMsg}</span>
+            </div>
+          )}
+
+          {commentErrorMsg && (
+            <div className="mb-5 rounded-xl bg-red-50 border border-red-200 p-4 text-xs sm:text-sm font-bold text-red-800">
+              {commentErrorMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleTestimonialCommentSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Nome Completo *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={commentName}
+                  onChange={(e) => setCommentName(e.target.value)}
+                  placeholder="Ex.: Eng.º Mateus Kassoma"
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-[#0B4F6C] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Perfil do Titular *
+                </label>
+                <select
+                  value={commentType}
+                  onChange={(e) => setCommentType(e.target.value as 'FORMANDO' | 'CLIENTE_EMPRESARIAL')}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:border-[#0B4F6C] focus:outline-none"
+                >
+                  <option value="FORMANDO">Antigo Formando Certificado</option>
+                  <option value="CLIENTE_EMPRESARIAL">Cliente Empresarial / Parceiro</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Cargo / Função Actual
+                </label>
+                <input
+                  type="text"
+                  value={commentRole}
+                  onChange={(e) => setCommentRole(e.target.value)}
+                  placeholder="Ex.: Técnico de HSE / Gestor da Qualidade"
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-[#0B4F6C] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Curso Concluído ou Empresa
+                </label>
+                <input
+                  type="text"
+                  value={commentCompanyOrCourse}
+                  onChange={(e) => setCommentCompanyOrCourse(e.target.value)}
+                  placeholder="Ex.: Curso HSE & SGI / Empresa"
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-[#0B4F6C] focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Impacto na Carreira ou Resultado Obtido
+                </label>
+                <select
+                  value={commentOutcome}
+                  onChange={(e) => setCommentOutcome(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:border-[#0B4F6C] focus:outline-none"
+                >
+                  <option value="Primeiro Emprego Conquistado após a Formação">
+                    Primeiro Emprego Conquistado após a Formação
+                  </option>
+                  <option value="Promoção Profissional / Progressão de Carreira">
+                    Promoção Profissional / Progressão de Carreira
+                  </option>
+                  <option value="Reintegração no Mercado de Trabalho">
+                    Reintegração no Mercado de Trabalho
+                  </option>
+                  <option value="Início de Actividade Técnica por Conta Própria">
+                    Início de Actividade Técnica por Conta Própria
+                  </option>
+                  <option value="Implementação e Conformidade ISO/SGI na Empresa">
+                    Implementação e Conformidade ISO/SGI na Empresa
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Classificação (1 a 5 Estrelas)
+                </label>
+                <div className="flex items-center gap-2 pt-1.5">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setCommentRating(star)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-extrabold flex items-center gap-1 transition-all ${
+                        commentRating >= star
+                          ? 'bg-amber-50 border-amber-300 text-amber-700'
+                          : 'bg-slate-50 border-slate-200 text-slate-400'
+                      }`}
+                    >
+                      <Star
+                        className={`w-3.5 h-3.5 ${
+                          commentRating >= star ? 'fill-amber-400 text-amber-400' : ''
+                        }`}
+                      />
+                      <span>{star}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Comentário de Testemunho *
+              </label>
+              <textarea
+                rows={4}
+                required
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Escreva aqui o seu comentário ou testemunho sobre a qualidade da formação prática SGI/ISO, o impacto na sua empregabilidade ou os resultados alcançados pela sua organização..."
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-[#0B4F6C] focus:outline-none"
+              />
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+              <label className="flex items-start gap-2.5 text-xs text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={commentConsent}
+                  onChange={(e) => setCommentConsent(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-[#0B4F6C] focus:ring-[#0B4F6C]"
+                />
+                <span>
+                  Autorizo a <strong>ALHAN CONSULTORIA E PRESTAÇÃO DE SERVIÇOS, LDA</strong> a validar e publicar este testemunho na secção de Portefólio, Impacto e Empregabilidade, em conformidade com a Protecção de Dados Pessoais.
+                </span>
+              </label>
+
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-2 bg-[#041525] hover:bg-[#0B3558] text-white font-extrabold px-6 py-3 rounded-xl text-xs sm:text-sm shadow-md transition-all shrink-0"
+              >
+                <CheckSquare className="w-4 h-4 text-[#C8A951]" />
+                <span>Submeter Comentário de Testemunho</span>
+              </button>
+            </div>
+          </form>
         </div>
       </section>
 

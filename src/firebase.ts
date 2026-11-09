@@ -6,6 +6,7 @@ import {
   getDocFromServer,
   setDoc,
   updateDoc,
+  deleteDoc,
   serverTimestamp,
   collection,
 } from 'firebase/firestore';
@@ -15,6 +16,7 @@ import type {
   EnrollmentItem,
   CertificateRequestItem,
   AdminNotificationRecord,
+  UserRole,
 } from './data/initialData';
 
 // Initialize Firebase App, Firestore Database & Storage with the provided project configuration
@@ -86,6 +88,106 @@ const VALID_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
 export function sanitizeFirestoreId(rawId: string, fallbackPrefix = 'id'): string {
   const cleaned = (rawId || '').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
   return VALID_ID_REGEX.test(cleaned) && cleaned.length > 0 ? cleaned : `${fallbackPrefix}-${Date.now()}`;
+}
+
+/**
+ * Stores a new Student (ALUNO) or Professor (PROFESSOR) registration in Firestore (/users/{userId})
+ * with state 'PENDENTE' until approved by the Administrator.
+ */
+export async function saveUserRegistrationToFirestore(params: {
+  uid: string;
+  fullName: string;
+  username: string;
+  role: UserRole;
+  companyId?: string;
+  email?: string;
+  phone?: string;
+  status?: 'PENDENTE' | 'APROVADO' | 'REJEITADO' | 'ativo' | 'inativo';
+}): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+
+  const isCurrentAdmin = auth.currentUser.email === 'joaomuatxissombo22@gmail.com';
+  const targetUid = isCurrentAdmin
+    ? sanitizeFirestoreId(params.uid, 'usr')
+    : sanitizeFirestoreId(auth.currentUser.uid, 'usr');
+  const path = `users/${targetUid}`;
+
+  const payload = {
+    uid: targetUid,
+    fullName: (params.fullName || 'Utilizador ALHAN').trim().slice(0, 120),
+    username: (params.username || 'utilizador').trim().slice(0, 60),
+    role: params.role,
+    companyId: (params.companyId || 'ALHAN-FORMA').trim().slice(0, 128),
+    status: params.status || ('PENDENTE' as const),
+    createdAt: serverTimestamp(),
+  };
+
+  try {
+    await setDoc(doc(db, 'users', targetUid), payload);
+    if (params.email || params.phone) {
+      await setDoc(doc(db, 'users', targetUid, 'private', 'contact'), {
+        uid: targetUid,
+        email: (params.email || auth.currentUser.email || 'geral@alhan.pro').trim().slice(0, 160),
+        phone: (params.phone || '+244 900 000 000').trim().slice(0, 40),
+        createdAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    console.warn('Firestore user registration sync warning:', path, error);
+  }
+}
+
+/**
+ * Updates a Student or Professor account status in Firestore (/users/{userId}) to 'APROVADO', 'REJEITADO', or 'PENDENTE'.
+ */
+export async function updateUserApprovalInFirestore(
+  uid: string,
+  status: 'PENDENTE' | 'APROVADO' | 'REJEITADO' | 'ativo' | 'inativo'
+): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+
+  const safeUid = sanitizeFirestoreId(uid, 'usr');
+  const path = `users/${safeUid}`;
+
+  try {
+    await updateDoc(doc(db, 'users', safeUid), {
+      status,
+    });
+  } catch (error) {
+    console.warn('Firestore user approval update warning:', path, error);
+  }
+}
+
+/**
+ * Deletes a user registration record from Firestore (/users/{userId}).
+ */
+export async function deleteUserRegistrationFromFirestore(uid: string): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+
+  const safeUid = sanitizeFirestoreId(uid, 'usr');
+  const path = `users/${safeUid}`;
+
+  try {
+    await deleteDoc(doc(db, 'users', safeUid));
+  } catch (error) {
+    console.warn('Firestore user deletion warning:', path, error);
+  }
+}
+
+/**
+ * Deletes an enrollment record from Firestore (/enrollments/{enrollmentId}).
+ */
+export async function deleteEnrollmentFromFirestore(enrollmentId: string): Promise<void> {
+  if (!auth.currentUser || !auth.currentUser.emailVerified) return;
+
+  const safeId = sanitizeFirestoreId(enrollmentId, 'enr');
+  const path = `enrollments/${safeId}`;
+
+  try {
+    await deleteDoc(doc(db, 'enrollments', safeId));
+  } catch (error) {
+    console.warn('Firestore enrollment deletion warning:', path, error);
+  }
 }
 
 /**
@@ -285,7 +387,7 @@ export async function saveEnrollmentToFirestore(enrollment: EnrollmentItem): Pro
     paymentMethod: enrollment.paymentMethod,
     paymentReference: (enrollment.paymentReference || '').trim().slice(0, 120),
     receiptNote: (enrollment.receiptNote || '').trim().slice(0, 500),
-    paymentStatus: 'Pendente' as const,
+    paymentStatus: 'PENDENTE' as const,
     progressPercent: 0,
     completed: false,
     createdAt: serverTimestamp(),
@@ -326,11 +428,11 @@ export async function updateEnrollmentPaymentInFirestore(
 }
 
 /**
- * Updates an enrollment's payment status (e.g. 'Pago', 'Pendente', 'Falhado', 'Cancelado', 'Reembolsado') in Firestore.
+ * Updates an enrollment's status (e.g. 'PENDENTE', 'APROVADO', 'REJEITADO', 'Pago', 'Pendente', 'Falhado', 'Cancelado', 'Reembolsado') in Firestore.
  */
 export async function updateEnrollmentStatusInFirestore(
   enrollmentId: string,
-  paymentStatus: EnrollmentItem['paymentStatus']
+  paymentStatus: EnrollmentItem['paymentStatus'] | 'PENDENTE' | 'APROVADO' | 'REJEITADO'
 ): Promise<void> {
   if (!auth.currentUser || !auth.currentUser.emailVerified) return;
 

@@ -41,7 +41,7 @@ service cloud.firestore {
         data.username is string && data.username.size() >= 2 && data.username.size() <= 60 &&
         data.role in ['SUPER_ADMIN', 'ADMIN', 'PROFESSOR', 'ALUNO', 'CLIENTE_EMPRESARIAL'] &&
         data.companyId is string && data.companyId.size() >= 1 && data.companyId.size() <= 128 &&
-        data.status in ['ativo', 'inativo'] &&
+        data.status in ['PENDENTE', 'APROVADO', 'REJEITADO', 'ativo', 'inativo'] &&
         data.createdAt is timestamp;
     }
 
@@ -86,7 +86,7 @@ service cloud.firestore {
         data.paymentMethod in ['Express Angola', 'BANCO SOL (IBAN)', 'Unitel Money', 'Africell Money', 'KWiK', 'Transferência / Comprovativo'] &&
         data.paymentReference is string && data.paymentReference.size() <= 120 &&
         data.receiptNote is string && data.receiptNote.size() <= 500 &&
-        data.paymentStatus in ['Pendente', 'Pago', 'Falhado', 'Cancelado', 'Reembolsado'] &&
+        data.paymentStatus in ['PENDENTE', 'APROVADO', 'REJEITADO', 'Pendente', 'Pago', 'Falhado', 'Cancelado', 'Reembolsado'] &&
         data.progressPercent is number && data.progressPercent >= 0 && data.progressPercent <= 100 &&
         data.completed is bool &&
         data.createdAt is timestamp;
@@ -245,12 +245,15 @@ service cloud.firestore {
         incoming().uid == request.auth.uid &&
         incoming().uid == userId &&
         incoming().createdAt == request.time &&
-        (incoming().role in ['ALUNO', 'CLIENTE_EMPRESARIAL'] || isAdmin());
+        (
+          (incoming().role in ['ALUNO', 'PROFESSOR', 'CLIENTE_EMPRESARIAL'] && incoming().status == 'PENDENTE') ||
+          isAdmin()
+        );
       allow update: if isVerifiedUser() && isValidId(userId) && isValidUserProfile(incoming()) &&
         incoming().uid == existing().uid &&
         incoming().createdAt == existing().createdAt && (
           isAdmin() ||
-          (isOwner(userId) && existing().status == 'ativo' && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'username']))
+          (isOwner(userId) && existing().status in ['APROVADO', 'ativo'] && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'username']))
         );
       allow delete: if isValidId(userId) && isAdmin();
 
@@ -299,12 +302,11 @@ service cloud.firestore {
       allow list: if isVerifiedUser() && (resource.data.studentId == request.auth.uid || isAdmin());
       allow create: if isVerifiedUser() && isValidId(enrollmentId) && isValidEnrollment(incoming()) &&
         incoming().id == enrollmentId &&
-        incoming().studentId == request.auth.uid &&
-        incoming().paymentStatus == 'Pendente' &&
+        (incoming().studentId == request.auth.uid || isAdmin()) &&
+        incoming().paymentStatus in ['PENDENTE', 'Pendente'] &&
         incoming().progressPercent == 0 &&
         incoming().completed == false &&
-        incoming().createdAt == request.time &&
-        exists(/databases/$(database)/documents/courses/$(incoming().courseId));
+        incoming().createdAt == request.time;
       allow update: if isVerifiedUser() && isValidId(enrollmentId) && isValidEnrollment(incoming()) &&
         incoming().id == existing().id &&
         incoming().studentId == existing().studentId &&
@@ -312,7 +314,7 @@ service cloud.firestore {
         incoming().createdAt == existing().createdAt && (
           isAdmin() ||
           (existing().studentId == request.auth.uid &&
-           !(existing().paymentStatus in ['Cancelado', 'Reembolsado']) &&
+           !(existing().paymentStatus in ['Cancelado', 'Reembolsado', 'REJEITADO']) &&
            incoming().diff(existing()).affectedKeys().hasOnly(['progressPercent', 'completed', 'paymentMethod', 'paymentReference', 'receiptNote']))
         );
       allow delete: if isValidId(enrollmentId) && isAdmin();

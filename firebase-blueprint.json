@@ -10,7 +10,7 @@
         "username": { "type": "string", "minLength": 2, "maxLength": 60 },
         "role": { "type": "string", "enum": ["SUPER_ADMIN", "ADMIN", "PROFESSOR", "ALUNO", "CLIENTE_EMPRESARIAL"] },
         "companyId": { "type": "string", "maxLength": 128 },
-        "status": { "type": "string", "enum": ["ativo", "inativo"] },
+        "status": { "type": "string", "enum": ["PENDENTE", "APROVADO", "REJEITADO", "ativo", "inativo"] },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "fullName", "username", "role", "companyId", "status", "createdAt"]
@@ -64,7 +64,7 @@
         "paymentMethod": { "type": "string", "enum": ["Express Angola", "BANCO SOL (IBAN)", "Unitel Money", "Africell Money", "KWiK", "Transferência / Comprovativo"] },
         "paymentReference": { "type": "string", "maxLength": 120 },
         "receiptNote": { "type": "string", "maxLength": 500 },
-        "paymentStatus": { "type": "string", "enum": ["Pendente", "Pago", "Falhado", "Cancelado", "Reembolsado"] },
+        "paymentStatus": { "type": "string", "enum": ["PENDENTE", "APROVADO", "REJEITADO", "Pendente", "Pago", "Falhado", "Cancelado", "Reembolsado"] },
         "progressPercent": { "type": "number" },
         "completed": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }

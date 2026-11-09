@@ -24,6 +24,10 @@ import {
   COMPANY_INFO,
   INSTAGRAM_FEED_POSTS,
   ISO_IMPLEMENTATION_METHODOLOGY,
+  ALHAN_COUPON_CODE,
+  ALHAN_COUPON_DISCOUNT_PERCENT,
+  ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT,
+  calculateCourseDiscountedPricing,
 } from '../data/initialData';
 
 export const IsoRecommendationQuiz: React.FC = () => {
@@ -381,7 +385,7 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* 3. FORMAÇÕES EM DESTAQUE (COM DESTAQUE OFICIAL: FORMAÇÃO EM HSE - TURMA DE NOVEMBRO) */}
+      {/* 3. FORMAÇÕES EM DESTAQUE (COM BLACK FRIDAY NOVEMBRO 15% & CUPOM SOUALHAN 25%) */}
       <section className="py-16 bg-white border-y border-slate-200">
         <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -398,6 +402,35 @@ export const HomePage: React.FC = () => {
               <span>Ver catálogo completo ({courses.filter((c) => c.published).length} cursos)</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
+          </div>
+
+          {/* Campanha Especial: Black Friday Novembro (-15% nas Formações) + Cupom SOUALHAN (-25% de Desconto) */}
+          <div className="rounded-2xl bg-gradient-to-r from-[#061A2D] via-[#0B2B4C] to-[#061A2D] border-2 border-[#C8A951] p-5 sm:p-6 text-white shadow-lg flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2.5 py-1 rounded bg-[#C8A951] text-[#061A2D] text-[11px] font-extrabold uppercase tracking-wider">
+                  🔥 Black Friday Novembro · -{ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT}% nas Formações
+                </span>
+                <span className="px-2.5 py-1 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[11px] font-extrabold uppercase tracking-wider">
+                  🎟️ Cupom Exclusivo: {ALHAN_COUPON_CODE} (-{ALHAN_COUPON_DISCOUNT_PERCENT}% de Desconto)
+                </span>
+              </div>
+              <h3 className="text-lg sm:text-xl font-extrabold text-white">
+                Campanha Black Friday Novembro (15% OFF) & Cupom Promocional «{ALHAN_COUPON_CODE}» (25% OFF)
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                Todas as formações contam com <strong>{ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT}% de desconto automático Black Friday Novembro</strong>, ou utilize o cupom <strong>{ALHAN_COUPON_CODE}</strong> no acto da inscrição para obter <strong>{ALHAN_COUPON_DISCOUNT_PERCENT}% de desconto</strong> sobre o valor total e sobre as 2 parcelas!
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              <Link
+                to="/formacoes"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#C8A951] hover:bg-[#d8b960] text-[#061A2D] text-xs font-extrabold transition-all shadow-md"
+              >
+                <span>Usar Cupom {ALHAN_COUPON_CODE} (-25%)</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
           </div>
 
           {/* Destaque Principal: Formação em HSE – Turma de Novembro */}
@@ -418,7 +451,7 @@ export const HomePage: React.FC = () => {
                   </span>
                   <span aria-hidden="true" className="text-white/30">·</span>
                   <span className="font-bold text-amber-300">
-                    Turma de Novembro · Online via Teams & Presencial (Vagas Limitadas)
+                    Black Friday Novembro (-15%) & Cupom {ALHAN_COUPON_CODE} (-25%)
                   </span>
                 </div>
 
@@ -433,7 +466,7 @@ export const HomePage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs">
                   <div className="p-3 rounded-xl bg-white/5 border border-white/10">
                     <p className="font-bold text-[#19B5FE]">Certificado Reconhecido</p>
-                    <p className="text-[11px] text-slate-300 mt-0.5">Verificável por QR Code</p>
+                    <p className="text-[11px] text-slate-300 mt-0.5">Emitido em PDF pela ADM</p>
                   </div>
                   <div className="p-3 rounded-xl bg-white/5 border border-white/10">
                     <p className="font-bold text-[#19B5FE]">Material Didático</p>
@@ -452,9 +485,12 @@ export const HomePage: React.FC = () => {
 
               <div className="pt-4 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs text-slate-300">Investimento · Carga Horária: 40 Horas</p>
-                  <p className="text-2xl font-extrabold font-mono-tabular text-white mt-0.5">
-                    125.000 Kz
+                  <p className="text-xs text-slate-300">
+                    Valor Normal: <span className="line-through text-slate-400">125.000 Kz</span> · Black Friday (-15%):{' '}
+                    <strong className="text-amber-300 font-mono-tabular">106.250 Kz</strong>
+                  </p>
+                  <p className="text-xl sm:text-2xl font-extrabold font-mono-tabular text-emerald-400 mt-0.5">
+                    Com Cupom {ALHAN_COUPON_CODE} (-25%): 93.750 Kz
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
@@ -482,59 +518,71 @@ export const HomePage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {featuredCourses.map((course) => (
-              <Link
-                key={course.id}
-                to={`/formacoes?curso=${course.id}`}
-                className={`rounded-xl border ${
-                  course.featured ? 'border-2 border-[#0077C8] ring-2 ring-[#0077C8]/15' : 'border-slate-200'
-                } bg-[#F5F9FC] overflow-hidden flex flex-col justify-between hover:border-[#0077C8] hover:shadow-md transition-all group cursor-pointer`}
-              >
-                <div>
-                  <div className="relative h-48 w-full bg-[#061A2D] overflow-hidden border-b border-slate-200">
-                    <img
-                      src={course.imageUrl}
-                      alt={course.title}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
-                    />
-                    <div className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded bg-[#061A2D]/85 text-[#19B5FE] text-[10px] font-bold border border-white/15">
-                      Clique para Inscrição Directa →
-                    </div>
-                  </div>
-
-                  <div className="p-6">
-                    {/* Clean unboxed metadata per frontend-design zero-pill rule */}
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                      <span className="font-semibold text-[#0077C8]">{course.category}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>Modalidade {course.modality}</span>
-                      <span aria-hidden="true">·</span>
-                      <span className="font-mono-tabular">{course.durationHours}h</span>
-                    </div>
-
-                    <h3 className="text-lg font-bold text-[#061A2D] group-hover:text-[#0077C8] transition-colors mt-2">
-                      {course.title}
-                    </h3>
-                    <p className="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
-                      {course.description}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="px-6 pb-6 pt-4 border-t border-slate-200/80 flex items-center justify-between gap-3">
+            {featuredCourses.map((course) => {
+              const bfPricing = calculateCourseDiscountedPricing(course.priceKz, '', true);
+              const couponPricing = calculateCourseDiscountedPricing(course.priceKz, ALHAN_COUPON_CODE, true);
+              return (
+                <Link
+                  key={course.id}
+                  to={`/formacoes?curso=${course.id}`}
+                  className={`rounded-xl border ${
+                    course.featured ? 'border-2 border-[#0077C8] ring-2 ring-[#0077C8]/15' : 'border-slate-200'
+                  } bg-[#F5F9FC] overflow-hidden flex flex-col justify-between hover:border-[#0077C8] hover:shadow-md transition-all group cursor-pointer`}
+                >
                   <div>
-                    <p className="text-[11px] text-slate-500">Investimento (Pague após inscrição)</p>
-                    <p className="text-base font-extrabold font-mono-tabular text-[#061A2D]">
-                      {course.priceKz.toLocaleString('pt-AO')} Kz
-                    </p>
+                    <div className="relative h-48 w-full bg-[#061A2D] overflow-hidden border-b border-slate-200">
+                      <img
+                        src={course.imageUrl}
+                        alt={course.title}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                      />
+                      <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded bg-amber-500 text-[#061A2D] text-[10px] font-extrabold shadow-sm">
+                        Black Friday Novembro -{ALHAN_BLACK_FRIDAY_DISCOUNT_PERCENT}%
+                      </div>
+                      <div className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded bg-[#061A2D]/85 text-[#19B5FE] text-[10px] font-bold border border-white/15">
+                        Clique para Inscrição Directa →
+                      </div>
+                    </div>
+
+                    <div className="p-6">
+                      {/* Clean unboxed metadata per frontend-design zero-pill rule */}
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span className="font-semibold text-[#0077C8]">{course.category}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>Modalidade {course.modality}</span>
+                        <span aria-hidden="true">·</span>
+                        <span className="font-mono-tabular">{course.durationHours}h</span>
+                      </div>
+
+                      <h3 className="text-lg font-bold text-[#061A2D] group-hover:text-[#0077C8] transition-colors mt-2">
+                        {course.title}
+                      </h3>
+                      <p className="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
+                        {course.description}
+                      </p>
+                    </div>
                   </div>
-                  <span className="px-4 py-2 rounded-lg bg-[#0077C8] group-hover:bg-[#008FEA] text-white text-xs font-bold transition-colors whitespace-nowrap">
-                    Inscrever-se Directo
-                  </span>
-                </div>
-              </Link>
-            ))}
+
+                  <div className="px-6 pb-6 pt-4 border-t border-slate-200/80 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] text-slate-500">
+                        Normal: <span className="line-through">{course.priceKz.toLocaleString('pt-AO')} Kz</span> · Black Friday (-15%):{' '}
+                        <strong className="text-[#061A2D] font-mono-tabular">
+                          {bfPricing.finalPriceKz.toLocaleString('pt-AO')} Kz
+                        </strong>
+                      </p>
+                      <p className="text-xs font-extrabold font-mono-tabular text-emerald-700 mt-0.5">
+                        Cupom {ALHAN_COUPON_CODE} (-25%): {couponPricing.finalPriceKz.toLocaleString('pt-AO')} Kz
+                      </p>
+                    </div>
+                    <span className="px-4 py-2 rounded-lg bg-[#0077C8] group-hover:bg-[#008FEA] text-white text-xs font-bold transition-colors whitespace-nowrap">
+                      Inscrever-se Directo
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </section>
