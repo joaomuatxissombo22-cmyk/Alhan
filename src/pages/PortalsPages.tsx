@@ -80,6 +80,7 @@ const PanelAccessGate: React.FC<{
     courses,
     registeredUsers,
     enrollments,
+    certificates,
     certificateRequests,
     loginWithCredentials,
     registerAccount,
@@ -148,24 +149,61 @@ const PanelAccessGate: React.FC<{
             (user.email && e.studentEmail?.toLowerCase() === user.email.toLowerCase())
         )
       : undefined;
+  const matchedStudentCertReq =
+    user && user.role === 'ALUNO'
+      ? certificateRequests.find(
+          (r) =>
+            r.userId === user.uid ||
+            (user.email && r.studentEmail?.toLowerCase() === user.email.toLowerCase()) ||
+            (matchedStudentEnrollment && r.enrollmentId === matchedStudentEnrollment.id)
+        )
+      : undefined;
+  const matchedStudentCert =
+    user && user.role === 'ALUNO'
+      ? certificates.find(
+          (c) =>
+            c.studentId === user.uid ||
+            (user.email && c.studentEmail?.toLowerCase() === user.email.toLowerCase()) ||
+            (matchedStudentEnrollment?.certificateId && c.id === matchedStudentEnrollment.certificateId)
+        )
+      : undefined;
 
-  const resolvedApprovalStatus: AccountApprovalState =
-    matchedRegisteredAcc?.approvalStatus ||
-    user?.approvalStatus ||
-    matchedStudentEnrollment?.enrollmentApprovalStatus ||
-    'pendente';
+  const isExplicitlyRejected =
+    matchedRegisteredAcc?.firestoreStatus === 'REJEITADO' ||
+    user?.firestoreStatus === 'REJEITADO' ||
+    matchedStudentEnrollment?.firestoreStatus === 'REJEITADO' ||
+    matchedRegisteredAcc?.approvalStatus === 'rejeitado' ||
+    matchedRegisteredAcc?.approvalStatus === 'suspenso' ||
+    matchedRegisteredAcc?.approvalStatus === 'bloqueado';
 
-  const resolvedFirestoreStatus: 'PENDENTE' | 'APROVADO' | 'REJEITADO' =
-    matchedRegisteredAcc?.firestoreStatus ||
-    user?.firestoreStatus ||
-    matchedStudentEnrollment?.firestoreStatus ||
-    (resolvedApprovalStatus === 'aprovado'
-      ? 'APROVADO'
-      : resolvedApprovalStatus === 'rejeitado' ||
-        resolvedApprovalStatus === 'suspenso' ||
-        resolvedApprovalStatus === 'bloqueado'
-      ? 'REJEITADO'
-      : 'PENDENTE');
+  const hasAnyApprovedSource =
+    !isExplicitlyRejected &&
+    (Boolean(backendAccessVerification?.allowed) ||
+      backendAccessVerification?.status === 'APROVADO' ||
+      matchedRegisteredAcc?.firestoreStatus === 'APROVADO' ||
+      matchedRegisteredAcc?.approvalStatus === 'aprovado' ||
+      user?.firestoreStatus === 'APROVADO' ||
+      user?.approvalStatus === 'aprovado' ||
+      matchedStudentEnrollment?.firestoreStatus === 'APROVADO' ||
+      matchedStudentEnrollment?.enrollmentApprovalStatus === 'aprovado' ||
+      matchedStudentEnrollment?.paymentStatus === 'Pago' ||
+      matchedStudentCertReq?.status === 'DISPONÍVEL' ||
+      matchedStudentCertReq?.status === 'APROVADO' ||
+      (matchedStudentCert && matchedStudentCert.status === 'valido'));
+
+  const resolvedApprovalStatus: AccountApprovalState = hasAnyApprovedSource
+    ? 'aprovado'
+    : isExplicitlyRejected
+    ? matchedRegisteredAcc?.approvalStatus === 'suspenso' || matchedRegisteredAcc?.approvalStatus === 'bloqueado'
+      ? matchedRegisteredAcc.approvalStatus
+      : 'rejeitado'
+    : 'pendente';
+
+  const resolvedFirestoreStatus: 'PENDENTE' | 'APROVADO' | 'REJEITADO' = hasAnyApprovedSource
+    ? 'APROVADO'
+    : isExplicitlyRejected
+    ? 'REJEITADO'
+    : 'PENDENTE';
 
   // Verify access authorization on the Backend (/api/portal-access/verify) as well as Firestore/Client state
   React.useEffect(() => {
@@ -203,12 +241,12 @@ const PanelAccessGate: React.FC<{
   }, [user?.uid, user?.email, user?.role, resolvedFirestoreStatus]);
 
   const effectiveBackendBlocked =
-    backendAccessVerification !== null && !backendAccessVerification.allowed && resolvedFirestoreStatus !== 'APROVADO';
+    backendAccessVerification !== null && !backendAccessVerification.allowed && !hasAnyApprovedSource;
 
   const isUnapprovedAccount =
     isRoleMatch &&
     (user.role === 'PROFESSOR' || user.role === 'ALUNO') &&
-    (resolvedFirestoreStatus !== 'APROVADO' || resolvedApprovalStatus !== 'aprovado' || effectiveBackendBlocked);
+    (!hasAnyApprovedSource || effectiveBackendBlocked);
 
   if (isUnapprovedAccount && user) {
     const status = resolvedApprovalStatus || 'pendente';
@@ -964,12 +1002,16 @@ export const StudentPortal: React.FC = () => {
     cert?: CertificateItem;
   } => {
     const req = myCertificateRequests.find(
-      (r) => r.enrollmentId === enr.id || r.courseId === enr.courseId
+      (r) =>
+        r.enrollmentId === enr.id ||
+        r.courseId === enr.courseId ||
+        (enr.studentEmail && r.studentEmail?.toLowerCase() === enr.studentEmail.toLowerCase())
     );
     const cert = myCertificates.find(
       (c) =>
         (enr.certificateId && c.id === enr.certificateId) ||
-        (c.courseId === enr.courseId && c.studentId === enr.studentId)
+        (c.courseId === enr.courseId && c.studentId === enr.studentId) ||
+        (enr.studentEmail && c.studentEmail?.toLowerCase() === enr.studentEmail.toLowerCase())
     );
     if (req) {
       if (req.status === 'DISPONÍVEL' && !req.certificateFileUrl?.trim() && !cert?.certificateFileUrl?.trim()) {

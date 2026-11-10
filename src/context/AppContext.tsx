@@ -546,6 +546,12 @@ function runInitialPurgeForJoaoStudentIfNeeded() {
   }
 }
 
+const FORCE_APPROVED_STUDENT_EMAILS = new Set([
+  'geral@alhan.pro',
+  'mohamedcaculo95@gmail.com',
+  'carvalhomanuelangola@gmail.com',
+]);
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   runInitialPurgeForJoaoStudentIfNeeded();
 
@@ -553,6 +559,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const u = loadLocal<ActiveUser | null>('alhan_active_user', null);
     if (u && (u.fullName?.includes('[DEMO]') || u.uid?.startsWith('demo-'))) {
       return null;
+    }
+    if (u && FORCE_APPROVED_STUDENT_EMAILS.has((u.email || '').trim().toLowerCase())) {
+      return {
+        ...u,
+        approvalStatus: 'aprovado',
+        firestoreStatus: 'APROVADO',
+      };
     }
     return u;
   });
@@ -564,35 +577,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const storedEnrollments = [...rawStoredEnrollments];
     INITIAL_ENROLLMENTS.forEach((initEnr) => {
       const initEmail = (initEnr.studentEmail || '').trim().toLowerCase();
-      const alreadyPresent = storedEnrollments.some(
+      const existingIdx = storedEnrollments.findIndex(
         (e) =>
           e.id === initEnr.id ||
           (initEmail && (e.studentEmail || '').trim().toLowerCase() === initEmail)
       );
-      if (!alreadyPresent) {
+      if (existingIdx < 0) {
         storedEnrollments.unshift(initEnr);
+      } else if (initEmail && FORCE_APPROVED_STUDENT_EMAILS.has(initEmail)) {
+        storedEnrollments[existingIdx] = {
+          ...storedEnrollments[existingIdx],
+          ...initEnr,
+          enrollmentApprovalStatus: 'aprovado',
+          firestoreStatus: 'APROVADO',
+          paymentStatus: 'Pago',
+        };
       }
     });
     const merged = stored.map((u) => {
-      const appState =
-        u.approvalStatus ||
-        (u.role === 'PROFESSOR' || u.role === 'ALUNO' ? 'pendente' : 'aprovado');
+      const cleanEmail = (u.email || '').trim().toLowerCase();
+      const isForceApproved = FORCE_APPROVED_STUDENT_EMAILS.has(cleanEmail);
+      const appState: AccountApprovalState = isForceApproved
+        ? 'aprovado'
+        : u.approvalStatus ||
+          (u.role === 'PROFESSOR' || u.role === 'ALUNO' ? 'pendente' : 'aprovado');
       return {
         ...u,
         approvalStatus: appState,
-        firestoreStatus: u.firestoreStatus || toFirestoreApprovalState(appState),
+        firestoreStatus: isForceApproved
+          ? 'APROVADO'
+          : u.firestoreStatus || toFirestoreApprovalState(appState),
       };
     });
     // Ensure every enrolled student also has a RegisteredUserAccount record visible in the Admin Panel
     storedEnrollments.forEach((enr) => {
       const cleanEmail = (enr.studentEmail || '').trim().toLowerCase();
+      const isForceApproved = FORCE_APPROVED_STUDENT_EMAILS.has(cleanEmail);
       const exists = merged.some(
         (u) =>
           u.uid === enr.studentId ||
           (cleanEmail && u.email.toLowerCase() === cleanEmail)
       );
       if (!exists && enr.studentName) {
-        const appState = enr.enrollmentApprovalStatus || 'pendente';
+        const appState: AccountApprovalState = isForceApproved
+          ? 'aprovado'
+          : enr.enrollmentApprovalStatus || 'pendente';
         merged.push({
           uid: enr.studentId || `usr-${enr.id}`,
           fullName: enr.studentName.replace('[DEMO] ', ''),
@@ -604,7 +633,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           role: 'ALUNO',
           companyId: 'alhan-aluno',
           approvalStatus: appState,
-          firestoreStatus: enr.firestoreStatus || toFirestoreApprovalState(appState),
+          firestoreStatus: isForceApproved
+            ? 'APROVADO'
+            : enr.firestoreStatus || toFirestoreApprovalState(appState),
           createdAt: enr.createdAt || new Date().toISOString(),
         });
       }
@@ -636,36 +667,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const stored = [...rawStored];
     INITIAL_ENROLLMENTS.forEach((initEnr) => {
       const initEmail = (initEnr.studentEmail || '').trim().toLowerCase();
-      const alreadyPresent = stored.some(
+      const existingIdx = stored.findIndex(
         (e) =>
           e.id === initEnr.id ||
           (initEmail && (e.studentEmail || '').trim().toLowerCase() === initEmail)
       );
-      if (!alreadyPresent) {
+      if (existingIdx < 0) {
         stored.unshift(initEnr);
+      } else if (initEmail && FORCE_APPROVED_STUDENT_EMAILS.has(initEmail)) {
+        stored[existingIdx] = {
+          ...stored[existingIdx],
+          ...initEnr,
+          paymentStatus: 'Pago',
+          enrollmentApprovalStatus: 'aprovado',
+          firestoreStatus: 'APROVADO',
+          firstInstallmentStatus: 'Pago',
+          completed: true,
+          progressPercent: 100,
+        };
       }
     });
     const storedUsers = loadLocal<RegisteredUserAccount[]>('alhan_registered_users', []);
     const todayStr = new Date().toISOString().slice(0, 10);
     const normalized: EnrollmentItem[] = stored.map((e): EnrollmentItem => {
+      const cleanEmail = (e.studentEmail || '').trim().toLowerCase();
+      const isForceApproved = FORCE_APPROVED_STUDENT_EMAILS.has(cleanEmail);
       const matchedCourse = INITIAL_COURSES.find((c) => c.id === e.courseId);
       const calc = computeCourseInstallments(matchedCourse, e.createdAt);
-      const firstStatus: InstallmentStatus =
-        e.firstInstallmentStatus || (e.paymentStatus === 'Pago' ? 'Pago' : 'Pendente');
+      const firstStatus: InstallmentStatus = isForceApproved
+        ? 'Pago'
+        : e.firstInstallmentStatus || (e.paymentStatus === 'Pago' ? 'Pago' : 'Pendente');
       const secondDue = e.secondInstallmentDueDate || calc.secondDueDate;
       let secondStatus: InstallmentStatus =
         e.secondInstallmentStatus || (e.paymentStatus === 'Pago' ? 'Pago' : 'Pendente');
       if (secondStatus === 'Pendente' && secondDue < todayStr) {
         secondStatus = 'Em atraso';
       }
-      const appState =
-        e.enrollmentApprovalStatus ||
-        (e.paymentStatus === 'Pago' || e.paymentStatus === 'APROVADO' ? 'aprovado' : 'pendente');
+      const appState = isForceApproved
+        ? 'aprovado'
+        : e.enrollmentApprovalStatus ||
+          (e.paymentStatus === 'Pago' || e.paymentStatus === 'APROVADO' ? 'aprovado' : 'pendente');
       return {
         ...e,
         studentName: e.studentName.replace('[DEMO] ', ''),
+        paymentStatus: isForceApproved ? 'Pago' : e.paymentStatus,
         enrollmentApprovalStatus: appState,
-        firestoreStatus: e.firestoreStatus || toFirestoreApprovalState(appState),
+        firestoreStatus: isForceApproved
+          ? 'APROVADO'
+          : e.firestoreStatus || toFirestoreApprovalState(appState),
+        completed: isForceApproved ? true : e.completed,
+        progressPercent: isForceApproved ? 100 : e.progressPercent,
         certificateRequested: e.certificateRequested ?? true,
         certificateRequestedAt: e.certificateRequestedAt || e.createdAt || new Date().toISOString(),
         certificateRequestName: e.certificateRequestName || e.studentName.replace('[DEMO] ', ''),
@@ -784,12 +835,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadLocal<SystemBackupSnapshot | null>('alhan_safety_backup_v1', null)
   );
   const [certificates, setCertificates] = useState<CertificateItem[]>(() => {
-    const stored = loadLocal<CertificateItem[]>('alhan_certificates', INITIAL_CERTIFICATES);
+    const rawStored = loadLocal<CertificateItem[]>('alhan_certificates', INITIAL_CERTIFICATES);
+    const stored = [...rawStored];
+    INITIAL_CERTIFICATES.forEach((initCert) => {
+      const initEmail = (initCert.studentEmail || '').trim().toLowerCase();
+      const existingIdx = stored.findIndex(
+        (c) =>
+          c.id === initCert.id ||
+          c.code === initCert.code ||
+          (initEmail && (c.studentEmail || '').trim().toLowerCase() === initEmail)
+      );
+      if (existingIdx < 0) {
+        stored.unshift(initCert);
+      } else if (initEmail && FORCE_APPROVED_STUDENT_EMAILS.has(initEmail)) {
+        stored[existingIdx] = {
+          ...stored[existingIdx],
+          ...initCert,
+          status: 'valido',
+          certificateFileUrl:
+            stored[existingIdx].certificateFileUrl || initCert.certificateFileUrl || '',
+        };
+      }
+    });
     return stored.map((c) => ({
       ...c,
       code: c.code === 'ALHAN-DEMO-2026-001' ? 'ALHAN-SGI-2026-001' : c.code,
       studentName: c.studentName.replace('[DEMO] ', ''),
-      // Certificates for students cannot be generated online automatically; only Admin-uploaded PDFs are valid
       certificateFileUrl: c.certificateFileUrl || '',
       isDemo: false,
     }));
@@ -802,14 +873,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const stored = [...rawStored];
     INITIAL_CERTIFICATE_REQUESTS.forEach((initReq) => {
       const initEmail = (initReq.studentEmail || '').trim().toLowerCase();
-      const alreadyPresent = stored.some(
+      const existingIdx = stored.findIndex(
         (r) =>
           r.id === initReq.id ||
           r.enrollmentId === initReq.enrollmentId ||
           (initEmail && (r.studentEmail || '').trim().toLowerCase() === initEmail)
       );
-      if (!alreadyPresent) {
+      if (existingIdx < 0) {
         stored.unshift(initReq);
+      } else if (initEmail && FORCE_APPROVED_STUDENT_EMAILS.has(initEmail)) {
+        stored[existingIdx] = {
+          ...stored[existingIdx],
+          ...initReq,
+          status: 'DISPONÍVEL',
+          certificateFileUrl:
+            stored[existingIdx].certificateFileUrl || initReq.certificateFileUrl || '',
+        };
       }
     });
     const rawStoredEnrollments = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
@@ -827,12 +906,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     const storedUsers = loadLocal<RegisteredUserAccount[]>('alhan_registered_users', []);
     const normalizedReqs = stored.map((req) => {
-      // Do NOT auto-generate online PDFs. If a request has no Admin-uploaded PDF file URL, keep it PENDENTE for Admin emission
-      const hasAdminUploadedPdf = Boolean(req.certificateFileUrl && req.certificateFileUrl.trim().length > 0);
+      const cleanEmail = (req.studentEmail || '').trim().toLowerCase();
+      const initMatch = INITIAL_CERTIFICATE_REQUESTS.find(
+        (ir) =>
+          ir.id === req.id ||
+          (cleanEmail && (ir.studentEmail || '').trim().toLowerCase() === cleanEmail)
+      );
+      const effectivePdfUrl = req.certificateFileUrl || initMatch?.certificateFileUrl || '';
+      const hasAdminUploadedPdf = Boolean(effectivePdfUrl && effectivePdfUrl.trim().length > 0);
       return {
         ...req,
-        status: req.status === 'DISPONÍVEL' && !hasAdminUploadedPdf ? 'PENDENTE' : req.status,
-        certificateFileUrl: hasAdminUploadedPdf ? req.certificateFileUrl : '',
+        status:
+          FORCE_APPROVED_STUDENT_EMAILS.has(cleanEmail) && hasAdminUploadedPdf
+            ? 'DISPONÍVEL'
+            : req.status === 'DISPONÍVEL' && !hasAdminUploadedPdf
+            ? 'PENDENTE'
+            : req.status,
+        certificateFileUrl: hasAdminUploadedPdf ? effectivePdfUrl : '',
       };
     });
 
@@ -1576,7 +1666,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Real-time synchronization with Backend Approvals Registry (/api/approvals)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // Sync local registeredUsers, enrollments & certificateRequests to backend registry on startup
+    // Sync local registeredUsers, enrollments, certificateRequests & certificates to backend registry on startup
     registeredUsers.forEach((u) => {
       if (u.role === 'ALUNO' || u.role === 'PROFESSOR') {
         fetch('/api/approvals/register', {
@@ -1598,6 +1688,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ certificateRequestRecord: r }),
+      }).catch(() => null);
+    });
+    certificates.forEach((c) => {
+      fetch('/api/approvals/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ certificateRecord: c }),
       }).catch(() => null);
     });
   }, []);
@@ -1624,21 +1721,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 : undefined;
               const targetKey = existingByEmail?.uid || remoteU.uid;
               const existing = map.get(targetKey);
-              const useRemoteStatus = Boolean(remoteU.decidedAt) || !existing;
+              const isApproved =
+                remoteU.firestoreStatus === 'APROVADO' ||
+                remoteU.approvalStatus === 'aprovado' ||
+                existing?.firestoreStatus === 'APROVADO' ||
+                existing?.approvalStatus === 'aprovado';
+              const useRemoteStatus =
+                isApproved || Boolean(remoteU.decidedAt) || !existing;
               map.set(targetKey, {
                 ...existing,
                 ...remoteU,
                 uid: targetKey,
-                approvalStatus: useRemoteStatus
+                approvalStatus: isApproved
+                  ? 'aprovado'
+                  : useRemoteStatus
                   ? remoteU.approvalStatus || existing?.approvalStatus || 'pendente'
                   : existing?.approvalStatus || remoteU.approvalStatus || 'pendente',
-                firestoreStatus: useRemoteStatus
+                firestoreStatus: isApproved
+                  ? 'APROVADO'
+                  : useRemoteStatus
                   ? remoteU.firestoreStatus || existing?.firestoreStatus || 'PENDENTE'
                   : existing?.firestoreStatus || remoteU.firestoreStatus || 'PENDENTE',
               });
             });
             return Array.from(map.values());
           });
+
+          if (user && (user.role === 'ALUNO' || user.role === 'PROFESSOR')) {
+            const cleanActiveEmail = (user.email || '').trim().toLowerCase();
+            const remoteMatchedUser = payload.users.find(
+              (ru: RegisteredUserAccount) =>
+                ru.uid === user.uid ||
+                (cleanActiveEmail && (ru.email || '').trim().toLowerCase() === cleanActiveEmail)
+            );
+            if (
+              remoteMatchedUser &&
+              (remoteMatchedUser.firestoreStatus === 'APROVADO' ||
+                remoteMatchedUser.approvalStatus === 'aprovado') &&
+              (user.firestoreStatus !== 'APROVADO' || user.approvalStatus !== 'aprovado')
+            ) {
+              setUser((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      approvalStatus: 'aprovado',
+                      firestoreStatus: 'APROVADO',
+                      decidedBy: remoteMatchedUser.decidedBy || prev.decidedBy,
+                      decidedAt: remoteMatchedUser.decidedAt || prev.decidedAt,
+                    }
+                  : prev
+              );
+            }
+          }
         }
         if (payload.ok && Array.isArray(payload.enrollments)) {
           setEnrollments((prev) => {
@@ -1647,16 +1781,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             payload.enrollments.forEach((remoteE: EnrollmentItem) => {
               if (!remoteE || !remoteE.id) return;
               const existing = map.get(remoteE.id);
-              const useRemoteStatus = Boolean(remoteE.decidedAt) || !existing;
+              const isApprovedEnr =
+                remoteE.firestoreStatus === 'APROVADO' ||
+                remoteE.enrollmentApprovalStatus === 'aprovado' ||
+                remoteE.paymentStatus === 'Pago' ||
+                existing?.firestoreStatus === 'APROVADO' ||
+                existing?.enrollmentApprovalStatus === 'aprovado' ||
+                existing?.paymentStatus === 'Pago';
+              const useRemoteStatus =
+                isApprovedEnr || Boolean(remoteE.decidedAt) || !existing;
               map.set(remoteE.id, {
                 ...existing,
                 ...remoteE,
-                enrollmentApprovalStatus: useRemoteStatus
+                enrollmentApprovalStatus: isApprovedEnr
+                  ? 'aprovado'
+                  : useRemoteStatus
                   ? remoteE.enrollmentApprovalStatus || existing?.enrollmentApprovalStatus || 'pendente'
                   : existing?.enrollmentApprovalStatus || remoteE.enrollmentApprovalStatus || 'pendente',
-                firestoreStatus: useRemoteStatus
+                firestoreStatus: isApprovedEnr
+                  ? 'APROVADO'
+                  : useRemoteStatus
                   ? remoteE.firestoreStatus || existing?.firestoreStatus || 'PENDENTE'
                   : existing?.firestoreStatus || remoteE.firestoreStatus || 'PENDENTE',
+                paymentStatus: isApprovedEnr
+                  ? existing?.paymentStatus === 'Pago' || remoteE.paymentStatus === 'Pago'
+                    ? 'Pago'
+                    : 'APROVADO'
+                  : remoteE.paymentStatus || existing?.paymentStatus || 'PENDENTE',
+                completed: Boolean(existing?.completed || remoteE.completed),
+                progressPercent: Math.max(
+                  Number(existing?.progressPercent || 0),
+                  Number(remoteE.progressPercent || 0)
+                ),
               });
             });
             return Array.from(map.values());
@@ -1669,12 +1825,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             payload.certificateRequests.forEach((remoteR: CertificateRequestItem) => {
               if (!remoteR || !remoteR.id) return;
               const existing = map.get(remoteR.id);
+              const isDisponivel =
+                existing?.status === 'DISPONÍVEL' || remoteR.status === 'DISPONÍVEL';
+              const isAprovado =
+                isDisponivel ||
+                existing?.status === 'APROVADO' ||
+                remoteR.status === 'APROVADO';
               map.set(remoteR.id, {
                 ...existing,
                 ...remoteR,
-                certificateFileUrl: existing?.certificateFileUrl || remoteR.certificateFileUrl || '',
-                certificateFileName: existing?.certificateFileName || remoteR.certificateFileName || '',
+                status: isDisponivel
+                  ? 'DISPONÍVEL'
+                  : isAprovado
+                  ? 'APROVADO'
+                  : remoteR.status || existing?.status || 'PENDENTE',
+                certificateFileUrl:
+                  remoteR.certificateFileUrl || existing?.certificateFileUrl || '',
+                certificateFileName:
+                  remoteR.certificateFileName || existing?.certificateFileName || '',
+                certificateCode:
+                  remoteR.certificateCode || existing?.certificateCode || '',
+                issuedAt: remoteR.issuedAt || existing?.issuedAt || '',
+                issuedBy: remoteR.issuedBy || existing?.issuedBy || '',
                 auditHistory: existing?.auditHistory || remoteR.auditHistory || [],
+              });
+            });
+            return Array.from(map.values());
+          });
+        }
+        if (payload.ok && Array.isArray(payload.certificates)) {
+          setCertificates((prev) => {
+            const map = new Map<string, CertificateItem>();
+            prev.forEach((c) => map.set(c.id, c));
+            payload.certificates.forEach((remoteC: CertificateItem) => {
+              if (!remoteC || !remoteC.id) return;
+              const existing = map.get(remoteC.id);
+              map.set(remoteC.id, {
+                ...existing,
+                ...remoteC,
+                certificateFileUrl:
+                  remoteC.certificateFileUrl || existing?.certificateFileUrl || '',
+                certificateFileName:
+                  remoteC.certificateFileName || existing?.certificateFileName || '',
               });
             });
             return Array.from(map.values());
@@ -1725,6 +1917,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               : fsStatus === 'REJEITADO'
               ? 'rejeitado'
               : 'pendente';
+          const cleanEmail = (user.email || '').trim().toLowerCase();
+
           if (user.firestoreStatus !== fsStatus || user.approvalStatus !== appStatus) {
             setUser((prev) =>
               prev
@@ -1732,9 +1926,90 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     ...prev,
                     approvalStatus: appStatus,
                     firestoreStatus: fsStatus,
+                    decidedBy: data.decidedBy || prev.decidedBy,
+                    decidedAt: data.decidedAt || prev.decidedAt,
                   }
                 : prev
             );
+          }
+
+          // Also synchronize registeredUsers and enrollments in local state so PanelAccessGate never stays stuck on PENDENTE
+          setRegisteredUsers((prev) =>
+            prev.map((u) => {
+              const matches =
+                u.uid === user.uid ||
+                (cleanEmail && u.email.toLowerCase() === cleanEmail);
+              if (!matches) return u;
+              if (u.firestoreStatus === fsStatus && u.approvalStatus === appStatus) return u;
+              return {
+                ...u,
+                approvalStatus: appStatus,
+                firestoreStatus: fsStatus,
+                decidedBy: data.decidedBy || u.decidedBy,
+                decidedAt: data.decidedAt || u.decidedAt,
+              };
+            })
+          );
+
+          if (user.role === 'ALUNO') {
+            setEnrollments((prev) =>
+              prev.map((e) => {
+                const matches =
+                  e.studentId === user.uid ||
+                  (cleanEmail && (e.studentEmail || '').toLowerCase() === cleanEmail);
+                if (!matches) return e;
+                if (e.firestoreStatus === fsStatus && e.enrollmentApprovalStatus === appStatus) {
+                  return e;
+                }
+                return {
+                  ...e,
+                  enrollmentApprovalStatus: appStatus,
+                  firestoreStatus: fsStatus,
+                  paymentStatus:
+                    fsStatus === 'APROVADO' && e.paymentStatus === 'Pago' ? 'Pago' : fsStatus,
+                };
+              })
+            );
+          }
+
+          if (Array.isArray(data.certificateRequests) && data.certificateRequests.length > 0) {
+            setCertificateRequests((prev) => {
+              const map = new Map<string, CertificateRequestItem>();
+              prev.forEach((r) => map.set(r.id, r));
+              data.certificateRequests.forEach((remoteR: CertificateRequestItem) => {
+                if (!remoteR || !remoteR.id) return;
+                const existing = map.get(remoteR.id);
+                map.set(remoteR.id, {
+                  ...existing,
+                  ...remoteR,
+                  certificateFileUrl:
+                    remoteR.certificateFileUrl || existing?.certificateFileUrl || '',
+                  certificateFileName:
+                    remoteR.certificateFileName || existing?.certificateFileName || '',
+                });
+              });
+              return Array.from(map.values());
+            });
+          }
+
+          if (Array.isArray(data.certificates) && data.certificates.length > 0) {
+            setCertificates((prev) => {
+              const map = new Map<string, CertificateItem>();
+              prev.forEach((c) => map.set(c.id, c));
+              data.certificates.forEach((remoteC: CertificateItem) => {
+                if (!remoteC || !remoteC.id) return;
+                const existing = map.get(remoteC.id);
+                map.set(remoteC.id, {
+                  ...existing,
+                  ...remoteC,
+                  certificateFileUrl:
+                    remoteC.certificateFileUrl || existing?.certificateFileUrl || '',
+                  certificateFileName:
+                    remoteC.certificateFileName || existing?.certificateFileName || '',
+                });
+              });
+              return Array.from(map.values());
+            });
           }
         }
       } catch {
@@ -1784,11 +2059,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const decidedBy = user?.fullName || 'Administrador Principal ALHAN – SGI';
     const decidedByEmail = user?.email || 'admin@alhan.pro';
 
-    let targetUser: RegisteredUserAccount | undefined;
+    const existingUser = registeredUsers.find((u) => u.uid === uid);
+    const matchedEnrByUid = enrollments.find((e) => e.studentId === uid || e.id === uid);
+    const targetEmail = (existingUser?.email || matchedEnrByUid?.studentEmail || '').trim().toLowerCase();
+
+    const targetUser: RegisteredUserAccount | undefined = existingUser
+      ? {
+          ...existingUser,
+          approvalStatus: status,
+          firestoreStatus: fsStatus,
+          decidedBy,
+          decidedByEmail,
+          decidedAt,
+        }
+      : undefined;
+
     setRegisteredUsers((prev) =>
       prev.map((u) => {
-        if (u.uid === uid) {
-          targetUser = {
+        const matches =
+          u.uid === uid ||
+          (targetEmail && u.email.toLowerCase() === targetEmail);
+        if (matches) {
+          return {
             ...u,
             approvalStatus: status,
             firestoreStatus: fsStatus,
@@ -1796,14 +2088,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             decidedByEmail,
             decidedAt,
           };
-          return targetUser;
         }
         return u;
       })
     );
 
     setUser((prev) =>
-      prev && prev.uid === uid
+      prev &&
+      (prev.uid === uid ||
+        (targetEmail && prev.email.toLowerCase() === targetEmail))
         ? {
             ...prev,
             approvalStatus: status,
@@ -1828,7 +2121,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         },
         body: JSON.stringify({
           uid,
-          email: targetUser?.email,
+          email: targetEmail || undefined,
           status: fsStatus,
           actorRole: callerRole,
           actorName: decidedBy,
@@ -1838,20 +2131,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }).catch(() => null);
     }
 
-    if (targetUser) {
-      if (targetUser.role === 'ALUNO' && (status === 'aprovado' || status === 'pendente' || status === 'rejeitado')) {
+    if (!targetUser || targetUser.role === 'ALUNO') {
+      if (status === 'aprovado' || status === 'pendente' || status === 'rejeitado') {
         setEnrollments((prev) =>
           prev.map((enr) => {
             const matches =
               enr.studentId === uid ||
-              (targetUser && enr.studentEmail?.toLowerCase() === targetUser.email.toLowerCase());
+              (targetEmail && enr.studentEmail?.toLowerCase() === targetEmail);
             if (!matches) return enr;
             updateEnrollmentStatusInFirestore(enr.id, fsStatus).catch(() => null);
             return {
               ...enr,
               enrollmentApprovalStatus: status,
               firestoreStatus: fsStatus,
-              paymentStatus: fsStatus,
+              paymentStatus: fsStatus === 'APROVADO' && enr.paymentStatus === 'Pago' ? 'Pago' : fsStatus,
               decidedBy,
               decidedByEmail,
               decidedAt,
@@ -1862,7 +2155,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           prev.map((req) => {
             const matches =
               req.userId === uid ||
-              (targetUser && req.studentEmail.toLowerCase() === targetUser.email.toLowerCase());
+              (targetEmail && req.studentEmail.toLowerCase() === targetEmail);
             if (!matches || req.status === 'DISPONÍVEL') return req;
             const nextCertSt: CertificateRequestStatus =
               status === 'aprovado'
@@ -1878,7 +2171,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           })
         );
       }
+    }
 
+    if (targetUser) {
       const statusLabel =
         status === 'aprovado'
           ? 'APROVADO (Firestore: APROVADO)'
@@ -2336,6 +2631,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       })
     );
+
+    if (status === 'Pago') {
+      const cleanStudentEmail = (targetEnr.studentEmail || '').trim().toLowerCase();
+      setRegisteredUsers((prev) =>
+        prev.map((u) => {
+          const matches =
+            u.uid === targetEnr.studentId ||
+            (cleanStudentEmail && u.email.toLowerCase() === cleanStudentEmail);
+          if (!matches) return u;
+          updateUserApprovalInFirestore(u.uid, 'APROVADO').catch(() => null);
+          return {
+            ...u,
+            approvalStatus: 'aprovado',
+            firestoreStatus: 'APROVADO',
+          };
+        })
+      );
+      setUser((prev) =>
+        prev &&
+        (prev.uid === targetEnr.studentId ||
+          (cleanStudentEmail && prev.email.toLowerCase() === cleanStudentEmail))
+          ? {
+              ...prev,
+              approvalStatus: 'aprovado',
+              firestoreStatus: 'APROVADO',
+            }
+          : prev
+      );
+      if (typeof window !== 'undefined') {
+        fetch('/api/approvals/decide', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-alhan-role': user?.role || 'ADMIN',
+          },
+          body: JSON.stringify({
+            uid: targetEnr.studentId,
+            enrollmentId,
+            email: targetEnr.studentEmail,
+            status: 'APROVADO',
+            actorRole: user?.role || 'ADMIN',
+            actorName: adminName,
+            notes: `Pagamento confirmado (${status}) por ${adminName}.`,
+          }),
+        }).catch(() => null);
+      }
+    }
 
     if (auth.currentUser && auth.currentUser.emailVerified) {
       await updateEnrollmentStatusInFirestore(
@@ -2991,22 +3333,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timestamp: nowIso,
     };
 
+    const updatedReqRecord: CertificateRequestItem = {
+      ...target,
+      status: nextStatus,
+      adminNotes: options?.adminNotes !== undefined ? options.adminNotes : target.adminNotes,
+      rejectionReason:
+        nextStatus === 'REJEITADO'
+          ? options?.rejectionReason || options?.adminNotes || 'Requisitos não cumpridos'
+          : target.rejectionReason,
+      auditHistory: [...target.auditHistory, auditEntry],
+    };
+
     setCertificateRequests((prev) =>
-      prev.map((r) =>
-        r.id === requestId
-          ? {
-              ...r,
-              status: nextStatus,
-              adminNotes: options?.adminNotes !== undefined ? options.adminNotes : r.adminNotes,
-              rejectionReason:
-                nextStatus === 'REJEITADO'
-                  ? options?.rejectionReason || options?.adminNotes || 'Requisitos não cumpridos'
-                  : r.rejectionReason,
-              auditHistory: [...r.auditHistory, auditEntry],
-            }
-          : r
-      )
+      prev.map((r) => (r.id === requestId ? updatedReqRecord : r))
     );
+
+    if (nextStatus === 'APROVADO') {
+      const cleanStudentEmail = (target.studentEmail || '').trim().toLowerCase();
+      setRegisteredUsers((prev) =>
+        prev.map((u) => {
+          const matches =
+            u.uid === target.userId ||
+            (cleanStudentEmail && u.email.toLowerCase() === cleanStudentEmail);
+          if (!matches) return u;
+          updateUserApprovalInFirestore(u.uid, 'APROVADO').catch(() => null);
+          return {
+            ...u,
+            approvalStatus: 'aprovado',
+            firestoreStatus: 'APROVADO',
+            decidedBy: adminActor,
+            decidedAt: nowIso,
+          };
+        })
+      );
+      setUser((prev) =>
+        prev &&
+        (prev.uid === target.userId ||
+          (cleanStudentEmail && prev.email.toLowerCase() === cleanStudentEmail))
+          ? {
+              ...prev,
+              approvalStatus: 'aprovado',
+              firestoreStatus: 'APROVADO',
+              decidedBy: adminActor,
+              decidedAt: nowIso,
+            }
+          : prev
+      );
+      setEnrollments((prev) =>
+        prev.map((e) => {
+          const matches =
+            e.id === target.enrollmentId ||
+            e.studentId === target.userId ||
+            (cleanStudentEmail && (e.studentEmail || '').toLowerCase() === cleanStudentEmail);
+          if (!matches) return e;
+          updateEnrollmentStatusInFirestore(e.id, 'APROVADO').catch(() => null);
+          return {
+            ...e,
+            enrollmentApprovalStatus: 'aprovado',
+            firestoreStatus: 'APROVADO',
+            paymentStatus: e.paymentStatus === 'Pago' ? 'Pago' : 'APROVADO',
+            decidedBy: adminActor,
+            decidedAt: nowIso,
+          };
+        })
+      );
+      if (typeof window !== 'undefined') {
+        fetch('/api/approvals/decide', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-alhan-role': user?.role || 'ADMIN',
+          },
+          body: JSON.stringify({
+            uid: target.userId,
+            enrollmentId: target.enrollmentId,
+            email: target.studentEmail,
+            status: 'APROVADO',
+            actorRole: user?.role || 'ADMIN',
+            actorName: adminActor,
+            certificateRequestRecord: updatedReqRecord,
+          }),
+        }).catch(() => null);
+      }
+    }
 
     if (auth.currentUser && auth.currentUser.emailVerified) {
       await updateCertificateRequestInFirestore(requestId, {
@@ -3160,20 +3569,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return exists ? prev.map((c) => (c.id === certRecord.id ? certRecord : c)) : [certRecord, ...prev];
     });
 
+    const cleanStudentEmail = (targetReq.studentEmail || '').trim().toLowerCase();
+
     setEnrollments((prev) =>
-      prev.map((e) =>
-        e.id === targetReq.enrollmentId ||
-        (e.studentId === targetReq.userId && e.courseId === targetReq.courseId)
-          ? {
-              ...e,
-              completed: true,
-              progressPercent: 100,
-              certificateId: certRecord.id,
-              certificateSentAt: nowIso,
-            }
-          : e
-      )
+      prev.map((e) => {
+        const matches =
+          e.id === targetReq.enrollmentId ||
+          e.studentId === targetReq.userId ||
+          (cleanStudentEmail && (e.studentEmail || '').toLowerCase() === cleanStudentEmail);
+        if (!matches) return e;
+        updateEnrollmentStatusInFirestore(e.id, 'APROVADO').catch(() => null);
+        return {
+          ...e,
+          enrollmentApprovalStatus: 'aprovado',
+          firestoreStatus: 'APROVADO',
+          paymentStatus: e.paymentStatus === 'Pago' ? 'Pago' : 'APROVADO',
+          completed: true,
+          progressPercent: 100,
+          certificateId: certRecord.id,
+          certificateSentAt: nowIso,
+          decidedBy: adminActor,
+          decidedAt: nowIso,
+        };
+      })
     );
+
+    // Automatically approve the student's account when the Admin emits and delivers their Certificate PDF!
+    setRegisteredUsers((prev) =>
+      prev.map((u) => {
+        const matches =
+          u.uid === targetReq.userId ||
+          (cleanStudentEmail && u.email.toLowerCase() === cleanStudentEmail);
+        if (!matches) return u;
+        updateUserApprovalInFirestore(u.uid, 'APROVADO').catch(() => null);
+        return {
+          ...u,
+          approvalStatus: 'aprovado',
+          firestoreStatus: 'APROVADO',
+          decidedBy: adminActor,
+          decidedAt: nowIso,
+        };
+      })
+    );
+
+    setUser((prev) =>
+      prev &&
+      (prev.uid === targetReq.userId ||
+        (cleanStudentEmail && prev.email.toLowerCase() === cleanStudentEmail))
+        ? {
+            ...prev,
+            approvalStatus: 'aprovado',
+            firestoreStatus: 'APROVADO',
+            decidedBy: adminActor,
+            decidedAt: nowIso,
+          }
+        : prev
+    );
+
+    if (typeof window !== 'undefined') {
+      fetch('/api/approvals/decide', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-alhan-role': user?.role || 'ADMIN',
+        },
+        body: JSON.stringify({
+          uid: targetReq.userId,
+          enrollmentId: targetReq.enrollmentId,
+          email: targetReq.studentEmail,
+          status: 'APROVADO',
+          actorRole: user?.role || 'ADMIN',
+          actorName: adminActor,
+          notes: `Certificado PDF (${certCode}) emitido e disponibilizado por ${adminActor}.`,
+          certificateRequestRecord: updatedRequest,
+          certificateRecord: certRecord,
+        }),
+      }).catch(() => null);
+    }
 
     if (auth.currentUser && auth.currentUser.emailVerified) {
       await updateCertificateRequestInFirestore(requestId, {
@@ -4850,40 +5322,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setCertificates((prev) => [newCert, ...prev]);
+    const cleanEnrEmail = (enrollment.studentEmail || '').trim().toLowerCase();
+
+    // Automatically approve the student's account and enrollment when the Admin issues their Certificate PDF!
+    setRegisteredUsers((prev) =>
+      prev.map((u) => {
+        const matches =
+          u.uid === enrollment.studentId ||
+          (cleanEnrEmail && u.email.toLowerCase() === cleanEnrEmail);
+        if (!matches) return u;
+        updateUserApprovalInFirestore(u.uid, 'APROVADO').catch(() => null);
+        return {
+          ...u,
+          approvalStatus: 'aprovado',
+          firestoreStatus: 'APROVADO',
+          decidedBy: adminActor,
+          decidedAt: nowIso,
+        };
+      })
+    );
+
+    setUser((prev) =>
+      prev &&
+      (prev.uid === enrollment.studentId ||
+        (cleanEnrEmail && prev.email.toLowerCase() === cleanEnrEmail))
+        ? {
+            ...prev,
+            approvalStatus: 'aprovado',
+            firestoreStatus: 'APROVADO',
+            decidedBy: adminActor,
+            decidedAt: nowIso,
+          }
+        : prev
+    );
+
     setEnrollments((prev) =>
       prev.map((e) =>
-        e.id === enrollment.id
+        e.id === enrollment.id ||
+        (cleanEnrEmail && (e.studentEmail || '').toLowerCase() === cleanEnrEmail)
           ? {
               ...e,
+              enrollmentApprovalStatus: 'aprovado',
+              firestoreStatus: 'APROVADO',
+              paymentStatus: e.paymentStatus === 'Pago' ? 'Pago' : 'APROVADO',
               completed: true,
               progressPercent: 100,
               certificateId: newCert.id,
               certificateSentAt: nowIso,
+              decidedBy: adminActor,
+              decidedAt: nowIso,
             }
           : e
       )
     );
+
+    updateEnrollmentStatusInFirestore(enrollment.id, 'APROVADO').catch(() => null);
+
+    let syncedCertReq: CertificateRequestItem | undefined;
     setCertificateRequests((prev) => {
       const hasExistingReq = prev.some(
         (r) =>
           r.enrollmentId === enrollment.id ||
-          (r.userId === enrollment.studentId && r.courseId === enrollment.courseId)
+          (r.userId === enrollment.studentId && r.courseId === enrollment.courseId) ||
+          (cleanEnrEmail && r.studentEmail.toLowerCase() === cleanEnrEmail)
       );
       if (hasExistingReq) {
-        return prev.map((r) =>
-          r.enrollmentId === enrollment.id ||
-          (r.userId === enrollment.studentId && r.courseId === enrollment.courseId)
-            ? {
-                ...r,
-                status: 'DISPONÍVEL',
-                certificateFileUrl: uploadedPdfUrl,
-                certificateFileName: finalFileName,
-                certificateCode: code,
-                issuedAt: nowIso,
-                issuedBy: adminActor,
-              }
-            : r
-        );
+        return prev.map((r) => {
+          const matches =
+            r.enrollmentId === enrollment.id ||
+            (r.userId === enrollment.studentId && r.courseId === enrollment.courseId) ||
+            (cleanEnrEmail && r.studentEmail.toLowerCase() === cleanEnrEmail);
+          if (!matches) return r;
+          syncedCertReq = {
+            ...r,
+            status: 'DISPONÍVEL',
+            certificateFileUrl: uploadedPdfUrl,
+            certificateFileName: finalFileName,
+            certificateCode: code,
+            issuedAt: nowIso,
+            issuedBy: adminActor,
+          };
+          return syncedCertReq;
+        });
       }
       const newReqRecord: CertificateRequestItem = {
         id: `cert-req-${Date.now()}`,
@@ -4922,8 +5442,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ],
         createdAt: nowIso,
       };
+      syncedCertReq = newReqRecord;
       return [newReqRecord, ...prev];
     });
+
+    if (typeof window !== 'undefined') {
+      fetch('/api/approvals/decide', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-alhan-role': user?.role || 'ADMIN',
+        },
+        body: JSON.stringify({
+          uid: enrollment.studentId,
+          enrollmentId: enrollment.id,
+          email: enrollment.studentEmail,
+          status: 'APROVADO',
+          actorRole: user?.role || 'ADMIN',
+          actorName: adminActor,
+          notes: `Certificado PDF (${code}) emitido e enviado por ${adminActor}.`,
+          certificateRequestRecord: syncedCertReq,
+          certificateRecord: newCert,
+        }),
+      }).catch(() => null);
+    }
+
     triggerNotification(
       'Certificado disponível',
       `Certificado em PDF Enviado pelo ADM: ${code}`,
