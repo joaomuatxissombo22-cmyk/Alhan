@@ -260,8 +260,11 @@ export async function uploadCertificatePdfToStorage(params: {
 export async function saveCertificateRequestToFirestore(reqItem: CertificateRequestItem): Promise<void> {
   if (!auth.currentUser || !auth.currentUser.emailVerified) return;
 
+  const isCurrentAdmin = auth.currentUser.email === 'joaomuatxissombo22@gmail.com';
   const safeId = sanitizeFirestoreId(reqItem.id, 'creq');
-  const safeUserId = sanitizeFirestoreId(auth.currentUser.uid, 'usr');
+  const safeUserId = isCurrentAdmin
+    ? sanitizeFirestoreId(reqItem.userId || auth.currentUser.uid, 'usr')
+    : sanitizeFirestoreId(auth.currentUser.uid, 'usr');
   const safeCourseId = sanitizeFirestoreId(reqItem.courseId, 'course');
   const path = `certificateRequests/${safeId}`;
 
@@ -371,8 +374,11 @@ export async function saveAdminNotificationToFirestore(notif: AdminNotificationR
 export async function saveEnrollmentToFirestore(enrollment: EnrollmentItem): Promise<void> {
   if (!auth.currentUser || !auth.currentUser.emailVerified) return;
 
+  const isCurrentAdmin = auth.currentUser.email === 'joaomuatxissombo22@gmail.com';
   const safeId = sanitizeFirestoreId(enrollment.id, 'enr');
-  const safeStudentId = sanitizeFirestoreId(auth.currentUser.uid, 'usr');
+  const safeStudentId = isCurrentAdmin
+    ? sanitizeFirestoreId(enrollment.studentId || auth.currentUser.uid, 'usr')
+    : sanitizeFirestoreId(auth.currentUser.uid, 'usr');
   const safeCourseId = sanitizeFirestoreId(enrollment.courseId, 'course');
   const path = `enrollments/${safeId}`;
 

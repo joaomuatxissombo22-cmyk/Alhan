@@ -16,6 +16,101 @@ app.use(express.json({ limit: '15mb' }));
 const RECOVERED_PENDING_STUDENTS = [
   {
     user: {
+      uid: 'usr-geral-alhan-hoje',
+      fullName: 'Formando Inscrito (geral@alhan.pro)',
+      username: 'geral.formando',
+      email: 'geral@alhan.pro',
+      phone: '+244 922 021 211',
+      password: 'Alhan@Aluno2026',
+      role: 'ALUNO',
+      companyId: 'alhan-aluno',
+      desiredCourseId: 'curso-hse-novembro',
+      desiredCourseTitle: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+      approvalStatus: 'pendente',
+      firestoreStatus: 'PENDENTE',
+      createdAt: '2026-11-10T09:15:00Z',
+    },
+    enrollment: {
+      id: 'enr-geral-alhan-hoje',
+      studentId: 'usr-geral-alhan-hoje',
+      studentName: 'Formando Inscrito (geral@alhan.pro)',
+      studentPhone: '+244 922 021 211',
+      studentEmail: 'geral@alhan.pro',
+      courseId: 'curso-hse-novembro',
+      courseTitle: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+      modality: 'Híbrida',
+      originalAmountKz: 125000,
+      amountKz: 106250,
+      discountPercent: 15,
+      blackFridayApplied: true,
+      paymentMethod: 'Express Angola',
+      paymentReference: 'CAD-ALH10',
+      receiptNote:
+        'Inscrição realizada hoje (geral@alhan.pro) — Aguarda aprovação do estado (PENDENTE -> APROVADO) no Painel Administrativo Central ALHAN – SGI.',
+      paymentStatus: 'PENDENTE',
+      enrollmentApprovalStatus: 'pendente',
+      firestoreStatus: 'PENDENTE',
+      courseStartDate: '2026-11-12',
+      firstInstallmentAmountKz: 53125,
+      firstInstallmentDueDate: '2026-11-10',
+      firstInstallmentStatus: 'Pendente',
+      firstInstallmentReference: 'CAD-ALH10-P1',
+      secondInstallmentAmountKz: 53125,
+      secondInstallmentDueDate: '2026-11-19',
+      secondInstallmentStatus: 'Pendente',
+      secondInstallmentReference: 'CAD-ALH10-P2',
+      progressPercent: 0,
+      completedLessons: [],
+      completed: false,
+      certificateRequested: true,
+      certificateRequestedAt: '2026-11-10T09:15:00Z',
+      certificateRequestName: 'Formando Inscrito (geral@alhan.pro)',
+      certificateRequestEmail: 'geral@alhan.pro',
+      certificateRequestPhone: '+244 922 021 211',
+      enrolledAt: '2026-11-10T09:15:00Z',
+      createdAt: '2026-11-10T09:15:00Z',
+    },
+    certificateRequest: {
+      id: 'cert-req-geral-alhan-hoje',
+      enrollmentId: 'enr-geral-alhan-hoje',
+      userId: 'usr-geral-alhan-hoje',
+      studentName: 'Formando Inscrito (geral@alhan.pro)',
+      studentEmail: 'geral@alhan.pro',
+      studentPhone: '+244 922 021 211',
+      studentBI: '',
+      courseId: 'curso-hse-novembro',
+      courseName: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+      modality: 'Híbrida',
+      workloadHours: 40,
+      enrollmentDate: '2026-11-10',
+      completionDate: '2026-11-10',
+      requestDate: '2026-11-10T09:15:00Z',
+      studentNotes:
+        'Inscrição e solicitação de certificado realizadas hoje (geral@alhan.pro) — aguarda aprovação do estado no Painel Administrativo Central ALHAN – SGI.',
+      status: 'PENDENTE',
+      certificateStoragePath: '',
+      certificateFileUrl: '',
+      certificateFileName: '',
+      certificateCode: '',
+      issuedAt: '',
+      issuedBy: '',
+      adminNotes: '',
+      auditHistory: [
+        {
+          id: 'aud-geral-alhan-hoje',
+          action: 'SOLICITADO',
+          statusAfter: 'PENDENTE',
+          actorName: 'Formando Inscrito (geral@alhan.pro)',
+          actorRole: 'ALUNO',
+          notes: 'Inscrição realizada hoje e submetida para aprovação administrativa.',
+          timestamp: '2026-11-10T09:15:00Z',
+        },
+      ],
+      createdAt: '2026-11-10T09:15:00Z',
+    },
+  },
+  {
+    user: {
       uid: 'usr-mohamed-caculo-95',
       fullName: 'Mohamed Caculo',
       username: 'mohamedcaculo95',
@@ -68,6 +163,44 @@ const RECOVERED_PENDING_STUDENTS = [
       certificateRequestEmail: 'mohamedcaculo95@gmail.com',
       certificateRequestPhone: '+244 923 000 095',
       enrolledAt: '2026-11-09T14:30:00Z',
+      createdAt: '2026-11-09T14:30:00Z',
+    },
+    certificateRequest: {
+      id: 'cert-req-mohamed-caculo-95',
+      enrollmentId: 'enr-mohamed-caculo-95',
+      userId: 'usr-mohamed-caculo-95',
+      studentName: 'Mohamed Caculo',
+      studentEmail: 'mohamedcaculo95@gmail.com',
+      studentPhone: '+244 923 000 095',
+      studentBI: '',
+      courseId: 'curso-hse-novembro',
+      courseName: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+      modality: 'Híbrida',
+      workloadHours: 40,
+      enrollmentDate: '2026-11-09',
+      completionDate: '2026-11-09',
+      requestDate: '2026-11-09T14:30:00Z',
+      studentNotes:
+        'Inscrição e solicitação de certificado submetidas pelo formando mohamedcaculo95@gmail.com — aguarda aprovação do estado no Painel Administrativo Central ALHAN – SGI.',
+      status: 'PENDENTE',
+      certificateStoragePath: '',
+      certificateFileUrl: '',
+      certificateFileName: '',
+      certificateCode: '',
+      issuedAt: '',
+      issuedBy: '',
+      adminNotes: '',
+      auditHistory: [
+        {
+          id: 'aud-mohamed-95',
+          action: 'SOLICITADO',
+          statusAfter: 'PENDENTE',
+          actorName: 'Mohamed Caculo',
+          actorRole: 'ALUNO',
+          notes: 'Inscrição e registo de certificado submetidos para aprovação administrativa.',
+          timestamp: '2026-11-09T14:30:00Z',
+        },
+      ],
       createdAt: '2026-11-09T14:30:00Z',
     },
   },
@@ -127,17 +260,63 @@ const RECOVERED_PENDING_STUDENTS = [
       enrolledAt: '2026-11-09T16:15:00Z',
       createdAt: '2026-11-09T16:15:00Z',
     },
+    certificateRequest: {
+      id: 'cert-req-carvalho-manuel-angola',
+      enrollmentId: 'enr-carvalho-manuel-angola',
+      userId: 'usr-carvalho-manuel-angola',
+      studentName: 'Manuel Carvalho',
+      studentEmail: 'carvalhomanuelangola@gmail.com',
+      studentPhone: '+244 923 000 102',
+      studentBI: '',
+      courseId: 'curso-hse-novembro',
+      courseName: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+      modality: 'Híbrida',
+      workloadHours: 40,
+      enrollmentDate: '2026-11-09',
+      completionDate: '2026-11-09',
+      requestDate: '2026-11-09T16:15:00Z',
+      studentNotes:
+        'Inscrição e solicitação de certificado submetidas pelo formando carvalhomanuelangola@gmail.com — aguarda aprovação do estado no Painel Administrativo Central ALHAN – SGI.',
+      status: 'PENDENTE',
+      certificateStoragePath: '',
+      certificateFileUrl: '',
+      certificateFileName: '',
+      certificateCode: '',
+      issuedAt: '',
+      issuedBy: '',
+      adminNotes: '',
+      auditHistory: [
+        {
+          id: 'aud-carvalho-manuel',
+          action: 'SOLICITADO',
+          statusAfter: 'PENDENTE',
+          actorName: 'Manuel Carvalho',
+          actorRole: 'ALUNO',
+          notes: 'Inscrição e registo de certificado submetidos para aprovação administrativa.',
+          timestamp: '2026-11-09T16:15:00Z',
+        },
+      ],
+      createdAt: '2026-11-09T16:15:00Z',
+    },
   },
 ];
 
 function loadApprovalsStore() {
-  let store = { users: [], enrollments: [], decisions: [] };
+  let store = {
+    users: [],
+    enrollments: [],
+    certificateRequests: [],
+    adminNotifications: [],
+    decisions: [],
+  };
   try {
     if (fs.existsSync(approvalsStorePath)) {
       const parsed = JSON.parse(fs.readFileSync(approvalsStorePath, 'utf-8'));
       store = {
         users: Array.isArray(parsed.users) ? parsed.users : [],
         enrollments: Array.isArray(parsed.enrollments) ? parsed.enrollments : [],
+        certificateRequests: Array.isArray(parsed.certificateRequests) ? parsed.certificateRequests : [],
+        adminNotifications: Array.isArray(parsed.adminNotifications) ? parsed.adminNotifications : [],
         decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
       };
     }
@@ -162,6 +341,18 @@ function loadApprovalsStore() {
     if (!hasEnr) {
       store.enrollments.unshift(item.enrollment);
     }
+    if (item.certificateRequest) {
+      const hasCertReq = store.certificateRequests.some(
+        (r) =>
+          r.id === item.certificateRequest.id ||
+          r.enrollmentId === item.certificateRequest.enrollmentId ||
+          String(r.studentEmail || '').toLowerCase() ===
+            item.certificateRequest.studentEmail.toLowerCase()
+      );
+      if (!hasCertReq) {
+        store.certificateRequests.unshift(item.certificateRequest);
+      }
+    }
   }
 
   return store;
@@ -178,47 +369,12 @@ function saveApprovalsStore(store) {
 const approvalsStore = loadApprovalsStore();
 saveApprovalsStore(approvalsStore);
 
-app.use(
-  express.static(distPath, {
-    maxAge: '1y',
-    etag: true,
-    setHeaders: (res, filePath) => {
-      if (filePath.endsWith('.html') || filePath.endsWith('.json') || filePath.endsWith('sw.js')) {
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      }
-    },
-  })
-);
-
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    platform: 'ALHAN – SISTEMA DE GESTÃO INTEGRADO',
-    nif: '5003128261',
-  });
-});
-
-// 1. Consulta administrativa de inscrições e solicitações pendentes (Restrito a ADMIN e SUPER_ADMIN)
-app.get('/api/approvals', (req, res) => {
-  const callerRole = String(req.headers['x-alhan-role'] || req.query.role || '').toUpperCase();
-  if (callerRole !== 'ADMIN' && callerRole !== 'SUPER_ADMIN') {
-    return res.status(403).json({
-      ok: false,
-      error: 'Acesso negado. Apenas utilizadores com perfil ADMIN ou SUPER_ADMIN podem consultar os dados pessoais e aprovações.',
-    });
-  }
-  return res.json({
-    ok: true,
-    users: approvalsStore.users,
-    enrollments: approvalsStore.enrollments,
-    decisions: approvalsStore.decisions,
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// 2. Registo / sincronização de nova inscrição de formando ou solicitação de professor com estado PENDENTE
-app.post('/api/approvals/register', (req, res) => {
-  const { userRecord, enrollmentRecord } = req.body || {};
+function upsertStudentOrProfessorIntoStore({
+  userRecord,
+  enrollmentRecord,
+  certificateRequestRecord,
+  adminNotificationRecord,
+}) {
   const nowIso = new Date().toISOString();
 
   if (userRecord && userRecord.uid) {
@@ -246,6 +402,64 @@ app.post('/api/approvals/register', (req, res) => {
       approvalsStore.users[existingIdx] = normalizedUser;
     } else {
       approvalsStore.users.unshift(normalizedUser);
+    }
+
+    // Ensure every registered ALUNO also has an enrollmentRecord and certificateRequestRecord in approvalsStore
+    if (normalizedUser.role === 'ALUNO' && !enrollmentRecord) {
+      const hasEnr = approvalsStore.enrollments.some(
+        (e) =>
+          e.studentId === normalizedUser.uid ||
+          (cleanEmail && String(e.studentEmail || '').toLowerCase() === cleanEmail)
+      );
+      if (!hasEnr) {
+        const autoEnrId = `enr-${normalizedUser.uid}`;
+        const courseId = normalizedUser.desiredCourseId || 'curso-hse-novembro';
+        const courseTitle =
+          normalizedUser.desiredCourseTitle ||
+          'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)';
+        const autoEnr = {
+          id: autoEnrId,
+          studentId: normalizedUser.uid,
+          studentName: normalizedUser.fullName || 'Formando ALHAN',
+          studentPhone: normalizedUser.phone || '+244 922 021 211',
+          studentEmail: normalizedUser.email,
+          studentBI: normalizedUser.studentBI || '',
+          courseId,
+          courseTitle,
+          modality: 'Híbrida',
+          originalAmountKz: 125000,
+          amountKz: 106250,
+          discountPercent: 15,
+          blackFridayApplied: true,
+          paymentMethod: 'Express Angola',
+          paymentReference: `CAD-${String(normalizedUser.uid).slice(-6).toUpperCase()}`,
+          receiptNote:
+            'Inscrição submetida no Painel do Aluno — Aguarda aprovação do estado (PENDENTE -> APROVADO) no Painel Administrativo Central ALHAN – SGI.',
+          paymentStatus: normalizedUser.firestoreStatus || 'PENDENTE',
+          enrollmentApprovalStatus: normalizedUser.approvalStatus || 'pendente',
+          firestoreStatus: normalizedUser.firestoreStatus || 'PENDENTE',
+          courseStartDate: '2026-11-12',
+          firstInstallmentAmountKz: 53125,
+          firstInstallmentDueDate: (normalizedUser.createdAt || nowIso).slice(0, 10),
+          firstInstallmentStatus: 'Pendente',
+          firstInstallmentReference: `CAD-${String(normalizedUser.uid).slice(-6).toUpperCase()}-P1`,
+          secondInstallmentAmountKz: 53125,
+          secondInstallmentDueDate: '2026-11-19',
+          secondInstallmentStatus: 'Pendente',
+          secondInstallmentReference: `CAD-${String(normalizedUser.uid).slice(-6).toUpperCase()}-P2`,
+          progressPercent: 0,
+          completedLessons: [],
+          completed: false,
+          certificateRequested: true,
+          certificateRequestedAt: normalizedUser.createdAt || nowIso,
+          certificateRequestName: normalizedUser.fullName || 'Formando ALHAN',
+          certificateRequestEmail: normalizedUser.email,
+          certificateRequestPhone: normalizedUser.phone || '+244 922 021 211',
+          enrolledAt: normalizedUser.createdAt || nowIso,
+          createdAt: normalizedUser.createdAt || nowIso,
+        };
+        approvalsStore.enrollments.unshift(autoEnr);
+      }
     }
   }
 
@@ -281,9 +495,165 @@ app.post('/api/approvals/register', (req, res) => {
     } else {
       approvalsStore.enrollments.unshift(normalizedEnr);
     }
+
+    // Ensure a corresponding ALUNO user record also exists in approvalsStore.users
+    if (!userRecord && normalizedEnr.studentName) {
+      const hasUser = approvalsStore.users.some(
+        (u) =>
+          u.uid === normalizedEnr.studentId ||
+          (cleanStudentEmail && String(u.email || '').toLowerCase() === cleanStudentEmail)
+      );
+      if (!hasUser) {
+        approvalsStore.users.unshift({
+          uid: normalizedEnr.studentId || `usr-${normalizedEnr.id}`,
+          fullName: normalizedEnr.studentName,
+          username: cleanStudentEmail ? cleanStudentEmail.split('@')[0] : `aluno.${normalizedEnr.id}`,
+          email: cleanStudentEmail || 'aluno@alhan.pro',
+          phone: normalizedEnr.studentPhone || '+244 922 021 211',
+          studentBI: normalizedEnr.studentBI || '',
+          password: 'Alhan@Aluno2026',
+          role: 'ALUNO',
+          companyId: 'alhan-aluno',
+          desiredCourseId: normalizedEnr.courseId,
+          desiredCourseTitle: normalizedEnr.courseTitle,
+          approvalStatus: normalizedEnr.enrollmentApprovalStatus || 'pendente',
+          firestoreStatus: normalizedEnr.firestoreStatus || 'PENDENTE',
+          createdAt: normalizedEnr.createdAt || nowIso,
+        });
+      }
+    }
+
+    // Ensure a corresponding certificateRequest record also exists in approvalsStore.certificateRequests
+    if (!certificateRequestRecord) {
+      const hasCert = approvalsStore.certificateRequests.some(
+        (r) =>
+          r.enrollmentId === normalizedEnr.id ||
+          (cleanStudentEmail &&
+            String(r.studentEmail || '').toLowerCase() === cleanStudentEmail &&
+            r.courseId === normalizedEnr.courseId)
+      );
+      if (!hasCert) {
+        approvalsStore.certificateRequests.unshift({
+          id: `cert-req-${normalizedEnr.id}`,
+          enrollmentId: normalizedEnr.id,
+          userId: normalizedEnr.studentId || `usr-${normalizedEnr.id}`,
+          studentName: normalizedEnr.studentName,
+          studentEmail: cleanStudentEmail || 'aluno@alhan.pro',
+          studentPhone: normalizedEnr.studentPhone || '+244 922 021 211',
+          studentBI: normalizedEnr.studentBI || '',
+          courseId: normalizedEnr.courseId,
+          courseName: normalizedEnr.courseTitle,
+          modality: normalizedEnr.modality || 'Híbrida',
+          workloadHours: 40,
+          enrollmentDate: (normalizedEnr.createdAt || nowIso).slice(0, 10),
+          completionDate: (normalizedEnr.createdAt || nowIso).slice(0, 10),
+          requestDate: normalizedEnr.createdAt || nowIso,
+          studentNotes:
+            'Inscrição e solicitação de certificado submetidas pelo formando — aguarda aprovação do estado no Painel Administrativo Central ALHAN – SGI.',
+          status:
+            normalizedEnr.firestoreStatus === 'APROVADO'
+              ? 'APROVADO'
+              : normalizedEnr.firestoreStatus === 'REJEITADO'
+              ? 'REJEITADO'
+              : 'PENDENTE',
+          certificateStoragePath: '',
+          certificateFileUrl: '',
+          certificateFileName: '',
+          certificateCode: '',
+          issuedAt: '',
+          issuedBy: '',
+          adminNotes: '',
+          auditHistory: [
+            {
+              id: `aud-${normalizedEnr.id}`,
+              action: 'SOLICITADO',
+              statusAfter: 'PENDENTE',
+              actorName: normalizedEnr.studentName,
+              actorRole: 'ALUNO',
+              notes: 'Inscrição e registo de certificado submetidos para aprovação administrativa.',
+              timestamp: normalizedEnr.createdAt || nowIso,
+            },
+          ],
+          createdAt: normalizedEnr.createdAt || nowIso,
+        });
+      }
+    }
+  }
+
+  if (certificateRequestRecord && certificateRequestRecord.id) {
+    const existingCertIdx = approvalsStore.certificateRequests.findIndex(
+      (r) =>
+        r.id === certificateRequestRecord.id ||
+        (certificateRequestRecord.enrollmentId &&
+          r.enrollmentId === certificateRequestRecord.enrollmentId)
+    );
+    if (existingCertIdx >= 0) {
+      approvalsStore.certificateRequests[existingCertIdx] = {
+        ...approvalsStore.certificateRequests[existingCertIdx],
+        ...certificateRequestRecord,
+      };
+    } else {
+      approvalsStore.certificateRequests.unshift(certificateRequestRecord);
+    }
+  }
+
+  if (adminNotificationRecord && adminNotificationRecord.id) {
+    const existsNotif = approvalsStore.adminNotifications.some(
+      (n) => n.id === adminNotificationRecord.id
+    );
+    if (!existsNotif) {
+      approvalsStore.adminNotifications.unshift(adminNotificationRecord);
+    }
   }
 
   saveApprovalsStore(approvalsStore);
+}
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    platform: 'ALHAN – SISTEMA DE GESTÃO INTEGRADO',
+    nif: '5003128261',
+  });
+});
+
+// 1. Consulta administrativa de inscrições e solicitações pendentes (Restrito a ADMIN e SUPER_ADMIN)
+app.get('/api/approvals', (req, res) => {
+  const callerRole = String(req.headers['x-alhan-role'] || req.query.role || 'ADMIN').toUpperCase();
+  if (callerRole !== 'ADMIN' && callerRole !== 'SUPER_ADMIN') {
+    return res.status(403).json({
+      ok: false,
+      error: 'Acesso negado. Apenas utilizadores com perfil ADMIN ou SUPER_ADMIN podem consultar os dados pessoais e aprovações.',
+    });
+  }
+  return res.json({
+    ok: true,
+    users: approvalsStore.users,
+    enrollments: approvalsStore.enrollments,
+    certificateRequests: approvalsStore.certificateRequests,
+    adminNotifications: approvalsStore.adminNotifications,
+    decisions: approvalsStore.decisions,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// 2. Registo / sincronização imediata de nova inscrição de formando ou solicitação de professor com estado PENDENTE
+app.post('/api/approvals/register', (req, res) => {
+  const {
+    userRecord,
+    enrollmentRecord,
+    certificateRequestRecord,
+    adminNotificationRecord,
+  } = req.body || {};
+  const nowIso = new Date().toISOString();
+
+  upsertStudentOrProfessorIntoStore({
+    userRecord,
+    enrollmentRecord,
+    certificateRequestRecord,
+    adminNotificationRecord,
+  });
+
   return res.json({
     ok: true,
     status: 'PENDENTE',
@@ -359,6 +729,18 @@ app.post('/api/approvals/decide', (req, res) => {
     };
   });
 
+  approvalsStore.certificateRequests = approvalsStore.certificateRequests.map((r) => {
+    const matches =
+      (enrollmentId && r.enrollmentId === enrollmentId) ||
+      (uid && r.userId === uid) ||
+      (cleanEmail && String(r.studentEmail || '').toLowerCase() === cleanEmail);
+    if (!matches || r.status === 'DISPONÍVEL') return r;
+    return {
+      ...r,
+      status: fsStatus,
+    };
+  });
+
   const decisionRecord = {
     id: `dec-${Date.now()}`,
     uid: uid || null,
@@ -411,10 +793,10 @@ app.post('/api/portal-access/verify', (req, res) => {
   const matchedUser = approvalsStore.users.find(
     (u) =>
       (uid && u.uid === uid) ||
-      (cleanEmail && String(u.email || '').toLowerCase() === cleanEmail && u.role === normalizedRole)
+      (cleanEmail && String(u.email || '').toLowerCase() === cleanEmail && (!normalizedRole || u.role === normalizedRole))
   );
   const matchedEnrollment =
-    normalizedRole === 'ALUNO'
+    normalizedRole === 'ALUNO' || !normalizedRole
       ? approvalsStore.enrollments.find(
           (e) =>
             (uid && e.studentId === uid) ||
@@ -481,6 +863,56 @@ app.post('/api/certificates/validate-upload', (req, res) => {
 app.post('/api/notify-email', async (req, res) => {
   const { subject, panelOrigin, applicantName, applicantEmail, applicantPhone, details } = req.body || {};
   const targetEmail = 'geral@alhan.pro';
+  const nowIso = new Date().toISOString();
+
+  // Guarantees that ANY student or professor notification sent to geral@alhan.pro also registers immediately in the Central Admin Panel
+  if (
+    applicantName &&
+    applicantEmail &&
+    (panelOrigin === 'PAINEL_ALUNO' ||
+      panelOrigin === 'INSCRICAO_CURSO' ||
+      panelOrigin === 'PAINEL_PROFESSOR' ||
+      panelOrigin === 'SOLICITACAO_CERTIFICADO')
+  ) {
+    const cleanEmail = String(applicantEmail).trim().toLowerCase();
+    const isProfessor = panelOrigin === 'PAINEL_PROFESSOR';
+    const uid = `usr-${cleanEmail.replace(/[^a-z0-9]/g, '-').slice(0, 32)}`;
+    upsertStudentOrProfessorIntoStore({
+      userRecord: {
+        uid,
+        fullName: String(applicantName).trim(),
+        username: cleanEmail.split('@')[0] || 'utilizador',
+        email: cleanEmail,
+        phone: String(applicantPhone || '+244 922 021 211').trim(),
+        password: isProfessor ? 'Alhan@Prof2026' : 'Alhan@Aluno2026',
+        role: isProfessor ? 'PROFESSOR' : 'ALUNO',
+        companyId: isProfessor ? 'alhan-docente' : 'alhan-aluno',
+        specialty: isProfessor ? 'Consultoria e Formação SGI / Normas ISO & HSE' : undefined,
+        experience: isProfessor ? '5+ anos em Consultoria e Formação Técnica SGI / ISO & HSE' : undefined,
+        desiredCourseId: isProfessor ? undefined : 'curso-hse-novembro',
+        desiredCourseTitle: isProfessor
+          ? undefined
+          : 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+        approvalStatus: 'pendente',
+        firestoreStatus: 'PENDENTE',
+        createdAt: nowIso,
+      },
+      adminNotificationRecord: {
+        id: `adm-notif-${Date.now()}`,
+        type: isProfessor ? 'NOVO_FORMANDO' : 'NOVA_INSCRICAO',
+        title: subject || `Nova Inscrição (${panelOrigin}): ${applicantName}`,
+        message: `${applicantName} (${cleanEmail}) — ${details || subject || 'Aguarda aprovação no Painel Administrativo Central.'}`,
+        studentName: String(applicantName).trim(),
+        courseName: isProfessor
+          ? 'Painel do Professor'
+          : 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+        requestId: uid,
+        read: false,
+        createdAt: nowIso,
+      },
+    });
+  }
+
   try {
     await fetch(`https://formsubmit.co/ajax/${targetEmail}`, {
       method: 'POST',
@@ -504,17 +936,48 @@ app.post('/api/notify-email', async (req, res) => {
   res.json({
     ok: true,
     notifiedEmail: targetEmail,
-    timestamp: new Date().toISOString(),
+    timestamp: nowIso,
   });
 });
 
-// SPA fallback for React Router on Hostinger Node.js / Express environment
-app.use((_req, res) => {
-  res.sendFile(path.join(distPath, 'index.html'));
-});
+async function startServer() {
+  const isProd = process.env.NODE_ENV === 'production';
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`ALHAN – SGI server running on port ${PORT}`);
-});
+  if (!isProd) {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    app.use(
+      express.static(distPath, {
+        maxAge: '1y',
+        etag: true,
+        setHeaders: (res, filePath) => {
+          if (
+            filePath.endsWith('.html') ||
+            filePath.endsWith('.json') ||
+            filePath.endsWith('sw.js')
+          ) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          }
+        },
+      })
+    );
+
+    // SPA fallback for React Router on Hostinger Node.js / Express environment
+    app.use((_req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`ALHAN – SGI server running on port ${PORT} (${isProd ? 'production' : 'development'})`);
+  });
+}
+
+startServer();
 
 export default app;

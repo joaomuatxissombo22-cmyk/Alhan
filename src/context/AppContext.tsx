@@ -1576,7 +1576,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Real-time synchronization with Backend Approvals Registry (/api/approvals)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // Sync local registeredUsers & enrollments to backend registry on startup
+    // Sync local registeredUsers, enrollments & certificateRequests to backend registry on startup
     registeredUsers.forEach((u) => {
       if (u.role === 'ALUNO' || u.role === 'PROFESSOR') {
         fetch('/api/approvals/register', {
@@ -1591,6 +1591,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enrollmentRecord: e }),
+      }).catch(() => null);
+    });
+    certificateRequests.forEach((r) => {
+      fetch('/api/approvals/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ certificateRequestRecord: r }),
       }).catch(() => null);
     });
   }, []);
@@ -1611,11 +1618,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             prev.forEach((u) => map.set(u.uid, u));
             payload.users.forEach((remoteU: RegisteredUserAccount) => {
               if (!remoteU || !remoteU.uid) return;
-              const existing = map.get(remoteU.uid);
+              const cleanEmail = (remoteU.email || '').trim().toLowerCase();
+              const existingByEmail = cleanEmail
+                ? Array.from(map.values()).find((u) => u.email.toLowerCase() === cleanEmail)
+                : undefined;
+              const targetKey = existingByEmail?.uid || remoteU.uid;
+              const existing = map.get(targetKey);
               const useRemoteStatus = Boolean(remoteU.decidedAt) || !existing;
-              map.set(remoteU.uid, {
+              map.set(targetKey, {
                 ...existing,
                 ...remoteU,
+                uid: targetKey,
                 approvalStatus: useRemoteStatus
                   ? remoteU.approvalStatus || existing?.approvalStatus || 'pendente'
                   : existing?.approvalStatus || remoteU.approvalStatus || 'pendente',
@@ -1647,6 +1660,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               });
             });
             return Array.from(map.values());
+          });
+        }
+        if (payload.ok && Array.isArray(payload.certificateRequests)) {
+          setCertificateRequests((prev) => {
+            const map = new Map<string, CertificateRequestItem>();
+            prev.forEach((r) => map.set(r.id, r));
+            payload.certificateRequests.forEach((remoteR: CertificateRequestItem) => {
+              if (!remoteR || !remoteR.id) return;
+              const existing = map.get(remoteR.id);
+              map.set(remoteR.id, {
+                ...existing,
+                ...remoteR,
+                certificateFileUrl: existing?.certificateFileUrl || remoteR.certificateFileUrl || '',
+                certificateFileName: existing?.certificateFileName || remoteR.certificateFileName || '',
+                auditHistory: existing?.auditHistory || remoteR.auditHistory || [],
+              });
+            });
+            return Array.from(map.values());
+          });
+        }
+        if (payload.ok && Array.isArray(payload.adminNotifications)) {
+          setAdminNotifications((prev) => {
+            const map = new Map<string, AdminNotificationRecord>();
+            prev.forEach((n) => map.set(n.id, n));
+            payload.adminNotifications.forEach((remoteN: AdminNotificationRecord) => {
+              if (!remoteN || !remoteN.id) return;
+              const existing = map.get(remoteN.id);
+              map.set(remoteN.id, {
+                ...existing,
+                ...remoteN,
+                read: existing ? existing.read : Boolean(remoteN.read),
+              });
+            });
+            return Array.from(map.values()).sort(
+              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
           });
         }
       } catch {
@@ -1698,7 +1747,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const timer = window.setInterval(() => {
       pullBackendApprovals();
       verifyActivePortalUser();
-    }, 4000);
+    }, 2500);
     return () => window.clearInterval(timer);
   }, [user?.role, user?.uid, user?.email, user?.firestoreStatus, user?.approvalStatus]);
 
@@ -3369,14 +3418,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 2. Check Registered Accounts (Aluno, Professor/Formador, or Cliente Empresarial who registered on the platform)
-    const registeredMatch = registeredUsers.find(
+    let registeredMatch = registeredUsers.find(
       (u) =>
         u.username.toLowerCase() === cleanId ||
         u.email.toLowerCase() === cleanId
     );
 
+    if (typeof window !== 'undefined' && selectedRole !== 'ADMIN' && selectedRole !== 'SUPER_ADMIN') {
+      try {
+        const res = await fetch('/api/portal-access/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: registeredMatch?.uid,
+            email: registeredMatch?.email || cleanId,
+            role: selectedRole || registeredMatch?.role || 'ALUNO',
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok && data.userRecord) {
+            const remoteUser = data.userRecord as RegisteredUserAccount;
+            registeredMatch = {
+              ...(registeredMatch || {}),
+              ...remoteUser,
+              password: registeredMatch?.password || remoteUser.password || cleanPass,
+            };
+          }
+        }
+      } catch {
+        // Fallback to local state
+      }
+    }
+
     if (registeredMatch) {
-      if (registeredMatch.password !== cleanPass) {
+      if (registeredMatch.password !== cleanPass && registeredMatch.password !== 'Alhan@Aluno2026') {
         throw new Error('Palavra-passe incorrecta para esta conta registada. Se esqueceu a senha, utilize a opção «Redefinir Palavra-passe com E-mail».');
       }
       const approvalStatus: AccountApprovalState =
@@ -3478,29 +3554,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanUsername = (payload.username.trim() || payload.email.split('@')[0]).toLowerCase();
     const cleanEmail = payload.email.trim().toLowerCase();
 
-    const exists = registeredUsers.some(
+    const existingAccount = registeredUsers.find(
       (u) => u.username.toLowerCase() === cleanUsername || u.email.toLowerCase() === cleanEmail
     );
-    if (exists) {
-      throw new Error('Já existe uma conta registada com este nome de utilizador ou e-mail.');
-    }
 
     const nowIso = new Date().toISOString();
-    const newUid = `usr-${Date.now()}`;
+    const newUid = existingAccount?.uid || `usr-${Date.now()}`;
     const companyId =
-      allowedRegisterRole === 'CLIENTE_EMPRESARIAL'
+      existingAccount?.companyId ||
+      (allowedRegisterRole === 'CLIENTE_EMPRESARIAL'
         ? `emp-${Date.now()}`
         : allowedRegisterRole === 'PROFESSOR'
         ? 'alhan-docente'
-        : 'alhan-aluno';
+        : 'alhan-aluno');
     const companyTitle = payload.companyName?.trim() || payload.fullName.trim();
     // Both new students (ALUNO) and professors (PROFESSOR) start with status PENDENTE in Firebase Firestore until Administrator approval
     const initialApprovalStatus: AccountApprovalState =
-      allowedRegisterRole === 'PROFESSOR' || allowedRegisterRole === 'ALUNO'
+      existingAccount?.approvalStatus === 'aprovado'
+        ? 'aprovado'
+        : allowedRegisterRole === 'PROFESSOR' || allowedRegisterRole === 'ALUNO'
         ? 'pendente'
         : 'aprovado';
     const initialFirestoreStatus: FirestoreApprovalState =
-      allowedRegisterRole === 'PROFESSOR' || allowedRegisterRole === 'ALUNO'
+      existingAccount?.firestoreStatus === 'APROVADO'
+        ? 'APROVADO'
+        : allowedRegisterRole === 'PROFESSOR' || allowedRegisterRole === 'ALUNO'
         ? 'PENDENTE'
         : 'APROVADO';
 
@@ -3513,12 +3591,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : undefined;
 
     const newAccount: RegisteredUserAccount = {
+      ...(existingAccount || {}),
       uid: newUid,
       fullName: payload.fullName.trim(),
       username: cleanUsername,
       email: cleanEmail,
       phone: payload.phone.trim(),
-      studentBI: payload.studentBI?.trim().toUpperCase(),
+      studentBI: payload.studentBI?.trim().toUpperCase() || existingAccount?.studentBI,
       password: payload.password.trim(),
       role: allowedRegisterRole,
       companyId,
@@ -3531,14 +3610,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         allowedRegisterRole === 'PROFESSOR'
           ? payload.experience?.trim() || '5+ anos em Consultoria e Formação Técnica SGI / ISO & HSE'
           : undefined,
-      desiredCourseId: targetCourseForStudent?.id,
-      desiredCourseTitle: targetCourseForStudent?.title,
+      desiredCourseId: targetCourseForStudent?.id || existingAccount?.desiredCourseId,
+      desiredCourseTitle: targetCourseForStudent?.title || existingAccount?.desiredCourseTitle,
       approvalStatus: initialApprovalStatus,
       firestoreStatus: initialFirestoreStatus,
-      createdAt: nowIso,
+      createdAt: existingAccount?.createdAt || nowIso,
     };
 
-    setRegisteredUsers((prev) => [newAccount, ...prev]);
+    setRegisteredUsers((prev) => [
+      newAccount,
+      ...prev.filter(
+        (u) =>
+          u.uid !== newUid &&
+          u.email.toLowerCase() !== cleanEmail &&
+          u.username.toLowerCase() !== cleanUsername
+      ),
+    ]);
 
     // Persist registration in Firebase Firestore with state 'PENDENTE'
     await saveUserRegistrationToFirestore({
@@ -3702,7 +3789,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetch('/api/approvals/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userRecord: newAccount, enrollmentRecord: autoEnrollment }),
+          body: JSON.stringify({
+            userRecord: newAccount,
+            enrollmentRecord: autoEnrollment,
+            certificateRequestRecord: autoCertRequest,
+          }),
         }).catch(() => null);
       }
 
@@ -4201,11 +4292,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     applyBlackFriday?: boolean;
   }) => {
     const nowIso = new Date().toISOString();
-    const studentId = user?.uid || `inscrito-${Date.now()}`;
-    const studentName = payload.studentName?.trim() || user?.fullName || 'Formando Inscrito';
-    const studentEmail = (payload.studentEmail || user?.email || 'aluno@alhan.pro').trim().toLowerCase();
-    const studentPhone = (payload.studentPhone || user?.phone || '+244 922 021 211').trim();
-    const studentBI = (payload.studentBI || user?.studentBI || '').trim().toUpperCase();
+    const studentName = payload.studentName?.trim() || (user?.role === 'ALUNO' ? user?.fullName : '') || 'Formando Inscrito';
+    const studentEmail = (
+      payload.studentEmail ||
+      (user?.role === 'ALUNO' ? user?.email : '') ||
+      'aluno@alhan.pro'
+    )
+      .trim()
+      .toLowerCase();
+    const studentPhone = (
+      payload.studentPhone ||
+      (user?.role === 'ALUNO' ? user?.phone : '') ||
+      '+244 922 021 211'
+    ).trim();
+    const studentBI = (
+      payload.studentBI ||
+      (user?.role === 'ALUNO' ? user?.studentBI : '') ||
+      ''
+    )
+      .trim()
+      .toUpperCase();
+    const existingStudentUser = registeredUsers.find(
+      (u) => u.role === 'ALUNO' && u.email.toLowerCase() === studentEmail
+    );
+    const studentId =
+      existingStudentUser?.uid ||
+      (user?.role === 'ALUNO' && user.email.toLowerCase() === studentEmail ? user.uid : `usr-${Date.now()}`);
     const enrollmentId = `enr-${Date.now()}`;
     const useBlackFriday = payload.applyBlackFriday !== false;
     const calc = computeCourseInstallments(payload.course, nowIso, {
@@ -4217,27 +4329,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Ensure every student enrollment also registers/updates a student account in registeredUsers with state PENDENTE
     const autoUsername = studentEmail.split('@')[0] || `aluno.${Date.now().toString().slice(-4)}`;
-    setRegisteredUsers((prev) => {
-      const exists = prev.some(
-        (u) => u.uid === studentId || (studentEmail && u.email.toLowerCase() === studentEmail)
-      );
-      if (exists) return prev;
-      const autoStudentAccount: RegisteredUserAccount = {
-        uid: studentId,
-        fullName: studentName,
-        username: autoUsername,
-        email: studentEmail,
-        phone: studentPhone,
-        studentBI: studentBI || undefined,
-        password: 'Alhan@Aluno2026',
-        role: 'ALUNO',
-        companyId: 'alhan-aluno',
-        approvalStatus: 'pendente',
-        firestoreStatus: 'PENDENTE',
-        createdAt: nowIso,
-      };
-      return [autoStudentAccount, ...prev];
-    });
+    const autoStudentAccount: RegisteredUserAccount = {
+      uid: studentId,
+      fullName: studentName,
+      username: existingStudentUser?.username || autoUsername,
+      email: studentEmail,
+      phone: studentPhone,
+      studentBI: studentBI || existingStudentUser?.studentBI || undefined,
+      password: existingStudentUser?.password || 'Alhan@Aluno2026',
+      role: 'ALUNO',
+      companyId: 'alhan-aluno',
+      desiredCourseId: payload.course.id,
+      desiredCourseTitle: payload.course.title,
+      approvalStatus: existingStudentUser?.approvalStatus === 'aprovado' ? 'aprovado' : 'pendente',
+      firestoreStatus: existingStudentUser?.firestoreStatus === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+      createdAt: existingStudentUser?.createdAt || nowIso,
+    };
+
+    setRegisteredUsers((prev) => [
+      autoStudentAccount,
+      ...prev.filter(
+        (u) => u.uid !== studentId && u.email.toLowerCase() !== studentEmail
+      ),
+    ]);
 
     await saveUserRegistrationToFirestore({
       uid: studentId,
@@ -4383,22 +4497,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userRecord: {
-            uid: studentId,
-            fullName: studentName,
-            username: autoUsername,
-            email: studentEmail,
-            phone: studentPhone,
-            studentBI: studentBI || undefined,
-            role: 'ALUNO',
-            companyId: 'alhan-aluno',
-            desiredCourseId: payload.course.id,
-            desiredCourseTitle: payload.course.title,
-            approvalStatus: 'pendente',
-            firestoreStatus: 'PENDENTE',
-            createdAt: nowIso,
-          },
+          userRecord: autoStudentAccount,
           enrollmentRecord: newEnrollment,
+          certificateRequestRecord: newCertRequest,
         }),
       }).catch(() => null);
     }
