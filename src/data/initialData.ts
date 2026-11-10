@@ -193,6 +193,10 @@ export interface EnrollmentItem {
   paymentStatus: 'PENDENTE' | 'APROVADO' | 'REJEITADO' | 'Pendente' | 'Pago' | 'Falhado' | 'Cancelado' | 'Reembolsado';
   enrollmentApprovalStatus?: 'pendente' | 'aprovado' | 'rejeitado';
   firestoreStatus?: 'PENDENTE' | 'APROVADO' | 'REJEITADO';
+  decidedBy?: string;
+  decidedByEmail?: string;
+  decidedAt?: string;
+  decisionNotes?: string;
   courseStartDate?: string;
   firstInstallmentAmountKz?: number;
   firstInstallmentDueDate?: string;

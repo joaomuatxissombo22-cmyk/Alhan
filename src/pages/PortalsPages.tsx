@@ -45,7 +45,7 @@ import {
   History,
   RefreshCw,
 } from 'lucide-react';
-import { useApp, computeCourseInstallments, AccountApprovalState } from '../context/AppContext';
+import { useApp, computeCourseInstallments, AccountApprovalState, RegisteredUserAccount } from '../context/AppContext';
 import { downloadCertificatePdf } from '../utils/pdfCertificateGenerator';
 import {
   COMPANY_INFO,
@@ -77,8 +77,10 @@ const PanelAccessGate: React.FC<{
 }> = ({ allowedRoles, defaultRole, panelTitle, panelSubtitle, children }) => {
   const {
     user,
+    courses,
     registeredUsers,
     enrollments,
+    certificateRequests,
     loginWithCredentials,
     registerAccount,
     resetPasswordByEmail,
@@ -100,9 +102,18 @@ const PanelAccessGate: React.FC<{
 
   // Registration fields for Aluno / Professor / Cliente Empresarial
   const [regFullName, setRegFullName] = useState('');
+  const [regStudentBI, setRegStudentBI] = useState('');
+  const [regCourseId, setRegCourseId] = useState(
+    () => courses.find((c) => c.featured)?.id || courses[0]?.id || ''
+  );
+  const [regModality, setRegModality] = useState<'Online' | 'Presencial' | 'Híbrida'>('Online');
+  const [regCouponCode, setRegCouponCode] = useState('');
   const [regCompanyName, setRegCompanyName] = useState('');
   const [regSpecialty, setRegSpecialty] = useState(
     'Sistemas de Gestão Integrado (ISO 9001, ISO 14001, ISO 45001) & HSE'
+  );
+  const [regExperience, setRegExperience] = useState(
+    '8 anos em Consultoria e Auditoria Líder SGI / Normas ISO e HSE'
   );
   const [regEmail, setRegEmail] = useState('');
   const [regPhone, setRegPhone] = useState('+244 ');
@@ -111,6 +122,13 @@ const PanelAccessGate: React.FC<{
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [forceLocked, setForceLocked] = useState(false);
+  const [backendAccessVerification, setBackendAccessVerification] = useState<{
+    allowed: boolean;
+    status: 'PENDENTE' | 'APROVADO' | 'REJEITADO';
+    decidedBy?: string | null;
+    decidedAt?: string | null;
+    reason?: string;
+  } | null>(null);
 
   const isRoleMatch = !forceLocked && user && allowedRoles.includes(user.role);
 
@@ -149,10 +167,48 @@ const PanelAccessGate: React.FC<{
       ? 'REJEITADO'
       : 'PENDENTE');
 
+  // Verify access authorization on the Backend (/api/portal-access/verify) as well as Firestore/Client state
+  React.useEffect(() => {
+    if (!user || (user.role !== 'ALUNO' && user.role !== 'PROFESSOR')) {
+      setBackendAccessVerification(null);
+      return;
+    }
+    let active = true;
+    fetch('/api/portal-access/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uid: user.uid,
+        email: user.email,
+        role: user.role,
+        clientFirestoreStatus: resolvedFirestoreStatus,
+      }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (active && data && data.ok) {
+          setBackendAccessVerification({
+            allowed: Boolean(data.allowed),
+            status: data.status || resolvedFirestoreStatus,
+            decidedBy: data.decidedBy || null,
+            decidedAt: data.decidedAt || null,
+            reason: data.reason,
+          });
+        }
+      })
+      .catch(() => null);
+    return () => {
+      active = false;
+    };
+  }, [user?.uid, user?.email, user?.role, resolvedFirestoreStatus]);
+
+  const effectiveBackendBlocked =
+    backendAccessVerification !== null && !backendAccessVerification.allowed && resolvedFirestoreStatus !== 'APROVADO';
+
   const isUnapprovedAccount =
     isRoleMatch &&
     (user.role === 'PROFESSOR' || user.role === 'ALUNO') &&
-    (resolvedFirestoreStatus !== 'APROVADO' || resolvedApprovalStatus !== 'aprovado');
+    (resolvedFirestoreStatus !== 'APROVADO' || resolvedApprovalStatus !== 'aprovado' || effectiveBackendBlocked);
 
   if (isUnapprovedAccount && user) {
     const status = resolvedApprovalStatus || 'pendente';
@@ -240,13 +296,58 @@ const PanelAccessGate: React.FC<{
                   <span className="text-slate-500 block">Telefone / WhatsApp:</span>
                   <strong className="font-mono-tabular text-[#061A2D]">{user.phone}</strong>
                 </div>
-                {isProfessor && (
-                  <div className="sm:col-span-2">
-                    <span className="text-slate-500 block">Especialidade / Normas e Áreas que Leciona:</span>
-                    <strong className="text-[#061A2D]">
-                      {user.specialty || 'Consultoria e Formação SGI / Normas ISO & HSE'}
-                    </strong>
-                  </div>
+                {isProfessor ? (
+                  <>
+                    <div>
+                      <span className="text-slate-500 block">Especialidade / Normas e Áreas que Leciona:</span>
+                      <strong className="text-[#061A2D]">
+                        {matchedRegisteredAcc?.specialty || user.specialty || 'Consultoria e Formação SGI / Normas ISO & HSE'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Experiência Profissional:</span>
+                      <strong className="text-[#061A2D]">
+                        {matchedRegisteredAcc?.experience || user.experience || '5+ anos em Consultoria e Formação Técnica SGI / ISO & HSE'}
+                      </strong>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="sm:col-span-2 pt-2 border-t border-slate-200">
+                      <span className="text-slate-500 block">
+                        Inscrição no Curso Enviada ao Painel Administrativo Central ALHAN – SGI:
+                      </span>
+                      <strong className="text-[#0077C8]">
+                        {matchedStudentEnrollment?.courseTitle ||
+                          courses.find((c) => c.featured)?.title ||
+                          'Formação SGI & HSE'}
+                      </strong>
+                      {matchedStudentEnrollment && (
+                        <span className="block text-[11px] font-mono-tabular text-slate-600 mt-0.5">
+                          Modalidade: {matchedStudentEnrollment.modality} · Valor:{' '}
+                          {matchedStudentEnrollment.amountKz.toLocaleString('pt-AO')} Kz · Estado da Inscrição:{' '}
+                          <strong className="text-amber-700">{resolvedFirestoreStatus}</strong>
+                        </span>
+                      )}
+                    </div>
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-500 block">
+                        Registo de Certificado no Painel Administrativo Central:
+                      </span>
+                      {(() => {
+                        const myCertReq = certificateRequests.find(
+                          (r) =>
+                            r.userId === user.uid ||
+                            (user.email && r.studentEmail.toLowerCase() === user.email.toLowerCase())
+                        );
+                        return (
+                          <strong className="text-amber-800">
+                            Estado do Certificado: {myCertReq?.status || 'PENDENTE'} (Enviado para ALHAN – SGI · Painel Administrativo Central para aprovação do estado e envio de PDF)
+                          </strong>
+                        );
+                      })()}
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -306,11 +407,16 @@ const PanelAccessGate: React.FC<{
           fullName: regFullName,
           email: regEmail,
           phone: regPhone,
+          studentBI: defaultRole === 'ALUNO' ? regStudentBI : undefined,
           username: regUsername,
           password: regPassword,
           role: defaultRole,
           companyName: defaultRole === 'CLIENTE_EMPRESARIAL' ? regCompanyName : undefined,
           specialty: defaultRole === 'PROFESSOR' ? regSpecialty : undefined,
+          experience: defaultRole === 'PROFESSOR' ? regExperience : undefined,
+          courseId: defaultRole === 'ALUNO' ? regCourseId : undefined,
+          modality: defaultRole === 'ALUNO' ? regModality : undefined,
+          couponCode: defaultRole === 'ALUNO' ? regCouponCode.trim() : undefined,
         });
         setForceLocked(false);
         return;
@@ -435,6 +541,69 @@ const PanelAccessGate: React.FC<{
                   />
                 </div>
 
+                {defaultRole === 'ALUNO' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Formação / Curso em que se Inscreve *
+                      </label>
+                      <select
+                        value={regCourseId}
+                        onChange={(e) => setRegCourseId(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#061A2D] focus:border-[#0077C8] focus:outline-none"
+                      >
+                        {courses.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.title} ({c.priceKz.toLocaleString('pt-AO')} Kz)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          Modalidade *
+                        </label>
+                        <select
+                          value={regModality}
+                          onChange={(e) =>
+                            setRegModality(e.target.value as 'Online' | 'Presencial' | 'Híbrida')
+                          }
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#061A2D]"
+                        >
+                          <option value="Online">Online</option>
+                          <option value="Presencial">Presencial</option>
+                          <option value="Híbrida">Híbrida</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                          Nº B.I. / NIF (Certificado)
+                        </label>
+                        <input
+                          type="text"
+                          value={regStudentBI}
+                          onChange={(e) => setRegStudentBI(e.target.value.toUpperCase())}
+                          placeholder="Ex: 007891234LA042"
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#0077C8] mb-1">
+                          Cupom (-25% SOUALHAN)
+                        </label>
+                        <input
+                          type="text"
+                          value={regCouponCode}
+                          onChange={(e) => setRegCouponCode(e.target.value.toUpperCase())}
+                          placeholder="Ex: SOUALHAN"
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular uppercase"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
                 {defaultRole === 'CLIENTE_EMPRESARIAL' && (
                   <div>
                     <label className="block text-xs font-bold text-[#061A2D] mb-1">
@@ -452,19 +621,34 @@ const PanelAccessGate: React.FC<{
                 )}
 
                 {defaultRole === 'PROFESSOR' && (
-                  <div>
-                    <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                      Especialidade Técnica / Normas e Formações que Leciona *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={regSpecialty}
-                      onChange={(e) => setRegSpecialty(e.target.value)}
-                      placeholder="Ex: ISO 9001, ISO 14001, ISO 45001, HSE, Auditoria Interna..."
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Especialidade Técnica / Normas e Formações que Leciona *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={regSpecialty}
+                        onChange={(e) => setRegSpecialty(e.target.value)}
+                        placeholder="Ex: ISO 9001, ISO 14001, ISO 45001, HSE, Auditoria Interna..."
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                        Experiência Profissional *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={regExperience}
+                        onChange={(e) => setRegExperience(e.target.value)}
+                        placeholder="Ex: 8 anos em Consultoria SGI, Auditoria ISO e Formação Profissional"
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                      />
+                    </div>
+                  </>
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3861,7 +4045,29 @@ export const AdminPortal: React.FC = () => {
   // Mecanismo Firebase Firestore — Filtro da Tabela de Pendências (Formandos e Professores) & Exclusão de Conta para Novo Cadastro
   const [firestorePendingFilter, setFirestorePendingFilter] = useState<
     'TODOS' | 'PENDENTE' | 'APROVADO' | 'REJEITADO'
-  >('TODOS');
+  >('PENDENTE');
+  const [pendingApprovalsTab, setPendingApprovalsTab] = useState<'FORMANDOS' | 'PROFESSORES'>('FORMANDOS');
+  const [approvalDetailsModal, setApprovalDetailsModal] = useState<{
+    type: 'FORMANDO' | 'PROFESSOR';
+    uid?: string;
+    enrollmentId?: string;
+    fullName: string;
+    username?: string;
+    email: string;
+    phone: string;
+    studentBI?: string;
+    courseTitle?: string;
+    modality?: string;
+    amountKz?: number;
+    specialty?: string;
+    experience?: string;
+    createdAt: string;
+    status: 'PENDENTE' | 'APROVADO' | 'REJEITADO';
+    decidedBy?: string;
+    decidedByEmail?: string;
+    decidedAt?: string;
+    notes?: string;
+  } | null>(null);
   const [purgeEmailTarget, setPurgeEmailTarget] = useState<string>('joaomuatxissombo22@gmail.com');
   const [purgeFeedbackMsg, setPurgeFeedbackMsg] = useState<string | null>(null);
 
@@ -4305,6 +4511,7 @@ export const AdminPortal: React.FC = () => {
 
   const [activeModule, setActiveModule] = useState<
     | 'Dashboard & Indicadores'
+    | 'Aprovações Pendentes'
     | 'GESTÃO DE CERTIFICADOS'
     | 'Portefólio, Impacto & Empregabilidade'
     | 'Cursos & Academia LMS'
@@ -4527,6 +4734,7 @@ export const AdminPortal: React.FC = () => {
   const adminModules = (
     [
       'Dashboard & Indicadores',
+      'Aprovações Pendentes',
       'GESTÃO DE CERTIFICADOS',
       'Portefólio, Impacto & Empregabilidade',
       'Cursos & Academia LMS',
@@ -4542,11 +4750,170 @@ export const AdminPortal: React.FC = () => {
     ] as const
   ).filter((m): m is Exclude<typeof m, null> => m !== null);
 
-  const pendingStudentsCount = registeredStudents.filter(
-    (u) => !u.approvalStatus || u.approvalStatus === 'pendente'
+  // Build consolidated list of Student Enrollments (combining registered ALUNO accounts and enrollments collection)
+  const consolidatedStudentApprovalRows = React.useMemo(() => {
+    const rows: {
+      key: string;
+      uid?: string;
+      enrollmentId?: string;
+      enrollment?: EnrollmentItem;
+      userAccount?: RegisteredUserAccount;
+      fullName: string;
+      username: string;
+      email: string;
+      phone: string;
+      studentBI?: string;
+      courseTitle: string;
+      modality: string;
+      amountKz: number;
+      createdAt: string;
+      firestoreState: 'PENDENTE' | 'APROVADO' | 'REJEITADO';
+      decidedBy?: string;
+      decidedByEmail?: string;
+      decidedAt?: string;
+      certReq?: CertificateRequestItem;
+    }[] = [];
+
+    registeredUsers
+      .filter((u) => u.role === 'ALUNO')
+      .forEach((u) => {
+        const stuEnr = enrollments.find(
+          (e) =>
+            e.studentId === u.uid ||
+            (u.email && e.studentEmail?.toLowerCase() === u.email.toLowerCase())
+        );
+        const stuReq = certificateRequests.find(
+          (r) =>
+            r.studentEmail.toLowerCase() === u.email.toLowerCase() ||
+            (stuEnr && r.enrollmentId === stuEnr.id)
+        );
+        const rawState = u.approvalStatus || stuEnr?.enrollmentApprovalStatus || 'pendente';
+        const fsState: 'PENDENTE' | 'APROVADO' | 'REJEITADO' =
+          u.firestoreStatus ||
+          stuEnr?.firestoreStatus ||
+          (rawState === 'aprovado'
+            ? 'APROVADO'
+            : rawState === 'rejeitado' || rawState === 'suspenso' || rawState === 'bloqueado'
+            ? 'REJEITADO'
+            : 'PENDENTE');
+
+        rows.push({
+          key: `stu-usr-${u.uid}`,
+          uid: u.uid,
+          enrollmentId: stuEnr?.id,
+          enrollment: stuEnr,
+          userAccount: u,
+          fullName: u.fullName,
+          username: u.username,
+          email: u.email,
+          phone: u.phone,
+          studentBI: u.studentBI || stuEnr?.studentBI,
+          courseTitle:
+            stuEnr?.courseTitle ||
+            u.desiredCourseTitle ||
+            courses.find((c) => c.featured)?.title ||
+            'Formação SGI & Normas ISO',
+          modality: stuEnr?.modality || 'Online',
+          amountKz: stuEnr?.amountKz || 0,
+          createdAt: stuEnr?.enrolledAt || stuEnr?.createdAt || u.createdAt,
+          firestoreState: fsState,
+          decidedBy: u.decidedBy || stuEnr?.decidedBy,
+          decidedByEmail: u.decidedByEmail || stuEnr?.decidedByEmail,
+          decidedAt: u.decidedAt || stuEnr?.decidedAt,
+          certReq: stuReq,
+        });
+      });
+
+    enrollments.forEach((enr) => {
+      const alreadyIncluded = rows.some(
+        (r) =>
+          r.enrollmentId === enr.id ||
+          (enr.studentEmail && r.email.toLowerCase() === enr.studentEmail.toLowerCase())
+      );
+      if (!alreadyIncluded) {
+        const rawState = enr.enrollmentApprovalStatus || 'pendente';
+        const fsState: 'PENDENTE' | 'APROVADO' | 'REJEITADO' =
+          enr.firestoreStatus ||
+          (rawState === 'aprovado'
+            ? 'APROVADO'
+            : rawState === 'rejeitado'
+            ? 'REJEITADO'
+            : 'PENDENTE');
+        const stuReq = certificateRequests.find((r) => r.enrollmentId === enr.id);
+        rows.push({
+          key: `stu-enr-${enr.id}`,
+          uid: enr.studentId,
+          enrollmentId: enr.id,
+          enrollment: enr,
+          fullName: enr.studentName,
+          username: (enr.studentEmail || enr.studentName).split('@')[0],
+          email: enr.studentEmail || '—',
+          phone: enr.studentPhone || '+244 922 021 211',
+          studentBI: enr.studentBI,
+          courseTitle: enr.courseTitle,
+          modality: enr.modality,
+          amountKz: enr.amountKz,
+          createdAt: enr.enrolledAt || enr.createdAt,
+          firestoreState: fsState,
+          decidedBy: enr.decidedBy,
+          decidedByEmail: enr.decidedByEmail,
+          decidedAt: enr.decidedAt,
+          certReq: stuReq,
+        });
+      }
+    });
+
+    return rows;
+  }, [registeredUsers, enrollments, certificateRequests, courses]);
+
+  const consolidatedProfessorApprovalRows = React.useMemo(() => {
+    return registeredProfessors.map((prof) => {
+      const rawState = prof.approvalStatus || 'pendente';
+      const fsState: 'PENDENTE' | 'APROVADO' | 'REJEITADO' =
+        prof.firestoreStatus ||
+        (rawState === 'aprovado'
+          ? 'APROVADO'
+          : rawState === 'rejeitado' || rawState === 'suspenso' || rawState === 'bloqueado'
+          ? 'REJEITADO'
+          : 'PENDENTE');
+      return {
+        key: `prof-${prof.uid}`,
+        uid: prof.uid,
+        fullName: prof.fullName,
+        username: prof.username,
+        email: prof.email,
+        phone: prof.phone,
+        specialty: prof.specialty || 'Consultoria e Formação SGI / Normas ISO & HSE',
+        experience: prof.experience || '5+ anos em Consultoria e Formação Técnica SGI / ISO & HSE',
+        createdAt: prof.createdAt,
+        firestoreState: fsState,
+        decidedBy: prof.decidedBy,
+        decidedByEmail: prof.decidedByEmail,
+        decidedAt: prof.decidedAt,
+      };
+    });
+  }, [registeredProfessors]);
+
+  // 6. Indicadores no Painel Administrativo (Formandos & Professores Pendentes, Aprovados e Solicitações Rejeitadas)
+  const totalFormandosPendentes = consolidatedStudentApprovalRows.filter(
+    (r) => r.firestoreState === 'PENDENTE'
   ).length;
+  const totalProfessoresPendentes = consolidatedProfessorApprovalRows.filter(
+    (r) => r.firestoreState === 'PENDENTE'
+  ).length;
+  const totalFormandosAprovados = consolidatedStudentApprovalRows.filter(
+    (r) => r.firestoreState === 'APROVADO'
+  ).length;
+  const totalProfessoresAprovados = consolidatedProfessorApprovalRows.filter(
+    (r) => r.firestoreState === 'APROVADO'
+  ).length;
+  const totalSolicitacoesRejeitadas =
+    consolidatedStudentApprovalRows.filter((r) => r.firestoreState === 'REJEITADO').length +
+    consolidatedProfessorApprovalRows.filter((r) => r.firestoreState === 'REJEITADO').length;
+
+  const pendingStudentsCount = totalFormandosPendentes;
   const pendingEnrollmentsApprovalCount = enrollments.filter(
-    (e) => e.enrollmentApprovalStatus === 'pendente'
+    (e) => e.enrollmentApprovalStatus === 'pendente' || e.firestoreStatus === 'PENDENTE'
   ).length;
 
   return (
@@ -4576,17 +4943,25 @@ export const AdminPortal: React.FC = () => {
               </button>
             </div>
             <nav className="mt-3 space-y-1">
-          {adminModules.map((m) => (
-            <button
-              key={m}
-              onClick={() => setActiveModule(m)}
-              className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
-                activeModule === m ? 'bg-[#0077C8] text-white' : 'text-[#F5F9FC]/80 hover:bg-white/10'
-              }`}
-            >
-              {m}
-            </button>
-          ))}
+          {adminModules.map((m) => {
+            const totalPendingBadge = totalFormandosPendentes + totalProfessoresPendentes;
+            return (
+              <button
+                key={m}
+                onClick={() => setActiveModule(m)}
+                className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-between gap-2 ${
+                  activeModule === m ? 'bg-[#0077C8] text-white' : 'text-[#F5F9FC]/80 hover:bg-white/10'
+                }`}
+              >
+                <span>{m}</span>
+                {m === 'Aprovações Pendentes' && totalPendingBadge > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-400 text-[#061A2D] text-[10px] font-extrabold font-mono-tabular">
+                    {totalPendingBadge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
       </aside>
 
@@ -4628,17 +5003,571 @@ export const AdminPortal: React.FC = () => {
           </div>
         </div>
 
-        {/* MECANISMO FIREBASE FIRESTORE — TABELA UNIFICADA DE PENDÊNCIAS (INSCRIÇÕES DE NOVOS FORMANDOS & SOLICITAÇÕES DE PROFESSORES) */}
-        {(activeModule === 'Dashboard & Indicadores' ||
+        {/* SECÇÃO ADMINISTRATIVA: APROVAÇÕES PENDENTES (Abas: Inscrições de Formandos & Solicitações de Professores) */}
+        {(activeModule === 'Aprovações Pendentes' ||
+          activeModule === 'Dashboard & Indicadores' ||
+          activeModule === 'GESTÃO DE CERTIFICADOS' ||
           activeModule === 'Inscrições & Pagamentos Angola' ||
           activeModule === 'Utilizadores, Parceiros & Configurações') && (
-          <div className="bg-white rounded-2xl border-2 border-[#0077C8] p-6 space-y-5 shadow-xs">
+          <div className="bg-white rounded-2xl border-2 border-[#0077C8] p-6 space-y-6 shadow-xs">
+            {/* 6. INDICADORES NO PAINEL ADMINISTRATIVO (5 Indicadores de Aprovação) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-4">
+                <p className="text-[11px] font-bold text-amber-900">Total de formandos pendentes</p>
+                <p className="text-2xl font-extrabold font-mono-tabular text-amber-800 mt-1">
+                  {totalFormandosPendentes}
+                </p>
+                <p className="text-[10px] text-amber-700 mt-0.5">Estado no Firestore: PENDENTE</p>
+              </div>
+              <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-4">
+                <p className="text-[11px] font-bold text-amber-900">Total de professores pendentes</p>
+                <p className="text-2xl font-extrabold font-mono-tabular text-amber-800 mt-1">
+                  {totalProfessoresPendentes}
+                </p>
+                <p className="text-[10px] text-amber-700 mt-0.5">Estado no Firestore: PENDENTE</p>
+              </div>
+              <div className="rounded-xl border border-emerald-300 bg-emerald-50/70 p-4">
+                <p className="text-[11px] font-bold text-emerald-900">Total de formandos aprovados</p>
+                <p className="text-2xl font-extrabold font-mono-tabular text-emerald-800 mt-1">
+                  {totalFormandosAprovados}
+                </p>
+                <p className="text-[10px] text-emerald-700 mt-0.5">Acesso ao painel /aluno activo</p>
+              </div>
+              <div className="rounded-xl border border-emerald-300 bg-emerald-50/70 p-4">
+                <p className="text-[11px] font-bold text-emerald-900">Total de professores aprovados</p>
+                <p className="text-2xl font-extrabold font-mono-tabular text-emerald-800 mt-1">
+                  {totalProfessoresAprovados}
+                </p>
+                <p className="text-[10px] text-emerald-700 mt-0.5">Acesso ao painel /professor activo</p>
+              </div>
+              <div className="rounded-xl border border-rose-300 bg-rose-50/70 p-4 col-span-2 sm:col-span-1">
+                <p className="text-[11px] font-bold text-rose-900">Total de solicitações rejeitadas</p>
+                <p className="text-2xl font-extrabold font-mono-tabular text-rose-800 mt-1">
+                  {totalSolicitacoesRejeitadas}
+                </p>
+                <p className="text-[10px] text-rose-700 mt-0.5">Estado no Firestore: REJEITADO</p>
+              </div>
+            </div>
+
+            {/* 1. SECÇÃO "APROVAÇÕES PENDENTES" COM DUAS ABAS (Inscrições de Formandos | Solicitações de Professores) */}
+            <div className="rounded-xl border border-slate-200 bg-[#F5F9FC] p-5 space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-[#061A2D] text-[#19B5FE] text-[10px] font-extrabold uppercase tracking-wider">
+                      Aprovações Pendentes · Integração Firebase Auth & Firestore em Tempo Real
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-900 text-[10px] font-extrabold">
+                      Exclusivo ADMIN / SUPER_ADMIN
+                    </span>
+                  </div>
+                  <h3 className="text-base font-extrabold text-[#061A2D]">
+                    Aprovações Pendentes — Inscrições de Formandos & Solicitações de Professores
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Consulta em tempo real às colecções existentes no Firebase Firestore (<code>users</code>, <code>users/&#123;uid&#125;/private/contact</code> e <code>enrollments</code>). Seleccione uma das abas abaixo para analisar, aprovar ou rejeitar.
+                  </p>
+                </div>
+
+                {/* Duas Abas Obrigatórias: Inscrições de Formandos | Solicitações de Professores */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPendingApprovalsTab('FORMANDOS')}
+                    className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-colors flex items-center gap-2 ${
+                      pendingApprovalsTab === 'FORMANDOS'
+                        ? 'bg-[#061A2D] text-white shadow-xs'
+                        : 'bg-white text-[#061A2D] border border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>Inscrições de Formandos</span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-400 text-[#061A2D] text-[10px] font-mono-tabular">
+                      {totalFormandosPendentes} Pendente(s)
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingApprovalsTab('PROFESSORES')}
+                    className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-colors flex items-center gap-2 ${
+                      pendingApprovalsTab === 'PROFESSORES'
+                        ? 'bg-[#061A2D] text-white shadow-xs'
+                        : 'bg-white text-[#061A2D] border border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>Solicitações de Professores</span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-400 text-[#061A2D] text-[10px] font-mono-tabular">
+                      {totalProfessoresPendentes} Pendente(s)
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Filtro de Estado (por predefinição apresenta automaticamente PENDENTE) */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold text-[#061A2D]">
+                  {pendingApprovalsTab === 'FORMANDOS'
+                    ? 'Aba Activa: Inscrições de Formandos (Acesso ao painel /aluno após aprovação)'
+                    : 'Aba Activa: Solicitações de Professores (Acesso ao painel /professor após aprovação)'}
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(['PENDENTE', 'APROVADO', 'REJEITADO', 'TODOS'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setFirestorePendingFilter(st)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors ${
+                        firestorePendingFilter === st
+                          ? 'bg-[#0077C8] text-white'
+                          : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      {st === 'TODOS' ? 'Todos os Registos' : `Estado: ${st}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ABA 1: TABELA DE INSCRIÇÕES DE FORMANDOS */}
+              {pendingApprovalsTab === 'FORMANDOS' && (
+                <div className="overflow-x-auto bg-white border border-slate-200 rounded-xl">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-[#061A2D] text-white">
+                        <th className="py-2.5 px-3">Nome completo</th>
+                        <th className="py-2.5 px-3">Email</th>
+                        <th className="py-2.5 px-3">Telefone</th>
+                        <th className="py-2.5 px-3">Curso pretendido</th>
+                        <th className="py-2.5 px-3">Data de inscrição</th>
+                        <th className="py-2.5 px-3">Estado</th>
+                        <th className="py-2.5 px-3">Acções</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(() => {
+                        const filteredStudentRows = consolidatedStudentApprovalRows.filter(
+                          (r) =>
+                            firestorePendingFilter === 'TODOS' ||
+                            r.firestoreState === firestorePendingFilter
+                        );
+                        if (filteredStudentRows.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={7} className="py-6 px-4 text-center text-slate-500">
+                                Nenhuma inscrição de formando encontrada com o estado «{firestorePendingFilter}».
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return filteredStudentRows.map((row) => (
+                          <tr
+                            key={row.key}
+                            className={
+                              row.firestoreState === 'PENDENTE'
+                                ? 'bg-amber-50/40 hover:bg-amber-50/80'
+                                : 'hover:bg-slate-50'
+                            }
+                          >
+                            <td className="py-3 px-3 font-extrabold text-[#061A2D]">
+                              {row.fullName}
+                              {row.studentBI && (
+                                <span className="block text-[10px] font-mono-tabular text-slate-500">
+                                  B.I./NIF: {row.studentBI}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 font-mono-tabular text-slate-700">{row.email}</td>
+                            <td className="py-3 px-3 font-mono-tabular text-slate-700">{row.phone}</td>
+                            <td className="py-3 px-3">
+                              <span className="font-bold text-[#0077C8] block">{row.courseTitle}</span>
+                              <span className="text-[10px] text-slate-500 font-mono-tabular">
+                                Modalidade: {row.modality}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 font-mono-tabular text-slate-600">
+                              {new Date(row.createdAt).toLocaleString('pt-AO')}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span
+                                className={`inline-flex px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                  row.firestoreState === 'APROVADO'
+                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                    : row.firestoreState === 'REJEITADO'
+                                    ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                                    : 'bg-amber-100 text-amber-900 border border-amber-300'
+                                }`}
+                              >
+                                {row.firestoreState}
+                              </span>
+                              {row.decidedBy && row.decidedAt && (
+                                <span className="block text-[10px] text-slate-500 mt-0.5">
+                                  Por: {row.decidedBy} ({new Date(row.decidedAt).toLocaleString('pt-AO')})
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (row.uid) {
+                                      updateUserApprovalStatus(row.uid, 'aprovado');
+                                    }
+                                    if (row.enrollmentId) {
+                                      await updateEnrollmentApprovalStatus(row.enrollmentId, 'aprovado');
+                                    }
+                                  }}
+                                  className="px-2.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold"
+                                >
+                                  APROVAR
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (row.uid) {
+                                      updateUserApprovalStatus(row.uid, 'rejeitado');
+                                    }
+                                    if (row.enrollmentId) {
+                                      await updateEnrollmentApprovalStatus(row.enrollmentId, 'rejeitado');
+                                    }
+                                  }}
+                                  className="px-2.5 py-1.5 rounded bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-extrabold"
+                                >
+                                  REJEITAR
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setApprovalDetailsModal({
+                                      type: 'FORMANDO',
+                                      uid: row.uid,
+                                      enrollmentId: row.enrollmentId,
+                                      fullName: row.fullName,
+                                      username: row.username,
+                                      email: row.email,
+                                      phone: row.phone,
+                                      studentBI: row.studentBI,
+                                      courseTitle: row.courseTitle,
+                                      modality: row.modality,
+                                      amountKz: row.amountKz,
+                                      createdAt: row.createdAt,
+                                      status: row.firestoreState,
+                                      decidedBy: row.decidedBy,
+                                      decidedByEmail: row.decidedByEmail,
+                                      decidedAt: row.decidedAt,
+                                      notes: row.enrollment?.receiptNote,
+                                    })
+                                  }
+                                  className="px-2.5 py-1.5 rounded bg-[#061A2D] hover:bg-[#0077C8] text-white text-[11px] font-extrabold"
+                                >
+                                  VER DETALHES
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* ABA 2: TABELA DE SOLICITAÇÕES DE PROFESSORES */}
+              {pendingApprovalsTab === 'PROFESSORES' && (
+                <div className="overflow-x-auto bg-white border border-slate-200 rounded-xl">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-[#061A2D] text-white">
+                        <th className="py-2.5 px-3">Nome completo</th>
+                        <th className="py-2.5 px-3">Email</th>
+                        <th className="py-2.5 px-3">Telefone</th>
+                        <th className="py-2.5 px-3">Especialidade</th>
+                        <th className="py-2.5 px-3">Experiência profissional</th>
+                        <th className="py-2.5 px-3">Data da solicitação</th>
+                        <th className="py-2.5 px-3">Estado</th>
+                        <th className="py-2.5 px-3">Acções</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(() => {
+                        const filteredProfRows = consolidatedProfessorApprovalRows.filter(
+                          (r) =>
+                            firestorePendingFilter === 'TODOS' ||
+                            r.firestoreState === firestorePendingFilter
+                        );
+                        if (filteredProfRows.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={8} className="py-6 px-4 text-center text-slate-500">
+                                Nenhuma solicitação de professor encontrada com o estado «{firestorePendingFilter}».
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return filteredProfRows.map((prof) => (
+                          <tr
+                            key={prof.key}
+                            className={
+                              prof.firestoreState === 'PENDENTE'
+                                ? 'bg-amber-50/40 hover:bg-amber-50/80'
+                                : 'hover:bg-slate-50'
+                            }
+                          >
+                            <td className="py-3 px-3 font-extrabold text-[#061A2D]">
+                              {prof.fullName}
+                              <span className="block text-[10px] font-mono-tabular text-slate-500">
+                                User: {prof.username}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 font-mono-tabular text-slate-700">{prof.email}</td>
+                            <td className="py-3 px-3 font-mono-tabular text-slate-700">{prof.phone}</td>
+                            <td className="py-3 px-3 font-semibold text-[#0077C8]">{prof.specialty}</td>
+                            <td className="py-3 px-3 text-slate-700">{prof.experience}</td>
+                            <td className="py-3 px-3 font-mono-tabular text-slate-600">
+                              {new Date(prof.createdAt).toLocaleString('pt-AO')}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span
+                                className={`inline-flex px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                  prof.firestoreState === 'APROVADO'
+                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                    : prof.firestoreState === 'REJEITADO'
+                                    ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                                    : 'bg-amber-100 text-amber-900 border border-amber-300'
+                                }`}
+                              >
+                                {prof.firestoreState}
+                              </span>
+                              {prof.decidedBy && prof.decidedAt && (
+                                <span className="block text-[10px] text-slate-500 mt-0.5">
+                                  Por: {prof.decidedBy} ({new Date(prof.decidedAt).toLocaleString('pt-AO')})
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => updateUserApprovalStatus(prof.uid, 'aprovado')}
+                                  className="px-2.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold"
+                                >
+                                  APROVAR
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateUserApprovalStatus(prof.uid, 'rejeitado')}
+                                  className="px-2.5 py-1.5 rounded bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-extrabold"
+                                >
+                                  REJEITAR
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setApprovalDetailsModal({
+                                      type: 'PROFESSOR',
+                                      uid: prof.uid,
+                                      fullName: prof.fullName,
+                                      username: prof.username,
+                                      email: prof.email,
+                                      phone: prof.phone,
+                                      specialty: prof.specialty,
+                                      experience: prof.experience,
+                                      createdAt: prof.createdAt,
+                                      status: prof.firestoreState,
+                                      decidedBy: prof.decidedBy,
+                                      decidedByEmail: prof.decidedByEmail,
+                                      decidedAt: prof.decidedAt,
+                                    })
+                                  }
+                                  className="px-2.5 py-1.5 rounded bg-[#061A2D] hover:bg-[#0077C8] text-white text-[11px] font-extrabold"
+                                >
+                                  VER DETALHES
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* MODAL "VER DETALHES" — Consulta Completa dos Dados Submetidos & Auditoria da Decisão */}
+            {approvalDetailsModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+                <div className="bg-white rounded-2xl border-2 border-[#0077C8] max-w-xl w-full p-6 space-y-4 shadow-xl">
+                  <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
+                    <div>
+                      <span className="inline-block px-2.5 py-0.5 rounded bg-[#061A2D] text-[#19B5FE] text-[10px] font-extrabold uppercase">
+                        {approvalDetailsModal.type === 'FORMANDO'
+                          ? 'Detalhes da Inscrição de Formando'
+                          : 'Detalhes da Solicitação de Professor'}
+                      </span>
+                      <h4 className="text-lg font-extrabold text-[#061A2D] mt-1">
+                        {approvalDetailsModal.fullName}
+                      </h4>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setApprovalDetailsModal(null)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700"
+                    >
+                      Fechar ✕
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-[#F5F9FC] p-4 rounded-xl border border-slate-200">
+                    <div>
+                      <span className="text-slate-500 block">Nome completo:</span>
+                      <strong className="text-[#061A2D]">{approvalDetailsModal.fullName}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Utilizador (Username):</span>
+                      <strong className="font-mono-tabular text-[#0077C8]">
+                        {approvalDetailsModal.username || '—'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Email:</span>
+                      <strong className="font-mono-tabular text-[#061A2D]">{approvalDetailsModal.email}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Telefone:</span>
+                      <strong className="font-mono-tabular text-[#061A2D]">{approvalDetailsModal.phone}</strong>
+                    </div>
+                    {approvalDetailsModal.type === 'FORMANDO' ? (
+                      <>
+                        <div className="sm:col-span-2">
+                          <span className="text-slate-500 block">Curso pretendido:</span>
+                          <strong className="text-[#0077C8]">{approvalDetailsModal.courseTitle}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Modalidade:</span>
+                          <strong className="text-[#061A2D]">{approvalDetailsModal.modality || 'Online'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Nº B.I. / NIF:</span>
+                          <strong className="font-mono-tabular text-[#061A2D]">
+                            {approvalDetailsModal.studentBI || 'Não informado'}
+                          </strong>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="sm:col-span-2">
+                          <span className="text-slate-500 block">Especialidade:</span>
+                          <strong className="text-[#0077C8]">{approvalDetailsModal.specialty}</strong>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <span className="text-slate-500 block">Experiência profissional:</span>
+                          <strong className="text-[#061A2D]">{approvalDetailsModal.experience}</strong>
+                        </div>
+                      </>
+                    )}
+                    <div>
+                      <span className="text-slate-500 block">
+                        {approvalDetailsModal.type === 'FORMANDO' ? 'Data de inscrição:' : 'Data da solicitação:'}
+                      </span>
+                      <strong className="font-mono-tabular text-[#061A2D]">
+                        {new Date(approvalDetailsModal.createdAt).toLocaleString('pt-AO')}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Estado Actual no Firestore:</span>
+                      <strong
+                        className={
+                          approvalDetailsModal.status === 'APROVADO'
+                            ? 'text-emerald-700'
+                            : approvalDetailsModal.status === 'REJEITADO'
+                            ? 'text-rose-700'
+                            : 'text-amber-700'
+                        }
+                      >
+                        {approvalDetailsModal.status}
+                      </strong>
+                    </div>
+                    {approvalDetailsModal.decidedBy && (
+                      <div className="sm:col-span-2 pt-2 border-t border-slate-200">
+                        <span className="text-slate-500 block">Registo de Auditoria da Decisão:</span>
+                        <strong className="text-[#061A2D]">
+                          Administrador Responsável: {approvalDetailsModal.decidedBy} (
+                          {approvalDetailsModal.decidedByEmail || 'admin@alhan.pro'}) · Data e Hora:{' '}
+                          {approvalDetailsModal.decidedAt
+                            ? new Date(approvalDetailsModal.decidedAt).toLocaleString('pt-AO')
+                            : '—'}
+                        </strong>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (approvalDetailsModal.uid) {
+                          updateUserApprovalStatus(approvalDetailsModal.uid, 'aprovado');
+                        }
+                        if (approvalDetailsModal.enrollmentId) {
+                          await updateEnrollmentApprovalStatus(approvalDetailsModal.enrollmentId, 'aprovado');
+                        }
+                        setApprovalDetailsModal((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                status: 'APROVADO',
+                                decidedBy: 'Administrador Principal ALHAN – SGI',
+                                decidedAt: new Date().toISOString(),
+                              }
+                            : null
+                        );
+                      }}
+                      className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold"
+                    >
+                      APROVAR (Alterar para APROVADO)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (approvalDetailsModal.uid) {
+                          updateUserApprovalStatus(approvalDetailsModal.uid, 'rejeitado');
+                        }
+                        if (approvalDetailsModal.enrollmentId) {
+                          await updateEnrollmentApprovalStatus(approvalDetailsModal.enrollmentId, 'rejeitado');
+                        }
+                        setApprovalDetailsModal((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                status: 'REJEITADO',
+                                decidedBy: 'Administrador Principal ALHAN – SGI',
+                                decidedAt: new Date().toISOString(),
+                              }
+                            : null
+                        );
+                      }}
+                      className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold"
+                    >
+                      REJEITAR (Alterar para REJEITADO)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setApprovalDetailsModal(null)}
+                      className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2 mb-1">
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#061A2D] text-[#19B5FE] text-[11px] font-extrabold uppercase tracking-wider">
                     <ShieldAlert className="w-3.5 h-3.5" />
-                    <span>Mecanismo Firebase Firestore · Estado PENDENTE → APROVADO / REJEITADO / ELIMINAR</span>
+                    <span>ALHAN – SGI · Painel Administrativo Central · Aprovação de Inscrições do Painel do Aluno & Certificados</span>
                   </span>
                   {(pendingStudentsCount > 0 ||
                     pendingEnrollmentsApprovalCount > 0 ||
@@ -4646,17 +5575,16 @@ export const AdminPortal: React.FC = () => {
                     <span className="px-2.5 py-1 rounded bg-amber-100 text-amber-900 text-[11px] font-extrabold">
                       {Math.max(pendingStudentsCount, pendingEnrollmentsApprovalCount) +
                         pendingProfessorsCount}{' '}
-                      Pendência(s) no Firestore Aguardam Decisão
+                      Pendência(s) no Firestore Aguardam Aprovação de Estado
                     </span>
                   )}
                 </div>
                 <h2 className="text-lg font-extrabold text-[#061A2D]">
-                  Tabela de Pendências no Firebase Firestore (Inscrições de Novos Formandos e Solicitações de Professores)
+                  ALHAN – SGI · Painel Administrativo Central — Inscrições do Painel do Aluno, Cadastros, Certificados e Professores
                 </h2>
                 <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
-                  Novas inscrições de formandos e solicitações de professores entram automaticamente com o estado{' '}
-                  <strong className="text-amber-700">PENDENTE</strong> no Firebase Firestore. O acesso ao Painel do Aluno (<code>/aluno</code>) e ao Painel do Professor (<code>/professor</code>) permanece bloqueado até que o estado seja alterado para{' '}
-                  <strong className="text-emerald-700">APROVADO</strong>.
+                  Quando um aluno se cadastra ou se inscreve no Painel do Aluno (<code>/aluno</code> ou <code>/formacoes</code>), a sua inscrição e o seu certificado aparecem automaticamente aqui com estado{' '}
+                  <strong className="text-amber-700">PENDENTE</strong> para o Administrador aprovar o estado (<strong className="text-emerald-700">APROVADO</strong>), rejeitar ou enviar o certificado em PDF.
                 </p>
               </div>
 
@@ -4922,25 +5850,43 @@ export const AdminPortal: React.FC = () => {
                           {row.role === 'PROFESSOR' ? (
                             <span className="text-[11px] text-slate-400">N/A (Docente)</span>
                           ) : row.certReq ? (
-                            <div>
+                            <div className="space-y-1">
                               <span
                                 className={`inline-block px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
                                   row.certReq.status === 'DISPONÍVEL' && row.certReq.certificateFileUrl
-                                    ? 'bg-emerald-100 text-emerald-900'
-                                    : 'bg-amber-100 text-amber-900'
+                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                    : row.certReq.status === 'APROVADO'
+                                    ? 'bg-blue-100 text-[#0077C8] border border-blue-300'
+                                    : row.certReq.status === 'REJEITADO'
+                                    ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                                    : 'bg-amber-100 text-amber-900 border border-amber-300'
                                 }`}
                               >
                                 {row.certReq.status === 'DISPONÍVEL' && row.certReq.certificateFileUrl
-                                  ? 'PDF ENVIADO PELO ADM'
-                                  : `SOLICITADO (${row.certReq.status})`}
+                                  ? 'DISPONÍVEL (PDF ENVIADO)'
+                                  : `ESTADO CERTIFICADO: ${row.certReq.status}`}
                               </span>
+                              {row.certReq.status === 'PENDENTE' && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateCertificateRequestStatus(row.certReq!.id, 'APROVADO', {
+                                      adminNotes:
+                                        'Estado do certificado aprovado no Painel Administrativo Central ALHAN – SGI.',
+                                    })
+                                  }
+                                  className="block px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold"
+                                >
+                                  ✓ Aprovar Estado do Certificado
+                                </button>
+                              )}
                             </div>
                           ) : row.enrollment?.certificateRequested ? (
                             <span className="inline-block px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-extrabold uppercase">
-                              AGUARDA PDF DO ADM
+                              ESTADO CERTIFICADO: PENDENTE
                             </span>
                           ) : (
-                            <span className="text-[11px] text-slate-400">Não solicitado</span>
+                            <span className="text-[11px] text-slate-400">Pendente</span>
                           )}
                         </td>
                         <td className="py-3 px-3">
@@ -4955,10 +5901,16 @@ export const AdminPortal: React.FC = () => {
                                   if (row.enrollment) {
                                     await updateEnrollmentApprovalStatus(row.enrollment.id, 'aprovado');
                                   }
+                                  if (row.certReq && row.certReq.status === 'PENDENTE') {
+                                    await updateCertificateRequestStatus(row.certReq.id, 'APROVADO', {
+                                      adminNotes:
+                                        'Inscrição e estado do certificado aprovados pelo Administrador Principal.',
+                                    });
+                                  }
                                 }}
                                 className="px-2.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold"
                               >
-                                ✓ Aprovar (APROVADO)
+                                ✓ Aprovar Estado (APROVADO)
                               </button>
                             )}
                             {row.firestoreState !== 'REJEITADO' && (
@@ -4970,6 +5922,11 @@ export const AdminPortal: React.FC = () => {
                                   }
                                   if (row.enrollment) {
                                     await updateEnrollmentApprovalStatus(row.enrollment.id, 'rejeitado');
+                                  }
+                                  if (row.certReq && row.certReq.status !== 'DISPONÍVEL') {
+                                    await updateCertificateRequestStatus(row.certReq.id, 'REJEITADO', {
+                                      rejectionReason: 'Rejeitado pelo Administrador no Painel Central.',
+                                    });
                                   }
                                 }}
                                 className="px-2.5 py-1.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-bold"
@@ -5003,7 +5960,7 @@ export const AdminPortal: React.FC = () => {
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#0077C8] hover:bg-[#008FEA] text-white text-[11px] font-bold"
                               >
                                 <Upload className="w-3 h-3" />
-                                <span>Enviar PDF</span>
+                                <span>Aprovar / Enviar PDF</span>
                               </button>
                             ) : row.enrollment ? (
                               <button
@@ -5012,7 +5969,7 @@ export const AdminPortal: React.FC = () => {
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#061A2D] hover:bg-[#0077C8] text-white text-[11px] font-bold"
                               >
                                 <Upload className="w-3 h-3" />
-                                <span>Enviar PDF</span>
+                                <span>Aprovar / Enviar PDF</span>
                               </button>
                             ) : null}
                           </div>
@@ -5340,6 +6297,20 @@ export const AdminPortal: React.FC = () => {
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex flex-wrap items-center gap-1.5">
+                            {req.status !== 'APROVADO' && req.status !== 'DISPONÍVEL' && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateCertificateRequestStatus(req.id, 'APROVADO', {
+                                    adminNotes:
+                                      'Estado do certificado aprovado no Painel Administrativo Central ALHAN – SGI.',
+                                  })
+                                }
+                                className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold"
+                              >
+                                ✓ Aprovar Estado
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => openAdminCertificateRequest(req)}

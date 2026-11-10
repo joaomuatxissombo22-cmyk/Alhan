@@ -2002,12 +2002,18 @@ export const DiagnosticAndContactPage: React.FC<{ mode: 'diagnostico' | 'contact
 };
 
 export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ initialMode }) => {
-  const { loginWithGoogle, loginWithCredentials, registerAccount, resetPasswordByEmail } = useApp();
+  const { courses, loginWithGoogle, loginWithCredentials, registerAccount, resetPasswordByEmail } = useApp();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<'login' | 'registo' | 'recuperar'>(initialMode);
   const [role, setRole] = useState<UserRole>('ALUNO');
   const [fullName, setFullName] = useState('');
+  const [studentBI, setStudentBI] = useState('');
+  const [selectedCourseId, setSelectedCourseId] = useState(
+    () => courses.find((c) => c.featured)?.id || courses[0]?.id || ''
+  );
+  const [selectedModality, setSelectedModality] = useState<'Online' | 'Presencial' | 'Híbrida'>('Online');
+  const [couponInput, setCouponInput] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('+244 ');
@@ -2019,6 +2025,7 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
   const [recoveredAccountName, setRecoveredAccountName] = useState('');
 
   const [specialty, setSpecialty] = useState('Sistemas de Gestão Integrado (ISO 9001, ISO 14001, ISO 45001) & HSE');
+  const [experience, setExperience] = useState('8 anos em Consultoria e Auditoria Líder SGI / Normas ISO e HSE');
 
   const redirectByRole = (r: UserRole) => {
     if (r === 'SUPER_ADMIN' || r === 'ADMIN') navigate('/gestao-alhan-sgi');
@@ -2062,11 +2069,16 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
           fullName,
           email,
           phone,
+          studentBI: regRole === 'ALUNO' ? studentBI : undefined,
           username,
           password,
           role: regRole,
           companyName: regRole === 'CLIENTE_EMPRESARIAL' ? companyName : undefined,
           specialty: regRole === 'PROFESSOR' ? specialty : undefined,
+          experience: regRole === 'PROFESSOR' ? experience : undefined,
+          courseId: regRole === 'ALUNO' ? selectedCourseId : undefined,
+          modality: regRole === 'ALUNO' ? selectedModality : undefined,
+          couponCode: regRole === 'ALUNO' ? couponInput.trim() : undefined,
         });
         redirectByRole(regRole);
       } else {
@@ -2275,7 +2287,7 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                         </>
                       ) : (
                         <>
-                          <strong>Nota para Novos Formandos:</strong> Qualquer pessoa pode preencher o formulário de inscrição. A sua inscrição e conta ficam com o estado <strong>«PENDENTE»</strong> até à aprovação do Administrador Principal. Apenas após aprovação poderá aceder ao painel e aos cursos.
+                          <strong>Nota para Novos Formandos:</strong> Ao preencher o cadastro abaixo, a sua inscrição e o seu registo de certificado são enviados imediatamente para o <strong>Painel Administrativo Central ALHAN – SGI</strong> com o estado <strong>«PENDENTE»</strong> para aprovação do Administrador.
                         </>
                       )}
                     </div>
@@ -2302,6 +2314,69 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                         />
                       </div>
 
+                      {role === 'ALUNO' && (
+                        <>
+                          <div>
+                            <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                              Formação / Curso em que se Inscreve *
+                            </label>
+                            <select
+                              value={selectedCourseId}
+                              onChange={(e) => setSelectedCourseId(e.target.value)}
+                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#061A2D] focus:border-[#0077C8] focus:outline-none"
+                            >
+                              {courses.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.title} ({c.priceKz.toLocaleString('pt-AO')} Kz)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                                Modalidade *
+                              </label>
+                              <select
+                                value={selectedModality}
+                                onChange={(e) =>
+                                  setSelectedModality(e.target.value as 'Online' | 'Presencial' | 'Híbrida')
+                                }
+                                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#061A2D]"
+                              >
+                                <option value="Online">Online</option>
+                                <option value="Presencial">Presencial</option>
+                                <option value="Híbrida">Híbrida</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                                Nº B.I. / NIF (Certificado)
+                              </label>
+                              <input
+                                type="text"
+                                value={studentBI}
+                                onChange={(e) => setStudentBI(e.target.value.toUpperCase())}
+                                placeholder="Ex: 007891234LA042"
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-[#0077C8] mb-1">
+                                Cupom (-25% SOUALHAN)
+                              </label>
+                              <input
+                                type="text"
+                                value={couponInput}
+                                onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                                placeholder="Ex: SOUALHAN"
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono-tabular uppercase"
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
+
                       {role === 'CLIENTE_EMPRESARIAL' && (
                         <div>
                           <label className="block text-xs font-bold text-[#061A2D] mb-1">
@@ -2319,19 +2394,34 @@ export const AuthPages: React.FC<{ initialMode: 'login' | 'registo' }> = ({ init
                       )}
 
                       {role === 'PROFESSOR' && (
-                        <div>
-                          <label className="block text-xs font-bold text-[#061A2D] mb-1">
-                            Especialidade Técnica / Normas e Áreas que Leciona *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={specialty}
-                            onChange={(e) => setSpecialty(e.target.value)}
-                            placeholder="Ex: Auditor Líder ISO 9001, HSE, Segurança no Trabalho, ISO 14001..."
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
-                          />
-                        </div>
+                        <>
+                          <div>
+                            <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                              Especialidade Técnica / Normas e Áreas que Leciona *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={specialty}
+                              onChange={(e) => setSpecialty(e.target.value)}
+                              placeholder="Ex: Auditor Líder ISO 9001, HSE, Segurança no Trabalho, ISO 14001..."
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-[#061A2D] mb-1">
+                              Experiência Profissional *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={experience}
+                              onChange={(e) => setExperience(e.target.value)}
+                              placeholder="Ex: 8 anos em Consultoria SGI, Auditoria ISO e Formação Corporativa"
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#0077C8] focus:outline-none"
+                            />
+                          </div>
+                        </>
                       )}
 
                       <div>

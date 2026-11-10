@@ -8,6 +8,7 @@ import {
 import {
   collection,
   doc,
+  getDoc,
   onSnapshot,
   setDoc,
   updateDoc,
@@ -118,8 +119,14 @@ export interface ActiveUser {
   companyId: string;
   companyName?: string;
   specialty?: string;
+  experience?: string;
+  desiredCourseId?: string;
+  desiredCourseTitle?: string;
   approvalStatus?: AccountApprovalState;
   firestoreStatus?: FirestoreApprovalState;
+  decidedBy?: string;
+  decidedByEmail?: string;
+  decidedAt?: string;
 }
 
 export interface RegisteredUserAccount {
@@ -134,8 +141,15 @@ export interface RegisteredUserAccount {
   companyId: string;
   companyName?: string;
   specialty?: string;
+  experience?: string;
+  desiredCourseId?: string;
+  desiredCourseTitle?: string;
   approvalStatus?: AccountApprovalState;
   firestoreStatus?: FirestoreApprovalState;
+  decidedBy?: string;
+  decidedByEmail?: string;
+  decidedAt?: string;
+  decisionNotes?: string;
   createdAt: string;
 }
 
@@ -352,6 +366,10 @@ interface AppContextValue {
     role: UserRole;
     companyName?: string;
     specialty?: string;
+    experience?: string;
+    courseId?: string;
+    modality?: 'Online' | 'Presencial' | 'Híbrida';
+    couponCode?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
   saveCourse: (course: CourseItem) => Promise<void>;
@@ -603,8 +621,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isoStandards, setIsoStandards] = useState<IsoStandardItem[]>(() => loadLocal('alhan_iso_standards', INITIAL_ISO_STANDARDS));
   const [enrollments, setEnrollments] = useState<EnrollmentItem[]>(() => {
     const stored = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
+    const storedUsers = loadLocal<RegisteredUserAccount[]>('alhan_registered_users', []);
     const todayStr = new Date().toISOString().slice(0, 10);
-    return stored.map((e) => {
+    const normalized: EnrollmentItem[] = stored.map((e): EnrollmentItem => {
       const matchedCourse = INITIAL_COURSES.find((c) => c.id === e.courseId);
       const calc = computeCourseInstallments(matchedCourse, e.createdAt);
       const firstStatus: InstallmentStatus =
@@ -615,12 +634,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (secondStatus === 'Pendente' && secondDue < todayStr) {
         secondStatus = 'Em atraso';
       }
-      const appState = e.enrollmentApprovalStatus || 'aprovado';
+      const appState =
+        e.enrollmentApprovalStatus ||
+        (e.paymentStatus === 'Pago' || e.paymentStatus === 'APROVADO' ? 'aprovado' : 'pendente');
       return {
         ...e,
         studentName: e.studentName.replace('[DEMO] ', ''),
         enrollmentApprovalStatus: appState,
         firestoreStatus: e.firestoreStatus || toFirestoreApprovalState(appState),
+        certificateRequested: e.certificateRequested ?? true,
+        certificateRequestedAt: e.certificateRequestedAt || e.createdAt || new Date().toISOString(),
+        certificateRequestName: e.certificateRequestName || e.studentName.replace('[DEMO] ', ''),
+        certificateRequestEmail: e.certificateRequestEmail || e.studentEmail,
+        certificateRequestPhone: e.certificateRequestPhone || e.studentPhone,
+        certificateRequestBI: e.certificateRequestBI || e.studentBI || '',
         courseStartDate: e.courseStartDate || calc.courseStartDate,
         firstInstallmentAmountKz: e.firstInstallmentAmountKz ?? calc.firstKz,
         firstInstallmentDueDate: e.firstInstallmentDueDate || calc.firstDueDate,
@@ -657,6 +684,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ],
       };
     });
+
+    // Ensure every registered ALUNO account also has a corresponding EnrollmentItem so it appears in all Admin tables
+    storedUsers
+      .filter((u) => u.role === 'ALUNO')
+      .forEach((u) => {
+        const cleanEmail = (u.email || '').trim().toLowerCase();
+        const hasEnr = normalized.some(
+          (e) =>
+            e.studentId === u.uid ||
+            (cleanEmail && e.studentEmail?.toLowerCase() === cleanEmail)
+        );
+        if (!hasEnr) {
+          const defaultCourse = INITIAL_COURSES[0];
+          const calc = computeCourseInstallments(defaultCourse, u.createdAt, {
+            applyBlackFriday: true,
+          });
+          const appState =
+            u.approvalStatus === 'aprovado' || u.approvalStatus === 'rejeitado'
+              ? u.approvalStatus
+              : 'pendente';
+          const fsState = u.firestoreStatus || toFirestoreApprovalState(appState);
+          const enrId = `enr-${u.uid}`;
+          normalized.unshift({
+            id: enrId,
+            studentId: u.uid,
+            studentName: u.fullName,
+            studentPhone: u.phone || '+244 922 021 211',
+            studentEmail: u.email,
+            studentBI: u.studentBI,
+            courseId: defaultCourse.id,
+            courseTitle: defaultCourse.title,
+            modality: defaultCourse.modality,
+            originalAmountKz: calc.originalPriceKz,
+            amountKz: calc.totalKz,
+            discountPercent: calc.discountPercent,
+            blackFridayApplied: calc.blackFridayApplied,
+            paymentMethod: 'Express Angola',
+            paymentReference: `CAD-${u.uid.slice(-6).toUpperCase()}`,
+            receiptNote:
+              'Cadastro realizado no Painel do Aluno — Aguarda aprovação do estado no Painel Administrativo Central ALHAN – SGI.',
+            paymentStatus: fsState === 'APROVADO' ? 'APROVADO' : 'PENDENTE',
+            enrollmentApprovalStatus: appState,
+            firestoreStatus: fsState,
+            courseStartDate: calc.courseStartDate,
+            firstInstallmentAmountKz: calc.firstKz,
+            firstInstallmentDueDate: calc.firstDueDate,
+            firstInstallmentStatus: 'Pendente',
+            firstInstallmentReference: `CAD-${u.uid.slice(-6).toUpperCase()}-P1`,
+            secondInstallmentAmountKz: calc.secondKz,
+            secondInstallmentDueDate: calc.secondDueDate,
+            secondInstallmentStatus: 'Pendente',
+            secondInstallmentReference: `CAD-${u.uid.slice(-6).toUpperCase()}-P2`,
+            paymentHistory: [],
+            progressPercent: 0,
+            completedLessons: [],
+            completed: false,
+            certificateRequested: true,
+            certificateRequestedAt: u.createdAt || new Date().toISOString(),
+            certificateRequestName: u.fullName,
+            certificateRequestEmail: u.email,
+            certificateRequestPhone: u.phone,
+            certificateRequestBI: u.studentBI || '',
+            certificateRequestNotes:
+              'Solicitação de certificado vinculada ao cadastro do formando para aprovação administrativa.',
+            enrolledAt: u.createdAt || new Date().toISOString(),
+            createdAt: u.createdAt || new Date().toISOString(),
+          });
+        }
+      });
+
+    return normalized;
   });
   const [lastSystemBackup, setLastSystemBackup] = useState<SystemBackupSnapshot | null>(() =>
     loadLocal<SystemBackupSnapshot | null>('alhan_safety_backup_v1', null)
@@ -677,7 +775,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'alhan_certificate_requests',
       INITIAL_CERTIFICATE_REQUESTS
     );
-    return stored.map((req) => {
+    const storedEnrollments = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
+    const storedUsers = loadLocal<RegisteredUserAccount[]>('alhan_registered_users', []);
+    const normalizedReqs = stored.map((req) => {
       // Do NOT auto-generate online PDFs. If a request has no Admin-uploaded PDF file URL, keep it PENDENTE for Admin emission
       const hasAdminUploadedPdf = Boolean(req.certificateFileUrl && req.certificateFileUrl.trim().length > 0);
       return {
@@ -686,6 +786,116 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         certificateFileUrl: hasAdminUploadedPdf ? req.certificateFileUrl : '',
       };
     });
+
+    // Ensure every enrollment and every registered ALUNO has a CertificateRequestItem in the Admin Panel for state approval
+    storedEnrollments.forEach((enr) => {
+      const cleanEmail = (enr.studentEmail || '').trim().toLowerCase();
+      const exists = normalizedReqs.some(
+        (r) =>
+          r.enrollmentId === enr.id ||
+          (r.courseId === enr.courseId &&
+            (r.userId === enr.studentId ||
+              (cleanEmail && r.studentEmail.toLowerCase() === cleanEmail)))
+      );
+      if (!exists && enr.studentName) {
+        const courseObj = INITIAL_COURSES.find((c) => c.id === enr.courseId);
+        const nowIso = enr.createdAt || new Date().toISOString();
+        normalizedReqs.unshift({
+          id: `cert-req-${enr.id}`,
+          enrollmentId: enr.id,
+          userId: enr.studentId || `usr-${enr.id}`,
+          studentName: enr.studentName.replace('[DEMO] ', ''),
+          studentEmail: enr.studentEmail || 'aluno@alhan.pro',
+          studentPhone: enr.studentPhone || '+244 922 021 211',
+          studentBI: enr.studentBI || enr.certificateRequestBI || '',
+          courseId: enr.courseId,
+          courseName: enr.courseTitle,
+          modality: enr.modality,
+          workloadHours: courseObj?.durationHours || 40,
+          enrollmentDate: nowIso.slice(0, 10),
+          completionDate: nowIso.slice(0, 10),
+          requestDate: nowIso,
+          studentNotes:
+            enr.certificateRequestNotes ||
+            'Registo de formando e certificado submetidos para aprovação no Painel Administrativo Central.',
+          status: enr.enrollmentApprovalStatus === 'aprovado' ? 'APROVADO' : 'PENDENTE',
+          certificateStoragePath: '',
+          certificateFileUrl: '',
+          certificateFileName: '',
+          certificateCode: '',
+          issuedAt: '',
+          issuedBy: '',
+          adminNotes: '',
+          auditHistory: [
+            {
+              id: `aud-init-${enr.id}`,
+              action: 'SOLICITADO',
+              statusAfter: 'PENDENTE',
+              actorName: enr.studentName.replace('[DEMO] ', ''),
+              actorRole: 'ALUNO',
+              notes: 'Inscrição e registo de certificado criados no Painel do Aluno.',
+              timestamp: nowIso,
+            },
+          ],
+          createdAt: nowIso,
+        });
+      }
+    });
+
+    storedUsers
+      .filter((u) => u.role === 'ALUNO')
+      .forEach((u) => {
+        const cleanEmail = (u.email || '').trim().toLowerCase();
+        const exists = normalizedReqs.some(
+          (r) =>
+            r.userId === u.uid ||
+            (cleanEmail && r.studentEmail.toLowerCase() === cleanEmail)
+        );
+        if (!exists) {
+          const defaultCourse = INITIAL_COURSES[0];
+          const nowIso = u.createdAt || new Date().toISOString();
+          normalizedReqs.unshift({
+            id: `cert-req-${u.uid}`,
+            enrollmentId: `enr-${u.uid}`,
+            userId: u.uid,
+            studentName: u.fullName,
+            studentEmail: u.email,
+            studentPhone: u.phone || '+244 922 021 211',
+            studentBI: u.studentBI || '',
+            courseId: defaultCourse.id,
+            courseName: defaultCourse.title,
+            modality: defaultCourse.modality,
+            workloadHours: defaultCourse.durationHours || 40,
+            enrollmentDate: nowIso.slice(0, 10),
+            completionDate: nowIso.slice(0, 10),
+            requestDate: nowIso,
+            studentNotes:
+              'Cadastro de formando no Painel do Aluno — Aguarda aprovação do estado e emissão do certificado PDF pelo Administrador.',
+            status: u.approvalStatus === 'aprovado' ? 'APROVADO' : 'PENDENTE',
+            certificateStoragePath: '',
+            certificateFileUrl: '',
+            certificateFileName: '',
+            certificateCode: '',
+            issuedAt: '',
+            issuedBy: '',
+            adminNotes: '',
+            auditHistory: [
+              {
+                id: `aud-init-${u.uid}`,
+                action: 'SOLICITADO',
+                statusAfter: 'PENDENTE',
+                actorName: u.fullName,
+                actorRole: 'ALUNO',
+                notes: 'Cadastro do formando no Painel do Aluno.',
+                timestamp: nowIso,
+              },
+            ],
+            createdAt: nowIso,
+          });
+        }
+      });
+
+    return normalizedReqs;
   });
   const [adminNotifications, setAdminNotifications] = useState<AdminNotificationRecord[]>(() =>
     loadLocal<AdminNotificationRecord[]>('alhan_admin_notifications', INITIAL_ADMIN_NOTIFICATIONS)
@@ -1124,8 +1334,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubUsers = onSnapshot(
       usersQuery,
-      (snap) => {
+      async (snap) => {
         if (!snap.empty) {
+          // Fetch private/contact documents in parallel for Admin so real email & phone from Firestore are resolved
+          const contactMap = new Map<string, { email?: string; phone?: string }>();
+          if (isAdminUser) {
+            await Promise.all(
+              snap.docs.map(async (d) => {
+                try {
+                  const cSnap = await getDoc(doc(db, 'users', d.id, 'private', 'contact'));
+                  if (cSnap.exists()) {
+                    const cData = cSnap.data();
+                    contactMap.set(d.id, {
+                      email: typeof cData.email === 'string' ? cData.email : undefined,
+                      phone: typeof cData.phone === 'string' ? cData.phone : undefined,
+                    });
+                  }
+                } catch {
+                  // Ignore if contact subdoc does not exist
+                }
+              })
+            );
+          }
+
           setRegisteredUsers((prev) => {
             const map = new Map<string, RegisteredUserAccount>();
             prev.forEach((u) => map.set(u.uid, u));
@@ -1133,6 +1364,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const data = d.data();
               if (data.role === 'SUPER_ADMIN' || data.role === 'ADMIN') return;
               const existing = map.get(d.id);
+              const contactInfo = contactMap.get(d.id);
               const fsStatus = toFirestoreApprovalState(data.status);
               const appState = fromFirestoreApprovalState(data.status);
               if (existing) {
@@ -1140,6 +1372,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   ...existing,
                   fullName: data.fullName || existing.fullName,
                   username: data.username || existing.username,
+                  email: contactInfo?.email || existing.email,
+                  phone: contactInfo?.phone || existing.phone,
                   approvalStatus: appState,
                   firestoreStatus: fsStatus,
                 });
@@ -1148,8 +1382,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   uid: d.id,
                   fullName: data.fullName || 'Utilizador ALHAN',
                   username: data.username || 'utilizador',
-                  email: `${data.username || 'utilizador'}@alhan.pro`,
-                  phone: '+244 922 021 211',
+                  email: contactInfo?.email || `${data.username || 'utilizador'}@alhan.pro`,
+                  phone: contactInfo?.phone || '+244 922 021 211',
                   password: 'Alhan@User2026',
                   role: data.role === 'PROFESSOR' ? 'PROFESSOR' : data.role === 'CLIENTE_EMPRESARIAL' ? 'CLIENTE_EMPRESARIAL' : 'ALUNO',
                   companyId: data.companyId || 'ALHAN-FORMA',
@@ -1195,8 +1429,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               map.set(item.id, {
                 ...existing,
                 ...item,
-                enrollmentApprovalStatus: existing?.enrollmentApprovalStatus || item.enrollmentApprovalStatus || 'pendente',
-                firestoreStatus: existing?.firestoreStatus || item.firestoreStatus || 'PENDENTE',
+                enrollmentApprovalStatus: item.enrollmentApprovalStatus || existing?.enrollmentApprovalStatus || 'pendente',
+                firestoreStatus: item.firestoreStatus || existing?.firestoreStatus || 'PENDENTE',
+                completedLessons: existing?.completedLessons || item.completedLessons || [],
               });
             });
             return Array.from(map.values());
@@ -1279,6 +1514,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [authReady]);
 
+  // Real-time synchronization with Backend Approvals Registry (/api/approvals)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // Sync local registeredUsers & enrollments to backend registry on startup
+    registeredUsers.forEach((u) => {
+      if (u.role === 'ALUNO' || u.role === 'PROFESSOR') {
+        fetch('/api/approvals/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userRecord: u }),
+        }).catch(() => null);
+      }
+    });
+    enrollments.forEach((e) => {
+      fetch('/api/approvals/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enrollmentRecord: e }),
+      }).catch(() => null);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isAdminSession = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+    if (!isAdminSession) return;
+
+    const pullBackendApprovals = async () => {
+      try {
+        const res = await fetch('/api/approvals', {
+          headers: { 'x-alhan-role': user?.role || 'ADMIN' },
+        });
+        if (!res.ok) return;
+        const payload = await res.json();
+        if (payload.ok && Array.isArray(payload.users)) {
+          setRegisteredUsers((prev) => {
+            const map = new Map<string, RegisteredUserAccount>();
+            prev.forEach((u) => map.set(u.uid, u));
+            payload.users.forEach((remoteU: RegisteredUserAccount) => {
+              if (!remoteU || !remoteU.uid) return;
+              const existing = map.get(remoteU.uid);
+              map.set(remoteU.uid, {
+                ...existing,
+                ...remoteU,
+                approvalStatus: remoteU.approvalStatus || existing?.approvalStatus || 'pendente',
+                firestoreStatus: remoteU.firestoreStatus || existing?.firestoreStatus || 'PENDENTE',
+              });
+            });
+            return Array.from(map.values());
+          });
+        }
+        if (payload.ok && Array.isArray(payload.enrollments)) {
+          setEnrollments((prev) => {
+            const map = new Map<string, EnrollmentItem>();
+            prev.forEach((e) => map.set(e.id, e));
+            payload.enrollments.forEach((remoteE: EnrollmentItem) => {
+              if (!remoteE || !remoteE.id) return;
+              const existing = map.get(remoteE.id);
+              map.set(remoteE.id, {
+                ...existing,
+                ...remoteE,
+                enrollmentApprovalStatus:
+                  remoteE.enrollmentApprovalStatus || existing?.enrollmentApprovalStatus || 'pendente',
+                firestoreStatus: remoteE.firestoreStatus || existing?.firestoreStatus || 'PENDENTE',
+              });
+            });
+            return Array.from(map.values());
+          });
+        }
+      } catch {
+        // Non-blocking sync
+      }
+    };
+
+    pullBackendApprovals();
+    const timer = window.setInterval(pullBackendApprovals, 5000);
+    return () => window.clearInterval(timer);
+  }, [user?.role]);
+
   const loginWithGoogle = async () => {
     await signInWithPopup(auth, googleProvider);
     logActivity('Autenticação via Google OAuth concluída');
@@ -1301,12 +1615,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUserApprovalStatus = (uid: string, status: AccountApprovalState) => {
+    // Security Rule: Only ADMIN or SUPER_ADMIN can approve or reject registrations
+    const callerRole = user?.role || 'ADMIN';
+    if (callerRole !== 'ADMIN' && callerRole !== 'SUPER_ADMIN') {
+      throw new Error('Operação bloqueada: Apenas utilizadores com perfil ADMIN ou SUPER_ADMIN podem aprovar ou rejeitar registos.');
+    }
+
     const fsStatus = toFirestoreApprovalState(status);
+    const decidedAt = new Date().toISOString();
+    const decidedBy = user?.fullName || 'Administrador Principal ALHAN – SGI';
+    const decidedByEmail = user?.email || 'admin@alhan.pro';
+
     let targetUser: RegisteredUserAccount | undefined;
     setRegisteredUsers((prev) =>
       prev.map((u) => {
         if (u.uid === uid) {
-          targetUser = { ...u, approvalStatus: status, firestoreStatus: fsStatus };
+          targetUser = {
+            ...u,
+            approvalStatus: status,
+            firestoreStatus: fsStatus,
+            decidedBy,
+            decidedByEmail,
+            decidedAt,
+          };
           return targetUser;
         }
         return u;
@@ -1315,12 +1646,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setUser((prev) =>
       prev && prev.uid === uid
-        ? { ...prev, approvalStatus: status, firestoreStatus: fsStatus }
+        ? {
+            ...prev,
+            approvalStatus: status,
+            firestoreStatus: fsStatus,
+            decidedBy,
+            decidedByEmail,
+            decidedAt,
+          }
         : prev
     );
 
     // Sync state ('PENDENTE' | 'APROVADO' | 'REJEITADO') to Firebase Firestore
     updateUserApprovalInFirestore(uid, fsStatus).catch(() => null);
+
+    // Sync decision & audit trail to Backend (/api/approvals/decide)
+    if (typeof window !== 'undefined') {
+      fetch('/api/approvals/decide', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-alhan-role': callerRole,
+        },
+        body: JSON.stringify({
+          uid,
+          email: targetUser?.email,
+          status: fsStatus,
+          actorRole: callerRole,
+          actorName: decidedBy,
+          actorEmail: decidedByEmail,
+          notes: `Decisão administrativa (${fsStatus}) registada por ${decidedBy} em ${decidedAt}.`,
+        }),
+      }).catch(() => null);
+    }
 
     if (targetUser) {
       if (targetUser.role === 'ALUNO' && (status === 'aprovado' || status === 'pendente' || status === 'rejeitado')) {
@@ -1335,6 +1693,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ...enr,
               enrollmentApprovalStatus: status,
               firestoreStatus: fsStatus,
+              paymentStatus: fsStatus,
+              decidedBy,
+              decidedByEmail,
+              decidedAt,
+            };
+          })
+        );
+        setCertificateRequests((prev) =>
+          prev.map((req) => {
+            const matches =
+              req.userId === uid ||
+              (targetUser && req.studentEmail.toLowerCase() === targetUser.email.toLowerCase());
+            if (!matches || req.status === 'DISPONÍVEL') return req;
+            const nextCertSt: CertificateRequestStatus =
+              status === 'aprovado'
+                ? 'APROVADO'
+                : status === 'rejeitado'
+                ? 'REJEITADO'
+                : 'PENDENTE';
+            updateCertificateRequestInFirestore(req.id, { status: nextCertSt }).catch(() => null);
+            return {
+              ...req,
+              status: nextCertSt,
             };
           })
         );
@@ -1353,11 +1734,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       triggerNotification(
         'Novo registo',
         `Conta de ${targetUser.role === 'PROFESSOR' ? 'Professor' : 'Formando'} ${statusLabel}`,
-        `O estado no Firebase Firestore da conta de ${targetUser.fullName} (${targetUser.email}) foi alterado pelo Administrador Único para ${fsStatus}.`,
+        `O estado no Firebase Firestore da conta de ${targetUser.fullName} (${targetUser.email}) foi alterado por ${decidedBy} para ${fsStatus} em ${new Date(decidedAt).toLocaleString('pt-AO')}.`,
         targetUser.role
       );
       logActivity(
-        `Estado no Firestore (${targetUser.role}) de ${targetUser.fullName} alterado pelo Administrador Único para ${fsStatus}`
+        `Decisão Administrativa (${targetUser.role}): ${targetUser.fullName} (${targetUser.email}) -> ${fsStatus} | Responsável: ${decidedBy} (${decidedByEmail}) | Data/Hora: ${new Date(decidedAt).toLocaleString('pt-AO')}`,
+        decidedBy
       );
     }
   };
@@ -1822,7 +2204,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     enrollmentId: string,
     approvalStatus: 'pendente' | 'aprovado' | 'rejeitado'
   ) => {
+    const callerRole = user?.role || 'ADMIN';
+    if (callerRole !== 'ADMIN' && callerRole !== 'SUPER_ADMIN') {
+      throw new Error('Operação bloqueada: Apenas utilizadores com perfil ADMIN ou SUPER_ADMIN podem aprovar ou rejeitar inscrições.');
+    }
+
     const fsStatus = toFirestoreApprovalState(approvalStatus);
+    const decidedAt = new Date().toISOString();
+    const decidedBy = user?.fullName || 'Administrador Principal ALHAN – SGI';
+    const decidedByEmail = user?.email || 'admin@alhan.pro';
+
     const targetEnr = enrollments.find((e) => e.id === enrollmentId);
     setEnrollments((prev) =>
       prev.map((enr) =>
@@ -1831,6 +2222,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ...enr,
               enrollmentApprovalStatus: approvalStatus,
               firestoreStatus: fsStatus,
+              decidedBy,
+              decidedByEmail,
+              decidedAt,
               paymentStatus:
                 approvalStatus === 'aprovado'
                   ? 'APROVADO'
@@ -1843,6 +2237,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     await updateEnrollmentStatusInFirestore(enrollmentId, fsStatus).catch(() => null);
+
+    if (typeof window !== 'undefined') {
+      fetch('/api/approvals/decide', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-alhan-role': callerRole,
+        },
+        body: JSON.stringify({
+          uid: targetEnr?.studentId,
+          enrollmentId,
+          email: targetEnr?.studentEmail,
+          status: fsStatus,
+          actorRole: callerRole,
+          actorName: decidedBy,
+          actorEmail: decidedByEmail,
+          notes: `Decisão sobre inscrição #${enrollmentId} (${fsStatus}) por ${decidedBy} em ${decidedAt}.`,
+        }),
+      }).catch(() => null);
+    }
 
     if (targetEnr) {
       // Also update the corresponding student user account in local state and Firestore
@@ -1857,6 +2271,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...u,
             approvalStatus,
             firestoreStatus: fsStatus,
+            decidedBy,
+            decidedByEmail,
+            decidedAt,
           };
         })
       );
@@ -1864,17 +2281,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         prev &&
         (prev.uid === targetEnr.studentId ||
           (targetEnr.studentEmail && prev.email.toLowerCase() === targetEnr.studentEmail.toLowerCase()))
-          ? { ...prev, approvalStatus, firestoreStatus: fsStatus }
+          ? {
+              ...prev,
+              approvalStatus,
+              firestoreStatus: fsStatus,
+              decidedBy,
+              decidedByEmail,
+              decidedAt,
+            }
           : prev
+      );
+      setCertificateRequests((prev) =>
+        prev.map((req) => {
+          const matches =
+            req.enrollmentId === enrollmentId ||
+            req.userId === targetEnr.studentId ||
+            (targetEnr.studentEmail &&
+              req.studentEmail.toLowerCase() === targetEnr.studentEmail.toLowerCase() &&
+              req.courseId === targetEnr.courseId);
+          if (!matches || req.status === 'DISPONÍVEL') return req;
+          const nextCertSt: CertificateRequestStatus =
+            approvalStatus === 'aprovado'
+              ? 'APROVADO'
+              : approvalStatus === 'rejeitado'
+              ? 'REJEITADO'
+              : 'PENDENTE';
+          updateCertificateRequestInFirestore(req.id, { status: nextCertSt }).catch(() => null);
+          return {
+            ...req,
+            status: nextCertSt,
+          };
+        })
       );
       triggerNotification(
         'Nova inscrição',
         `Inscrição de Formando ${fsStatus} no Firestore`,
-        `A inscrição de ${targetEnr.studentName} no curso «${targetEnr.courseTitle}» foi alterada para ${fsStatus} no Firebase Firestore pelo Administrador Único.`,
+        `A inscrição de ${targetEnr.studentName} no curso «${targetEnr.courseTitle}» foi alterada para ${fsStatus} no Firebase Firestore por ${decidedBy} em ${new Date(decidedAt).toLocaleString('pt-AO')}.`,
         'ALUNO'
       );
       logActivity(
-        `Inscrição #${enrollmentId} (${targetEnr.studentName} - ${targetEnr.courseTitle}) alterada no Firestore para ${fsStatus}`
+        `Decisão Administrativa (Inscrição #${enrollmentId}): ${targetEnr.studentName} (${targetEnr.courseTitle}) -> ${fsStatus} | Responsável: ${decidedBy} (${decidedByEmail}) | Data/Hora: ${new Date(decidedAt).toLocaleString('pt-AO')}`,
+        decidedBy
       );
     }
   };
@@ -2900,6 +3347,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     role: UserRole;
     companyName?: string;
     specialty?: string;
+    experience?: string;
+    courseId?: string;
+    modality?: 'Online' | 'Presencial' | 'Híbrida';
+    couponCode?: string;
   }) => {
     // Security Rule 6: NEVER allow creation of additional ADMIN or SUPER_ADMIN accounts
     if (payload.role === 'ADMIN' || payload.role === 'SUPER_ADMIN') {
@@ -2925,6 +3376,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('Já existe uma conta registada com este nome de utilizador ou e-mail.');
     }
 
+    const nowIso = new Date().toISOString();
     const newUid = `usr-${Date.now()}`;
     const companyId =
       allowedRegisterRole === 'CLIENTE_EMPRESARIAL'
@@ -2943,6 +3395,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? 'PENDENTE'
         : 'APROVADO';
 
+    const targetCourseForStudent =
+      allowedRegisterRole === 'ALUNO'
+        ? (payload.courseId && courses.find((c) => c.id === payload.courseId)) ||
+          courses.find((c) => c.featured) ||
+          courses[0] ||
+          INITIAL_COURSES[0]
+        : undefined;
+
     const newAccount: RegisteredUserAccount = {
       uid: newUid,
       fullName: payload.fullName.trim(),
@@ -2958,9 +3418,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         allowedRegisterRole === 'PROFESSOR'
           ? payload.specialty?.trim() || payload.companyName?.trim() || 'Consultoria e Formação SGI / Normas ISO & HSE'
           : undefined,
+      experience:
+        allowedRegisterRole === 'PROFESSOR'
+          ? payload.experience?.trim() || '5+ anos em Consultoria e Formação Técnica SGI / ISO & HSE'
+          : undefined,
+      desiredCourseId: targetCourseForStudent?.id,
+      desiredCourseTitle: targetCourseForStudent?.title,
       approvalStatus: initialApprovalStatus,
       firestoreStatus: initialFirestoreStatus,
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
     };
 
     setRegisteredUsers((prev) => [newAccount, ...prev]);
@@ -2977,6 +3443,170 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: initialFirestoreStatus,
     }).catch(() => null);
 
+    // Sync user registration to Backend Approvals Registry (/api/approvals/register)
+    if (typeof window !== 'undefined' && (allowedRegisterRole === 'ALUNO' || allowedRegisterRole === 'PROFESSOR')) {
+      fetch('/api/approvals/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userRecord: newAccount }),
+      }).catch(() => null);
+    }
+
+    // When a student (ALUNO) registers, immediately create their Course Enrollment AND Certificate Approval record
+    // so both appear instantaneously in ALHAN – SGI · Painel Administrativo Central for state approval
+    if (allowedRegisterRole === 'ALUNO') {
+      const targetCourse =
+        targetCourseForStudent ||
+        courses.find((c) => c.featured) ||
+        courses[0] ||
+        INITIAL_COURSES[0];
+      const targetModality = payload.modality || targetCourse.modality || 'Online';
+      const calc = computeCourseInstallments(targetCourse, nowIso, {
+        couponCode: payload.couponCode,
+        applyBlackFriday: true,
+      });
+      const enrollmentId = `enr-${Date.now()}`;
+      const refCode = `CAD-${Date.now().toString().slice(-6)}`;
+      const discountSummary =
+        calc.discountPercent > 0
+          ? ` [Desconto Aplicado: ${calc.appliedCoupon ? `Cupom ${calc.appliedCoupon} (-25%)` : 'Black Friday Novembro (-15%)'}]`
+          : '';
+
+      const autoEnrollment: EnrollmentItem = {
+        id: enrollmentId,
+        studentId: newUid,
+        studentName: newAccount.fullName,
+        studentPhone: newAccount.phone,
+        studentEmail: newAccount.email,
+        studentBI: newAccount.studentBI,
+        courseId: targetCourse.id,
+        courseTitle: targetCourse.title,
+        modality: targetModality,
+        originalAmountKz: calc.originalPriceKz,
+        amountKz: calc.totalKz,
+        discountPercent: calc.discountPercent,
+        appliedCoupon: calc.appliedCoupon,
+        blackFridayApplied: calc.blackFridayApplied,
+        paymentMethod: 'Express Angola',
+        paymentReference: refCode,
+        receiptNote: `Inscrição e cadastro realizados no Painel do Aluno (${targetCourse.title})${discountSummary}. Aguarda aprovação do estado (PENDENTE -> APROVADO) no Painel Administrativo Central ALHAN – SGI.`,
+        paymentStatus: 'PENDENTE',
+        enrollmentApprovalStatus: 'pendente',
+        firestoreStatus: 'PENDENTE',
+        courseStartDate: calc.courseStartDate,
+        firstInstallmentAmountKz: calc.firstKz,
+        firstInstallmentDueDate: calc.firstDueDate,
+        firstInstallmentStatus: 'Pendente',
+        firstInstallmentReference: `${refCode}-P1`,
+        secondInstallmentAmountKz: calc.secondKz,
+        secondInstallmentDueDate: calc.secondDueDate,
+        secondInstallmentStatus: 'Pendente',
+        secondInstallmentReference: `${refCode}-P2`,
+        paymentHistory: [
+          {
+            id: `hist-p1-${enrollmentId}`,
+            installment: '1ª Parcela',
+            installmentLabel: '1ª Parcela',
+            amountKz: calc.firstKz,
+            dueDate: calc.firstDueDate,
+            recordedAt: calc.firstDueDate,
+            method: 'Express Angola',
+            reference: `${refCode}-P1`,
+            status: 'Pendente',
+            note: `1.ª Parcela no acto da inscrição.${discountSummary}`,
+          },
+          {
+            id: `hist-p2-${enrollmentId}`,
+            installment: '2ª Parcela',
+            installmentLabel: '2ª Parcela',
+            amountKz: calc.secondKz,
+            dueDate: calc.secondDueDate,
+            recordedAt: calc.firstDueDate,
+            method: 'Express Angola',
+            reference: `${refCode}-P2`,
+            status: 'Pendente',
+            note: `2.ª Parcela (1 semana após o início da formação).${discountSummary}`,
+          },
+        ],
+        progressPercent: 0,
+        completedLessons: [],
+        completed: false,
+        certificateRequested: true,
+        certificateRequestedAt: nowIso,
+        certificateRequestName: newAccount.fullName,
+        certificateRequestEmail: newAccount.email,
+        certificateRequestPhone: newAccount.phone,
+        certificateRequestBI: newAccount.studentBI || '',
+        certificateRequestNotes:
+          'Solicitação de certificado registada no cadastro do formando — aguarda aprovação do estado e envio do PDF pelo Administrador.',
+        enrolledAt: nowIso,
+        createdAt: nowIso,
+      };
+
+      const certReqId = `cert-req-${Date.now()}`;
+      const autoCertRequest: CertificateRequestItem = {
+        id: certReqId,
+        enrollmentId,
+        userId: newUid,
+        studentName: newAccount.fullName,
+        studentEmail: newAccount.email,
+        studentPhone: newAccount.phone,
+        studentBI: newAccount.studentBI || '',
+        courseId: targetCourse.id,
+        courseName: targetCourse.title,
+        modality: targetModality,
+        workloadHours: targetCourse.durationHours || 40,
+        enrollmentDate: nowIso.slice(0, 10),
+        completionDate: nowIso.slice(0, 10),
+        requestDate: nowIso,
+        studentNotes:
+          'Cadastro de formando e certificado submetidos no Painel do Aluno para aprovação do estado no Painel Administrativo Central ALHAN – SGI.',
+        status: 'PENDENTE',
+        certificateStoragePath: '',
+        certificateFileUrl: '',
+        certificateFileName: '',
+        certificateCode: '',
+        issuedAt: '',
+        issuedBy: '',
+        adminNotes: '',
+        auditHistory: [
+          {
+            id: `aud-${Date.now()}`,
+            action: 'SOLICITADO',
+            statusAfter: 'PENDENTE',
+            actorName: newAccount.fullName,
+            actorRole: 'ALUNO',
+            notes: `Cadastro do formando e registo de certificado para o curso «${targetCourse.title}» submetidos para aprovação administrativa.`,
+            timestamp: nowIso,
+          },
+        ],
+        createdAt: nowIso,
+      };
+
+      setEnrollments((prev) => [autoEnrollment, ...prev]);
+      setCertificateRequests((prev) => [autoCertRequest, ...prev]);
+
+      await saveEnrollmentToFirestore(autoEnrollment).catch(() => null);
+      await saveCertificateRequestToFirestore(autoCertRequest).catch(() => null);
+
+      if (typeof window !== 'undefined') {
+        fetch('/api/approvals/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userRecord: newAccount, enrollmentRecord: autoEnrollment }),
+        }).catch(() => null);
+      }
+
+      createAdminRealtimeNotification({
+        type: 'SOLICITACAO_CERTIFICADO',
+        title: `Novo Cadastro & Certificado Pendente: ${newAccount.fullName}`,
+        message: `O formando ${newAccount.fullName} (${newAccount.email}) cadastrou-se no curso «${targetCourse.title}». Inscrição e Certificado aguardam aprovação do estado no Painel Administrativo Central.`,
+        studentName: newAccount.fullName,
+        courseName: targetCourse.title,
+        requestId: certReqId,
+      });
+    }
+
     if (allowedRegisterRole === 'CLIENTE_EMPRESARIAL') {
       const newCompanyProject: IsoProjectItem = {
         id: `proj-${Date.now()}`,
@@ -2987,7 +3617,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         executionPercent: 15,
         nextActivity: 'Levantamento de Processos e Diagnóstico Gap Analysis com Consultor ALHAN',
         isDemo: false,
-        createdAt: new Date().toISOString(),
+        createdAt: nowIso,
         tasks: [
           { id: `t1-${Date.now()}`, title: 'Reunião de Abertura e Diagnóstico Gap Analysis Inicial', dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0], done: true },
           { id: `t2-${Date.now()}`, title: 'Definição do Escopo do SGI e Política Integrada', dueDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0], done: false },
@@ -3078,14 +3708,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       notifyAdminAndEmailGeral({
         panelOrigin: 'PAINEL_ALUNO',
-        subject: `Nova Inscrição de Formando (Firestore: PENDENTE) — ${newUser.fullName}`,
+        subject: `Nova Inscrição de Formando e Certificado (Firestore: PENDENTE) — ${newUser.fullName}`,
         applicantName: newUser.fullName,
         applicantEmail: newUser.email,
         applicantPhone: newUser.phone,
-        details: `Formando: ${newUser.fullName} | Utilizador: ${newUser.username} | E-mail: ${newUser.email} | Telefone: ${newUser.phone} | Estado no Firestore: PENDENTE até aprovação do Administrador`,
+        details: `Formando: ${newUser.fullName} | Utilizador: ${newUser.username} | E-mail: ${newUser.email} | Telefone: ${newUser.phone} | Estado da Inscrição e do Certificado no Firestore: PENDENTE até aprovação do Administrador`,
       });
       logActivity(
-        `Nova inscrição de Formando (${newUser.fullName}) registada no Firestore com estado PENDENTE`,
+        `Nova inscrição de Formando e Certificado (${newUser.fullName}) registada no Firestore com estado PENDENTE`,
         newUser.fullName
       );
     }
@@ -3581,14 +4211,87 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       progressPercent: 0,
       completedLessons: [],
       completed: false,
+      certificateRequested: true,
+      certificateRequestedAt: nowIso,
+      certificateRequestName: studentName,
+      certificateRequestEmail: studentEmail,
+      certificateRequestPhone: studentPhone,
+      certificateRequestBI: studentBI || '',
+      certificateRequestNotes:
+        'Inscrição e solicitação de certificado registadas para aprovação no Painel Administrativo Central ALHAN – SGI.',
       enrolledAt: nowIso,
       createdAt: nowIso,
     };
 
-    setEnrollments((prev) => [newEnrollment, ...prev]);
+    const certReqId = `cert-req-${enrollmentId}`;
+    const newCertRequest: CertificateRequestItem = {
+      id: certReqId,
+      enrollmentId,
+      userId: studentId,
+      studentName,
+      studentEmail,
+      studentPhone,
+      studentBI: studentBI || '',
+      courseId: payload.course.id,
+      courseName: payload.course.title,
+      modality: payload.modality,
+      workloadHours: payload.course.durationHours || 40,
+      enrollmentDate: nowIso.slice(0, 10),
+      completionDate: nowIso.slice(0, 10),
+      requestDate: nowIso,
+      studentNotes:
+        'Inscrição e certificado registados para aprovação do estado e envio de PDF no Painel Administrativo Central.',
+      status: 'PENDENTE',
+      certificateStoragePath: '',
+      certificateFileUrl: '',
+      certificateFileName: '',
+      certificateCode: '',
+      issuedAt: '',
+      issuedBy: '',
+      adminNotes: '',
+      auditHistory: [
+        {
+          id: `aud-${Date.now()}`,
+          action: 'SOLICITADO',
+          statusAfter: 'PENDENTE',
+          actorName: studentName,
+          actorRole: 'ALUNO',
+          notes: `Inscrição e pedido de certificado registados para o curso «${payload.course.title}».`,
+          timestamp: nowIso,
+        },
+      ],
+      createdAt: nowIso,
+    };
 
-    if (auth.currentUser && auth.currentUser.emailVerified) {
-      await saveEnrollmentToFirestore(newEnrollment).catch(() => null);
+    setEnrollments((prev) => [newEnrollment, ...prev]);
+    setCertificateRequests((prev) => [newCertRequest, ...prev]);
+
+    await saveEnrollmentToFirestore(newEnrollment).catch(() => null);
+    await saveCertificateRequestToFirestore(newCertRequest).catch(() => null);
+
+    if (typeof window !== 'undefined') {
+      fetch('/api/approvals/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userRecord: {
+            uid: studentId,
+            fullName: studentName,
+            username: autoUsername,
+            email: studentEmail,
+            phone: studentPhone,
+            studentBI: studentBI || undefined,
+            role: 'ALUNO',
+            companyId: 'alhan-aluno',
+            desiredCourseId: payload.course.id,
+            desiredCourseTitle: payload.course.title,
+            approvalStatus: 'pendente',
+            firestoreStatus: 'PENDENTE',
+            createdAt: nowIso,
+          },
+          enrollmentRecord: newEnrollment,
+        }),
+      }).catch(() => null);
     }
 
     createAdminRealtimeNotification({
