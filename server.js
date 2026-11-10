@@ -13,11 +13,129 @@ const approvalsStorePath = path.join(__dirname, '.alhan-approvals-store.json');
 
 app.use(express.json({ limit: '15mb' }));
 
+const RECOVERED_PENDING_STUDENTS = [
+  {
+    user: {
+      uid: 'usr-mohamed-caculo-95',
+      fullName: 'Mohamed Caculo',
+      username: 'mohamedcaculo95',
+      email: 'mohamedcaculo95@gmail.com',
+      phone: '+244 923 000 095',
+      password: 'Alhan@Aluno2026',
+      role: 'ALUNO',
+      companyId: 'alhan-aluno',
+      desiredCourseId: 'curso-hse-novembro',
+      desiredCourseTitle: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+      approvalStatus: 'pendente',
+      firestoreStatus: 'PENDENTE',
+      createdAt: '2026-11-09T14:30:00Z',
+    },
+    enrollment: {
+      id: 'enr-mohamed-caculo-95',
+      studentId: 'usr-mohamed-caculo-95',
+      studentName: 'Mohamed Caculo',
+      studentPhone: '+244 923 000 095',
+      studentEmail: 'mohamedcaculo95@gmail.com',
+      courseId: 'curso-hse-novembro',
+      courseTitle: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+      modality: 'Híbrida',
+      originalAmountKz: 125000,
+      amountKz: 106250,
+      discountPercent: 15,
+      blackFridayApplied: true,
+      paymentMethod: 'Express Angola',
+      paymentReference: 'CAD-MCAC95',
+      receiptNote:
+        'Inscrição realizada ontem (mohamedcaculo95@gmail.com) — Aguarda aprovação do estado (PENDENTE -> APROVADO) no Painel Administrativo Central ALHAN – SGI.',
+      paymentStatus: 'PENDENTE',
+      enrollmentApprovalStatus: 'pendente',
+      firestoreStatus: 'PENDENTE',
+      courseStartDate: '2026-11-12',
+      firstInstallmentAmountKz: 53125,
+      firstInstallmentDueDate: '2026-11-09',
+      firstInstallmentStatus: 'Pendente',
+      firstInstallmentReference: 'CAD-MCAC95-P1',
+      secondInstallmentAmountKz: 53125,
+      secondInstallmentDueDate: '2026-11-19',
+      secondInstallmentStatus: 'Pendente',
+      secondInstallmentReference: 'CAD-MCAC95-P2',
+      progressPercent: 0,
+      completedLessons: [],
+      completed: false,
+      certificateRequested: true,
+      certificateRequestedAt: '2026-11-09T14:30:00Z',
+      certificateRequestName: 'Mohamed Caculo',
+      certificateRequestEmail: 'mohamedcaculo95@gmail.com',
+      certificateRequestPhone: '+244 923 000 095',
+      enrolledAt: '2026-11-09T14:30:00Z',
+      createdAt: '2026-11-09T14:30:00Z',
+    },
+  },
+  {
+    user: {
+      uid: 'usr-carvalho-manuel-angola',
+      fullName: 'Manuel Carvalho',
+      username: 'carvalhomanuelangola',
+      email: 'carvalhomanuelangola@gmail.com',
+      phone: '+244 923 000 102',
+      password: 'Alhan@Aluno2026',
+      role: 'ALUNO',
+      companyId: 'alhan-aluno',
+      desiredCourseId: 'curso-hse-novembro',
+      desiredCourseTitle: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+      approvalStatus: 'pendente',
+      firestoreStatus: 'PENDENTE',
+      createdAt: '2026-11-09T16:15:00Z',
+    },
+    enrollment: {
+      id: 'enr-carvalho-manuel-angola',
+      studentId: 'usr-carvalho-manuel-angola',
+      studentName: 'Manuel Carvalho',
+      studentPhone: '+244 923 000 102',
+      studentEmail: 'carvalhomanuelangola@gmail.com',
+      courseId: 'curso-hse-novembro',
+      courseTitle: 'Formação em HSE – Saúde, Segurança e Meio Ambiente (Turma de Novembro)',
+      modality: 'Híbrida',
+      originalAmountKz: 125000,
+      amountKz: 106250,
+      discountPercent: 15,
+      blackFridayApplied: true,
+      paymentMethod: 'Express Angola',
+      paymentReference: 'CAD-MCARV1',
+      receiptNote:
+        'Inscrição realizada ontem (carvalhomanuelangola@gmail.com) — Aguarda aprovação do estado (PENDENTE -> APROVADO) no Painel Administrativo Central ALHAN – SGI.',
+      paymentStatus: 'PENDENTE',
+      enrollmentApprovalStatus: 'pendente',
+      firestoreStatus: 'PENDENTE',
+      courseStartDate: '2026-11-12',
+      firstInstallmentAmountKz: 53125,
+      firstInstallmentDueDate: '2026-11-09',
+      firstInstallmentStatus: 'Pendente',
+      firstInstallmentReference: 'CAD-MCARV1-P1',
+      secondInstallmentAmountKz: 53125,
+      secondInstallmentDueDate: '2026-11-19',
+      secondInstallmentStatus: 'Pendente',
+      secondInstallmentReference: 'CAD-MCARV1-P2',
+      progressPercent: 0,
+      completedLessons: [],
+      completed: false,
+      certificateRequested: true,
+      certificateRequestedAt: '2026-11-09T16:15:00Z',
+      certificateRequestName: 'Manuel Carvalho',
+      certificateRequestEmail: 'carvalhomanuelangola@gmail.com',
+      certificateRequestPhone: '+244 923 000 102',
+      enrolledAt: '2026-11-09T16:15:00Z',
+      createdAt: '2026-11-09T16:15:00Z',
+    },
+  },
+];
+
 function loadApprovalsStore() {
+  let store = { users: [], enrollments: [], decisions: [] };
   try {
     if (fs.existsSync(approvalsStorePath)) {
       const parsed = JSON.parse(fs.readFileSync(approvalsStorePath, 'utf-8'));
-      return {
+      store = {
         users: Array.isArray(parsed.users) ? parsed.users : [],
         enrollments: Array.isArray(parsed.enrollments) ? parsed.enrollments : [],
         decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
@@ -26,7 +144,27 @@ function loadApprovalsStore() {
   } catch {
     // Fallback to empty store
   }
-  return { users: [], enrollments: [], decisions: [] };
+
+  for (const item of RECOVERED_PENDING_STUDENTS) {
+    const hasUser = store.users.some(
+      (u) =>
+        u.uid === item.user.uid ||
+        String(u.email || '').toLowerCase() === item.user.email.toLowerCase()
+    );
+    if (!hasUser) {
+      store.users.unshift(item.user);
+    }
+    const hasEnr = store.enrollments.some(
+      (e) =>
+        e.id === item.enrollment.id ||
+        String(e.studentEmail || '').toLowerCase() === item.enrollment.studentEmail.toLowerCase()
+    );
+    if (!hasEnr) {
+      store.enrollments.unshift(item.enrollment);
+    }
+  }
+
+  return store;
 }
 
 function saveApprovalsStore(store) {
@@ -38,6 +176,7 @@ function saveApprovalsStore(store) {
 }
 
 const approvalsStore = loadApprovalsStore();
+saveApprovalsStore(approvalsStore);
 
 app.use(
   express.static(distPath, {
@@ -87,13 +226,21 @@ app.post('/api/approvals/register', (req, res) => {
     const existingIdx = approvalsStore.users.findIndex(
       (u) => u.uid === userRecord.uid || (cleanEmail && String(u.email || '').toLowerCase() === cleanEmail)
     );
+    const existing = existingIdx >= 0 ? approvalsStore.users[existingIdx] : null;
     const normalizedUser = {
-      ...(existingIdx >= 0 ? approvalsStore.users[existingIdx] : {}),
+      ...(existing || {}),
       ...userRecord,
       email: cleanEmail || userRecord.email || '',
-      firestoreStatus: userRecord.firestoreStatus || 'PENDENTE',
-      approvalStatus: userRecord.approvalStatus || 'pendente',
-      createdAt: userRecord.createdAt || nowIso,
+      firestoreStatus: existing?.decidedAt
+        ? existing.firestoreStatus
+        : userRecord.firestoreStatus || existing?.firestoreStatus || 'PENDENTE',
+      approvalStatus: existing?.decidedAt
+        ? existing.approvalStatus
+        : userRecord.approvalStatus || existing?.approvalStatus || 'pendente',
+      decidedBy: existing?.decidedBy || userRecord.decidedBy,
+      decidedByEmail: existing?.decidedByEmail || userRecord.decidedByEmail,
+      decidedAt: existing?.decidedAt || userRecord.decidedAt,
+      createdAt: existing?.createdAt || userRecord.createdAt || nowIso,
     };
     if (existingIdx >= 0) {
       approvalsStore.users[existingIdx] = normalizedUser;
@@ -103,14 +250,31 @@ app.post('/api/approvals/register', (req, res) => {
   }
 
   if (enrollmentRecord && enrollmentRecord.id) {
-    const existingEnrIdx = approvalsStore.enrollments.findIndex((e) => e.id === enrollmentRecord.id);
+    const cleanStudentEmail = String(enrollmentRecord.studentEmail || '').trim().toLowerCase();
+    const existingEnrIdx = approvalsStore.enrollments.findIndex(
+      (e) =>
+        e.id === enrollmentRecord.id ||
+        (cleanStudentEmail &&
+          String(e.studentEmail || '').toLowerCase() === cleanStudentEmail &&
+          e.courseId === enrollmentRecord.courseId)
+    );
+    const existingEnr = existingEnrIdx >= 0 ? approvalsStore.enrollments[existingEnrIdx] : null;
     const normalizedEnr = {
-      ...(existingEnrIdx >= 0 ? approvalsStore.enrollments[existingEnrIdx] : {}),
+      ...(existingEnr || {}),
       ...enrollmentRecord,
-      firestoreStatus: enrollmentRecord.firestoreStatus || 'PENDENTE',
-      enrollmentApprovalStatus: enrollmentRecord.enrollmentApprovalStatus || 'pendente',
-      paymentStatus: enrollmentRecord.paymentStatus || 'PENDENTE',
-      createdAt: enrollmentRecord.createdAt || nowIso,
+      firestoreStatus: existingEnr?.decidedAt
+        ? existingEnr.firestoreStatus
+        : enrollmentRecord.firestoreStatus || existingEnr?.firestoreStatus || 'PENDENTE',
+      enrollmentApprovalStatus: existingEnr?.decidedAt
+        ? existingEnr.enrollmentApprovalStatus
+        : enrollmentRecord.enrollmentApprovalStatus || existingEnr?.enrollmentApprovalStatus || 'pendente',
+      paymentStatus: existingEnr?.decidedAt
+        ? existingEnr.paymentStatus
+        : enrollmentRecord.paymentStatus || existingEnr?.paymentStatus || 'PENDENTE',
+      decidedBy: existingEnr?.decidedBy || enrollmentRecord.decidedBy,
+      decidedByEmail: existingEnr?.decidedByEmail || enrollmentRecord.decidedByEmail,
+      decidedAt: existingEnr?.decidedAt || enrollmentRecord.decidedAt,
+      createdAt: existingEnr?.createdAt || enrollmentRecord.createdAt || nowIso,
     };
     if (existingEnrIdx >= 0) {
       approvalsStore.enrollments[existingEnrIdx] = normalizedEnr;
@@ -276,6 +440,8 @@ app.post('/api/portal-access/verify', (req, res) => {
     panel: normalizedRole === 'PROFESSOR' ? '/professor' : '/aluno',
     decidedBy: matchedUser?.decidedBy || matchedEnrollment?.decidedBy || null,
     decidedAt: matchedUser?.decidedAt || matchedEnrollment?.decidedAt || null,
+    userRecord: matchedUser || null,
+    enrollmentRecord: matchedEnrollment || null,
     reason: allowed
       ? `Acesso autorizado ao painel ${normalizedRole === 'PROFESSOR' ? '/professor' : '/aluno'} (Estado: APROVADO).`
       : `Acesso bloqueado pelo backend: o registo encontra-se com o estado ${backendStatus} no sistema. Apenas registos com estado APROVADO pelo Administrador têm acesso ao painel.`,

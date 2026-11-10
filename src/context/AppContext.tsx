@@ -560,7 +560,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [registeredUsers, setRegisteredUsers] = useState<RegisteredUserAccount[]>(() => {
     const stored = loadLocal<RegisteredUserAccount[]>('alhan_registered_users', []);
-    const storedEnrollments = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
+    const rawStoredEnrollments = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
+    const storedEnrollments = [...rawStoredEnrollments];
+    INITIAL_ENROLLMENTS.forEach((initEnr) => {
+      const initEmail = (initEnr.studentEmail || '').trim().toLowerCase();
+      const alreadyPresent = storedEnrollments.some(
+        (e) =>
+          e.id === initEnr.id ||
+          (initEmail && (e.studentEmail || '').trim().toLowerCase() === initEmail)
+      );
+      if (!alreadyPresent) {
+        storedEnrollments.unshift(initEnr);
+      }
+    });
     const merged = stored.map((u) => {
       const appState =
         u.approvalStatus ||
@@ -620,7 +632,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isoStandards, setIsoStandards] = useState<IsoStandardItem[]>(() => loadLocal('alhan_iso_standards', INITIAL_ISO_STANDARDS));
   const [enrollments, setEnrollments] = useState<EnrollmentItem[]>(() => {
-    const stored = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
+    const rawStored = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
+    const stored = [...rawStored];
+    INITIAL_ENROLLMENTS.forEach((initEnr) => {
+      const initEmail = (initEnr.studentEmail || '').trim().toLowerCase();
+      const alreadyPresent = stored.some(
+        (e) =>
+          e.id === initEnr.id ||
+          (initEmail && (e.studentEmail || '').trim().toLowerCase() === initEmail)
+      );
+      if (!alreadyPresent) {
+        stored.unshift(initEnr);
+      }
+    });
     const storedUsers = loadLocal<RegisteredUserAccount[]>('alhan_registered_users', []);
     const todayStr = new Date().toISOString().slice(0, 10);
     const normalized: EnrollmentItem[] = stored.map((e): EnrollmentItem => {
@@ -771,11 +795,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   });
   const [certificateRequests, setCertificateRequests] = useState<CertificateRequestItem[]>(() => {
-    const stored = loadLocal<CertificateRequestItem[]>(
+    const rawStored = loadLocal<CertificateRequestItem[]>(
       'alhan_certificate_requests',
       INITIAL_CERTIFICATE_REQUESTS
     );
-    const storedEnrollments = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
+    const stored = [...rawStored];
+    INITIAL_CERTIFICATE_REQUESTS.forEach((initReq) => {
+      const initEmail = (initReq.studentEmail || '').trim().toLowerCase();
+      const alreadyPresent = stored.some(
+        (r) =>
+          r.id === initReq.id ||
+          r.enrollmentId === initReq.enrollmentId ||
+          (initEmail && (r.studentEmail || '').trim().toLowerCase() === initEmail)
+      );
+      if (!alreadyPresent) {
+        stored.unshift(initReq);
+      }
+    });
+    const rawStoredEnrollments = loadLocal<EnrollmentItem[]>('alhan_enrollments', INITIAL_ENROLLMENTS);
+    const storedEnrollments = [...rawStoredEnrollments];
+    INITIAL_ENROLLMENTS.forEach((initEnr) => {
+      const initEmail = (initEnr.studentEmail || '').trim().toLowerCase();
+      const alreadyPresent = storedEnrollments.some(
+        (e) =>
+          e.id === initEnr.id ||
+          (initEmail && (e.studentEmail || '').trim().toLowerCase() === initEmail)
+      );
+      if (!alreadyPresent) {
+        storedEnrollments.unshift(initEnr);
+      }
+    });
     const storedUsers = loadLocal<RegisteredUserAccount[]>('alhan_registered_users', []);
     const normalizedReqs = stored.map((req) => {
       // Do NOT auto-generate online PDFs. If a request has no Admin-uploaded PDF file URL, keep it PENDENTE for Admin emission
@@ -897,9 +946,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return normalizedReqs;
   });
-  const [adminNotifications, setAdminNotifications] = useState<AdminNotificationRecord[]>(() =>
-    loadLocal<AdminNotificationRecord[]>('alhan_admin_notifications', INITIAL_ADMIN_NOTIFICATIONS)
-  );
+  const [adminNotifications, setAdminNotifications] = useState<AdminNotificationRecord[]>(() => {
+    const rawStored = loadLocal<AdminNotificationRecord[]>(
+      'alhan_admin_notifications',
+      INITIAL_ADMIN_NOTIFICATIONS
+    );
+    const merged = [...rawStored];
+    INITIAL_ADMIN_NOTIFICATIONS.forEach((initNotif) => {
+      if (!merged.some((n) => n.id === initNotif.id)) {
+        merged.unshift(initNotif);
+      }
+    });
+    return merged;
+  });
   const [dynamicCounters, setDynamicCounters] = useState<DynamicCountersConfig>(() =>
     loadLocal<DynamicCountersConfig>('alhan_dynamic_counters', INITIAL_DYNAMIC_COUNTERS)
   );
@@ -1538,8 +1597,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const isAdminSession = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
-    if (!isAdminSession) return;
 
     const pullBackendApprovals = async () => {
       try {
@@ -1555,11 +1612,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             payload.users.forEach((remoteU: RegisteredUserAccount) => {
               if (!remoteU || !remoteU.uid) return;
               const existing = map.get(remoteU.uid);
+              const useRemoteStatus = Boolean(remoteU.decidedAt) || !existing;
               map.set(remoteU.uid, {
                 ...existing,
                 ...remoteU,
-                approvalStatus: remoteU.approvalStatus || existing?.approvalStatus || 'pendente',
-                firestoreStatus: remoteU.firestoreStatus || existing?.firestoreStatus || 'PENDENTE',
+                approvalStatus: useRemoteStatus
+                  ? remoteU.approvalStatus || existing?.approvalStatus || 'pendente'
+                  : existing?.approvalStatus || remoteU.approvalStatus || 'pendente',
+                firestoreStatus: useRemoteStatus
+                  ? remoteU.firestoreStatus || existing?.firestoreStatus || 'PENDENTE'
+                  : existing?.firestoreStatus || remoteU.firestoreStatus || 'PENDENTE',
               });
             });
             return Array.from(map.values());
@@ -1572,12 +1634,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             payload.enrollments.forEach((remoteE: EnrollmentItem) => {
               if (!remoteE || !remoteE.id) return;
               const existing = map.get(remoteE.id);
+              const useRemoteStatus = Boolean(remoteE.decidedAt) || !existing;
               map.set(remoteE.id, {
                 ...existing,
                 ...remoteE,
-                enrollmentApprovalStatus:
-                  remoteE.enrollmentApprovalStatus || existing?.enrollmentApprovalStatus || 'pendente',
-                firestoreStatus: remoteE.firestoreStatus || existing?.firestoreStatus || 'PENDENTE',
+                enrollmentApprovalStatus: useRemoteStatus
+                  ? remoteE.enrollmentApprovalStatus || existing?.enrollmentApprovalStatus || 'pendente'
+                  : existing?.enrollmentApprovalStatus || remoteE.enrollmentApprovalStatus || 'pendente',
+                firestoreStatus: useRemoteStatus
+                  ? remoteE.firestoreStatus || existing?.firestoreStatus || 'PENDENTE'
+                  : existing?.firestoreStatus || remoteE.firestoreStatus || 'PENDENTE',
               });
             });
             return Array.from(map.values());
@@ -1588,10 +1654,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
 
+    const verifyActivePortalUser = async () => {
+      if (!user || (user.role !== 'ALUNO' && user.role !== 'PROFESSOR')) return;
+      try {
+        const res = await fetch('/api/portal-access/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: user.uid,
+            email: user.email,
+            role: user.role,
+          }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.ok && data.status) {
+          const fsStatus = data.status as FirestoreApprovalState;
+          const appStatus: AccountApprovalState =
+            fsStatus === 'APROVADO'
+              ? 'aprovado'
+              : fsStatus === 'REJEITADO'
+              ? 'rejeitado'
+              : 'pendente';
+          if (user.firestoreStatus !== fsStatus || user.approvalStatus !== appStatus) {
+            setUser((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    approvalStatus: appStatus,
+                    firestoreStatus: fsStatus,
+                  }
+                : prev
+            );
+          }
+        }
+      } catch {
+        // Non-blocking verification
+      }
+    };
+
     pullBackendApprovals();
-    const timer = window.setInterval(pullBackendApprovals, 5000);
+    verifyActivePortalUser();
+    const timer = window.setInterval(() => {
+      pullBackendApprovals();
+      verifyActivePortalUser();
+    }, 4000);
     return () => window.clearInterval(timer);
-  }, [user?.role]);
+  }, [user?.role, user?.uid, user?.email, user?.firestoreStatus, user?.approvalStatus]);
 
   const loginWithGoogle = async () => {
     await signInWithPopup(auth, googleProvider);
